@@ -8,6 +8,7 @@ description = "A review surface for parallel coding agents."
 
 [dependencies]
 clap = { version = "4.6.6", features = ["derive"] }
+gix = { version = "0.87.1", default-features = false, features = ["status", "merge", "parallel", "sha1", "revision", "blob-diff", "index"] }
 ratatui = "0.30"
 similar = { version = "3", features = ["unicode"] }
 thiserror = "2"
