@@ -19,9 +19,11 @@ Terminal first. The core is UI-agnostic; a GUI can come later without touching i
 
 ## Layout
 
-    crates/quorum-git    worktree discovery, git plumbing
-    crates/quorum-diff   diff model            (planned)
-    crates/quorum-tui    terminal frontend     (planned)
+One crate for now; the seams below are module boundaries, not crate
+boundaries, and get split out when they earn it.
+
+    src/diff     diff model, side-by-side alignment, wrapping
+    src/git      worktree discovery, git plumbing
 
 ## Requires
 
