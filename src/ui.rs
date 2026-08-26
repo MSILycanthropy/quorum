@@ -1,7 +1,9 @@
 //! The review surface: a list of changed files, and the diff of one of them.
 
+mod review;
 mod viewer;
 
+pub use review::Review;
 pub use viewer::Viewer;
 
 #[derive(Debug, thiserror::Error)]
