@@ -30,10 +30,10 @@ fn shown(mode: Mode, width: u16, height: u16, wrap: bool, keys: &[KeyCode]) -> S
         Viewer::new(diff, Path::new("demo.rs"), mode, wrap, 4).expect("fixtures highlight");
     let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("test backend starts");
 
-    terminal.draw(|frame| viewer.draw(frame)).expect("draw succeeds");
+    terminal.draw(|frame| viewer.draw(frame, frame.area())).expect("draw succeeds");
     for key in keys {
         viewer.key(KeyEvent::new(*key, KeyModifiers::NONE));
-        terminal.draw(|frame| viewer.draw(frame)).expect("draw succeeds");
+        terminal.draw(|frame| viewer.draw(frame, frame.area())).expect("draw succeeds");
     }
     describe(terminal.backend().buffer())
 }

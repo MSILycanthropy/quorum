@@ -41,7 +41,7 @@ fn view(arguments: &Arguments) -> Result<()> {
 
     ratatui::run(|terminal| {
         loop {
-            terminal.draw(|frame| viewer.draw(frame))?;
+            terminal.draw(|frame| viewer.draw(frame, frame.area()))?;
             if let Event::Key(key) = event::read()?
                 && key.kind == KeyEventKind::Press
                 && viewer.key(key) == Control::Quit
