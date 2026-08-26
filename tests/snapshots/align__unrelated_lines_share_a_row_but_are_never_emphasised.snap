@@ -1,0 +1,7 @@
+---
+source: tests/align.rs
+expression: "table(old, new)"
+---
+    1   1 │ use std::io;                           │ use std::io;
+~   2   2 │ let x = 1;                             │ #[derive(Debug, Clone, Copy, PartialEq)]
+    3   3 │                                        │

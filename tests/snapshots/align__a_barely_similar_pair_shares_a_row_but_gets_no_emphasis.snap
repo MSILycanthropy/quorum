@@ -1,0 +1,6 @@
+---
+source: tests/align.rs
+expression: "table(old, new)"
+---
+~   1   1 │     let handler = Registry::new(config); │     let handler = Dispatcher::build(cfg, opts, &mut log);
+    2   2 │                                        │

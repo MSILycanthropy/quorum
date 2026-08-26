@@ -1,0 +1,7 @@
+---
+source: tests/flow.rs
+expression: "screen(old, new, wrapped(26))"
+---
+ 0   │let message = format!("⟦hel⟧│let message = format!("⟦goo⟧│
+ 0 ↳ │⟦lo⟧ ⟦there⟧ {name}");    │⟦dbye for⟧ ⟦now⟧ {name}");│
+ 1   │                          ││

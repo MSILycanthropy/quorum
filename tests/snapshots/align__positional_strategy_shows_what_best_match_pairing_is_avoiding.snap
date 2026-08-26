@@ -1,0 +1,9 @@
+---
+source: tests/align.rs
+expression: "aligned(align, MODIFIED_BLOCK_OLD, MODIFIED_BLOCK_NEW)"
+---
+~   1   1 │ alpha = 1                              │ zeta = 9
+~   2   2 │ beta = 2                               │ alpha = 10
+~   3   3 │ gamma = 3                              │ beta = 20
++   ·   4 │                                        │ gamma = 30
+    4   5 │                                        │

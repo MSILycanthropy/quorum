@@ -1,0 +1,9 @@
+---
+source: tests/align.rs
+expression: "table(old, new)"
+---
+    1   1 │ fn total(cart: &Cart) -> u32 {         │ fn total(cart: &Cart) -> u32 {
+~   2   2 │     let total = price * quantity;      │     let total = price * quantity⟦ + tax⟧;
+    3   3 │     total                              │     total
+    4   4 │ }                                      │ }
+    5   5 │                                        │

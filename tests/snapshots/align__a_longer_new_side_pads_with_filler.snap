@@ -1,0 +1,9 @@
+---
+source: tests/align.rs
+expression: "table(old, new)"
+---
+    1   1 │ one                                    │ one
+~   2   2 │ two                                    │ inserted
+    3   3 │ three                                  │ three
++   ·   4 │                                        │ also inserted
+    4   5 │                                        │

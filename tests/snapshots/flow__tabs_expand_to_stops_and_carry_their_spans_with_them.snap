@@ -1,0 +1,8 @@
+---
+source: tests/flow.rs
+expression: "screen(old, new, wrapped(26))"
+---
+ 0   │    if ok {               │    if ok {│
+ 1   │        return ⟦one⟧;     │        return ⟦two⟧;│
+ 2   │    }                     │    }│
+ 3   │                          ││

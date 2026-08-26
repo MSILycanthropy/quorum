@@ -1,0 +1,8 @@
+---
+source: tests/flow.rs
+expression: "highlighted(\"let total = 1;\\n\", \"let total = 42;\\n\", Viewport::default())"
+---
+ 0   old #bb9af7  "let" #c0caf5  " total " #89ddff  "=" #c0caf5  " " #ff9e64⟦⟧"1" #89ddff  ";"
+ 0   new #bb9af7  "let" #c0caf5  " total " #89ddff  "=" #c0caf5  " " #ff9e64⟦⟧"42" #89ddff  ";"
+ 1   old 
+ 1   new

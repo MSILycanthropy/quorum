@@ -1,0 +1,6 @@
+---
+source: tests/flow.rs
+expression: "screen(LONG_CALL_OLD, LONG_CALL_NEW, viewport)"
+---
+ 0   │let result = compute(alp  │let result = compute(alp│
+ 1   │                          ││

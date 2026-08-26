@@ -1,0 +1,7 @@
+---
+source: tests/flow.rs
+expression: "screen(old, new, wrapped(20))"
+---
+ 0   │label = "日本語のテ            │label = "日本語のテ│
+ 0 ↳ │キスト"                      │キスト⟦!⟧"│
+ 1   │                          ││

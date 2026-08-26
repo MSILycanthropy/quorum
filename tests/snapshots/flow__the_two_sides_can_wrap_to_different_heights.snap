@@ -1,0 +1,9 @@
+---
+source: tests/flow.rs
+expression: "screen(old, new, wrapped(20))"
+---
+ 0   │short                     │a much longer replac│
+ 0 ↳ │                          │ement line that need│
+ 0 ↳ │                          │s several visual row│
+ 0 ↳ │                          │s│
+ 1   │                          ││
