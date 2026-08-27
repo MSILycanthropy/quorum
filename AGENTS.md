@@ -1,7 +1,9 @@
 # AGENTS.md
 
-Quorum — a review surface for parallel coding agents. One crate: `src/diff` is
-the diff model, `src/git` the git plumbing. The core is UI-agnostic.
+Quorum — a terminal workspace for directing parallel coding agents. Each agent
+works in an isolated git worktree; conversation, review and shell access are
+surfaces in one workflow. One crate: `src/diff` is the diff model, `src/git` the
+git plumbing. The core is UI-agnostic.
 
 ## Read first
 

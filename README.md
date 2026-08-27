@@ -1,19 +1,29 @@
 # Quorum
 
-A review surface for parallel coding agents.
+A terminal workspace for parallel coding agents.
 
-Agents generate faster than anyone can review. Quorum is the other half: see what
-each agent changed in its worktree, catch collisions before they land, and decide
-what merges.
+Quorum keeps the whole agentic work loop in one place: start agents in isolated
+git worktrees, see who needs attention, converse and intervene, inspect what they
+changed, run commands yourself, and decide what happens to the result.
+
+Review is a first-class feature, not the frame around the application. Work and
+Review are explicit surfaces within each agent workspace, with a shell drawer
+available when the work needs a human hand.
 
 ## What it does
 
-- **Worktree diffs** — side-by-side, anchored on each agent's base commit rather
-  than a commit range, because agent work is usually still uncommitted.
-- **Collision prediction** — `git merge-tree` across agent pairs, so you find out
-  two agents are headed for the same lines before either finishes.
-- **Sessions** — agents driven over [ACP](https://agentclientprotocol.com), so
-  Claude Code, Codex and Gemini are interchangeable.
+- **Agent workspaces** — one stable tab per agent and worktree, including
+  worktrees Quorum did not create.
+- **Attention triage** — working, blocked and finished agents stay visible
+  without pulling you away from the tab you are using.
+- **Interchangeable agents** — sessions are driven over
+  [ACP](https://agentclientprotocol.com), rather than scraping a rendered TUI.
+- **Integrated review** — worktree diffs are anchored on each agent's base
+  commit because agent work is usually still uncommitted.
+- **Human intervention** — a shell drawer opens in the active worktree and its
+  processes survive tab switches.
+- **Cross-agent awareness** — overlapping work is surfaced before agents try to
+  land incompatible changes.
 
 Terminal first. The core is UI-agnostic; a GUI can come later without touching it.
 
@@ -22,8 +32,10 @@ Terminal first. The core is UI-agnostic; a GUI can come later without touching i
 One crate for now; the seams below are module boundaries, not crate
 boundaries, and get split out when they earn it.
 
+    src/agent    ACP sessions and transcripts
     src/diff     diff model, side-by-side alignment, wrapping
-    src/git      worktree discovery, git plumbing
+    src/git      worktree discovery and git plumbing
+    src/ui       Work, Review and shell surfaces
 
 ## Requires
 
@@ -31,4 +43,7 @@ Rust stable (edition 2024) and git ≥ 2.38.
 
 ## Status
 
-Early. Nothing works yet.
+Early. The current build can drive one ACP agent and inspect one worktree with a
+side-by-side or unified diff. The multi-worktree application shell, explicit
+Work and Review surfaces, shell drawer, lifecycle verbs and cross-agent
+awareness described in `DESIGN.md` are still being built.
