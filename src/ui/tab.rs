@@ -2,8 +2,8 @@
 
 use ratatui::Frame;
 use ratatui::buffer::Buffer;
-use ratatui::crossterm::event::{KeyCode, KeyEvent, MouseEvent};
-use ratatui::layout::Rect;
+use ratatui::crossterm::event::{KeyCode, KeyEvent, MouseButton, MouseEvent, MouseEventKind};
+use ratatui::layout::{Position, Rect};
 use ratatui::style::{Color, Style};
 use unicode_width::UnicodeWidthStr;
 
@@ -12,9 +12,8 @@ use crate::color::Rgb;
 use crate::agent::{Consequence, Session, Transcript, Update};
 use crate::git::FileChange;
 use crate::theme::{Tints, TokyoNight};
-use crate::ui::{Control, Conversation, Mode, Prompt, Result, Review};
+use crate::ui::{Control, Conversation, Mode, Prompt, Result, Review, Split};
 
-const CONVERSATION: u16 = 44;
 const TOGETHER: u16 = 159;
 
 /// What a tab is opened with, beyond its changes and its agent.
@@ -44,6 +43,7 @@ impl Opening {
             conversation: Conversation::default(),
             transcript: Transcript::default(),
             prompt: Prompt::default(),
+            split: Split::default(),
             session,
             branch: self.branch,
             base: self.base,
@@ -58,6 +58,7 @@ pub struct Tab {
     conversation: Conversation,
     transcript: Transcript,
     prompt: Prompt,
+    split: Split,
     session: Option<Session>,
     branch: Option<String>,
     base: String,
@@ -71,9 +72,21 @@ impl Tab {
         let area = Rect::new(whole.x, whole.y, whole.width, whole.height - 1);
         self.standing(frame.buffer_mut(), standing);
 
+        let listing = self.review.sidebar().is_some();
+
         if area.width >= TOGETHER {
-            let reviewed = Rect::new(area.x, area.y, area.width - CONVERSATION, area.height);
-            let beside = Rect::new(area.x + reviewed.width, area.y, CONVERSATION, area.height);
+            let columns = self.split.columns(area, [listing, true, true]);
+            let reviewed =
+                Rect::new(area.x, area.y, columns.tree.width + columns.diff.width, area.height);
+            self.review.resize(columns.tree.width);
+
+            self.conversation.gutter(frame.buffer_mut(), columns.conversation);
+            let beside = Rect::new(
+                columns.conversation.x + 1,
+                columns.conversation.y,
+                columns.conversation.width.saturating_sub(1),
+                columns.conversation.height,
+            );
 
             self.review.draw(frame, reviewed);
             let spoken = self.foot(frame.buffer_mut(), beside);
@@ -87,6 +100,8 @@ impl Tab {
 
         self.conversation.status(frame.buffer_mut(), line, &self.transcript);
         let reviewed = self.foot(frame.buffer_mut(), rest);
+        let columns = self.split.columns(reviewed, [listing, true, false]);
+        self.review.resize(columns.tree.width);
         self.review.draw(frame, reviewed);
     }
 
@@ -146,6 +161,11 @@ impl Tab {
 
                 Ok(Control::Continue)
             }
+            KeyCode::Char('=') => {
+                self.split.even();
+
+                Ok(Control::Continue)
+            }
             KeyCode::Char(digit @ '1'..='9') if self.transcript.pending().is_some() => {
                 self.choose(digit);
 
@@ -160,6 +180,23 @@ impl Tab {
         reason = "the Error enum names the only failure, highlighting the file clicked on"
     )]
     pub fn mouse(&mut self, mouse: MouseEvent) -> Result<()> {
+        let at = Position::new(mouse.column, mouse.row);
+
+        match mouse.kind {
+            MouseEventKind::Down(MouseButton::Left) if self.split.grab(at) => return Ok(()),
+            MouseEventKind::Drag(MouseButton::Left) if self.split.held() => {
+                self.split.drag(at);
+
+                return Ok(());
+            }
+            MouseEventKind::Up(MouseButton::Left) if self.split.held() => {
+                self.split.release();
+
+                return Ok(());
+            }
+            _ => {}
+        }
+
         self.review.mouse(mouse)
     }
 

@@ -9,6 +9,7 @@ use quorum::ui::Conversation;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::buffer::Buffer;
+use ratatui::layout::Rect;
 use ratatui::style::Color;
 
 fn choices() -> Vec<quorum::agent::Choice> {
@@ -34,7 +35,9 @@ fn shown(transcript: &Transcript, width: u16, height: u16) -> String {
     terminal
         .draw(|frame| {
             let area = frame.area();
-            conversation.draw(frame.buffer_mut(), area, transcript);
+            let beside = Rect::new(area.x + 1, area.y, area.width - 1, area.height);
+            conversation.gutter(frame.buffer_mut(), area);
+            conversation.draw(frame.buffer_mut(), beside, transcript);
         })
         .expect("draw succeeds");
 
@@ -193,7 +196,8 @@ fn the_checklist_marks_each_task_by_how_far_it_got() {
     terminal
         .draw(|frame| {
             let area = frame.area();
-            conversation.plan(frame.buffer_mut(), area, &transcript);
+            let beside = Rect::new(area.x + 1, area.y, area.width - 1, area.height);
+            conversation.plan(frame.buffer_mut(), beside, &transcript);
         })
         .expect("draw succeeds");
 

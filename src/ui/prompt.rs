@@ -12,8 +12,9 @@ use crate::agent::{Command, Transcript, Usage};
 use crate::color::Rgb;
 use crate::theme::{Tints, TokyoNight};
 
-const TALLEST: u16 = 8;
+const TALLEST: u16 = 9;
 const SUGGESTIONS: usize = 6;
+const NEWLINE: &str = "shift+enter for a newline";
 
 /// What you are typing to the agent, and whether it has the keyboard.
 #[derive(Clone, Debug)]
@@ -41,6 +42,9 @@ impl Prompt {
     pub fn key(&mut self, key: KeyEvent) -> Option<String> {
         match key.code {
             KeyCode::Esc => self.entered = false,
+            KeyCode::Char('j') if key.modifiers == KeyModifiers::CONTROL => {
+                self.typing.insert_newline();
+            }
             KeyCode::Enter if key.modifiers.intersects(KeyModifiers::SHIFT | KeyModifiers::ALT) => {
                 self.typing.insert_newline();
             }
@@ -105,26 +109,30 @@ impl Prompt {
         let rows: usize =
             self.typing.lines().iter().map(|line| line.width().div_ceil(room).max(1)).sum();
 
-        u16::try_from(rows).unwrap_or(1).max(1).saturating_add(1).min(TALLEST)
+        u16::try_from(rows).unwrap_or(1).max(1).saturating_add(2).min(TALLEST)
     }
 
     pub fn draw(&mut self, buffer: &mut Buffer, area: Rect, transcript: &Transcript) {
-        if area.height == 0 || area.width < 4 {
+        if area.height < 3 || area.width < 4 {
             return;
         }
 
         buffer.set_style(area, Style::new().bg(color(self.tints.background)));
-        self.rule(buffer, Rect::new(area.x, area.y, area.width, 1), transcript);
+        self.rule(buffer, Rect::new(area.x, area.y, area.width, 1));
         self.dress();
 
-        let typed = Rect::new(area.x + 3, area.y + 1, area.width - 4, area.height - 1);
+        let typed = Rect::new(area.x + 3, area.y + 1, area.width - 4, area.height - 2);
         buffer.set_string(
             area.x + 1,
             area.y + 1,
-            if self.entered { "▎" } else { " " },
-            Style::new().fg(color(self.tints.attention)).bg(color(self.tints.background)),
+            "›",
+            Style::new()
+                .fg(color(if self.entered { self.tints.attention } else { self.tints.gutter }))
+                .bg(color(self.tints.background)),
         );
         Widget::render(&self.typing, typed, buffer);
+
+        self.foot(buffer, Rect::new(area.x, area.y + area.height - 1, area.width, 1), transcript);
     }
 
     fn written(&self) -> String {
@@ -159,24 +167,31 @@ impl Prompt {
         line.strip_prefix('/').filter(|stem| !stem.contains(' ')).map(str::to_owned)
     }
 
-    fn rule(&self, buffer: &mut Buffer, area: Rect, transcript: &Transcript) {
+    fn rule(&self, buffer: &mut Buffer, area: Rect) {
         let ruled = Style::new().fg(color(self.tints.gutter)).bg(color(self.tints.background));
         buffer.set_string(area.x, area.y, "─".repeat(usize::from(area.width)), ruled);
+    }
 
-        let left = transcript.mode().map(|mode| format!(" {mode} "));
+    fn foot(&self, buffer: &mut Buffer, area: Rect, transcript: &Transcript) {
+        let mode = transcript.mode();
+        let left = mode
+            .map(str::to_owned)
+            .or_else(|| self.entered.then(|| NEWLINE.to_owned()))
+            .unwrap_or_default();
         let right = right(transcript);
         let width = usize::from(area.width);
-        let together = left.as_ref().map_or(0, |left| left.width()) + right.width();
+        let together = left.width() + right.width();
+        let tint = if mode.is_some() { self.tints.attention } else { self.tints.gutter };
 
-        if let Some(left) = left.filter(|left| left.width() + 2 <= width) {
+        if !left.is_empty() && left.width() + 2 <= width {
             buffer.set_string(
                 area.x + 1,
                 area.y,
                 &left,
-                Style::new().fg(color(self.tints.attention)).bg(color(self.tints.background)),
+                Style::new().fg(color(tint)).bg(color(self.tints.background)),
             );
         }
-        if !right.is_empty() && together + 4 <= width {
+        if !right.is_empty() && together + 3 <= width {
             let at = area.width - u16::try_from(right.width()).unwrap_or(0) - 1;
             buffer.set_string(
                 area.x + at,
@@ -201,11 +216,7 @@ fn right(transcript: &Transcript) -> String {
     if let Some(usage) = transcript.usage() {
         parts.push(spent(usage));
     }
-    if parts.is_empty() {
-        return String::new();
-    }
-
-    format!(" {} ", parts.join(" · "))
+    parts.join(" · ")
 }
 
 fn spent(usage: &Usage) -> String {

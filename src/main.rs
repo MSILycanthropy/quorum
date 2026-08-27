@@ -14,7 +14,9 @@ use quorum::diff::{FileDiff, Source};
 use quorum::git::{Content, FileChange, Repository, Status};
 use quorum::ui::{Control, Mode, Opening};
 use ratatui::crossterm::event::{
-    self, DisableMouseCapture, EnableMouseCapture, KeyEvent, KeyEventKind, MouseEvent,
+    self, DisableMouseCapture, EnableMouseCapture, KeyEvent, KeyEventKind,
+    KeyboardEnhancementFlags, MouseEvent, PopKeyboardEnhancementFlags,
+    PushKeyboardEnhancementFlags,
 };
 use ratatui::crossterm::execute;
 
@@ -157,13 +159,18 @@ fn spawn(name: &str, work: impl FnOnce() + Send + 'static) {
         .expect("a reader thread cannot fail to start");
 }
 
-/// Mouse reporting, switched back off when this is dropped, so an unwind
-/// cannot leave the terminal capturing.
+/// Mouse and key reporting, switched back off when this is dropped, so an
+/// unwind cannot leave the terminal capturing. The keyboard flags are what
+/// make shift-enter reach the prompt as anything but a plain return.
 struct Reporting;
 
 impl Reporting {
     fn on() -> Result<Self> {
-        execute!(std::io::stdout(), EnableMouseCapture)?;
+        execute!(
+            std::io::stdout(),
+            EnableMouseCapture,
+            PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)
+        )?;
 
         Ok(Self)
     }
@@ -171,7 +178,7 @@ impl Reporting {
 
 impl Drop for Reporting {
     fn drop(&mut self) {
-        let _ = execute!(std::io::stdout(), DisableMouseCapture);
+        let _ = execute!(std::io::stdout(), PopKeyboardEnhancementFlags, DisableMouseCapture);
     }
 }
 
