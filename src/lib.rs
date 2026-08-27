@@ -2,6 +2,7 @@
 
 pub mod agent;
 pub mod color;
+pub mod command;
 pub mod diff;
 pub mod git;
 pub mod syntax;
