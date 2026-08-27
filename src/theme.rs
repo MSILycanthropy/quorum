@@ -41,6 +41,8 @@ pub struct Tints {
     pub foreground: Rgb,
     pub gutter: Rgb,
     pub filler: Rgb,
+    pub muted: Rgb,
+    pub attention: Rgb,
 }
 
 /// Tokyo Night, Night variant.
@@ -57,6 +59,8 @@ impl TokyoNight {
         foreground: FOREGROUND,
         gutter: GUTTER,
         filler: FILLER,
+        muted: COMMENT,
+        attention: ORANGE,
     };
 
     #[expect(

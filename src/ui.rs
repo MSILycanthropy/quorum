@@ -1,9 +1,17 @@
 //! The review surface: a list of changed files, and the diff of one of them.
 
+mod conversation;
+mod prompt;
 mod review;
+mod tab;
+mod tree;
 mod viewer;
 
+pub use conversation::Conversation;
+pub use prompt::Prompt;
 pub use review::Review;
+pub use tab::{Opening, Tab};
+pub use tree::{Row, Tree};
 pub use viewer::Viewer;
 
 #[derive(Debug, thiserror::Error)]

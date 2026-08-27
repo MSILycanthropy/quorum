@@ -1,0 +1,10 @@
+---
+source: tests/tree.rs
+assertion_line: 49
+expression: drawn(&tree)
+---
+▾ src
+  ▾ ui
+      review.rs
+      tab.rs
+    git.rs

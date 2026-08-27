@@ -1,0 +1,9 @@
+---
+source: tests/tree.rs
+assertion_line: 56
+expression: drawn(&tree)
+---
+▾ src
+    git.rs
+  Cargo.toml
+  README.md

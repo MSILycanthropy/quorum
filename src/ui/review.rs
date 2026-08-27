@@ -11,7 +11,7 @@ use ratatui::style::{Color, Style};
 use crate::color::Rgb;
 use crate::git::{Content, FileChange, Status};
 use crate::theme::{Tints, TokyoNight};
-use crate::ui::{Control, Mode, Result, Viewer};
+use crate::ui::{Control, Mode, Result, Tree, Viewer};
 
 const SIDEBAR: u16 = 34;
 const NARROWEST: u16 = 40;
@@ -19,7 +19,9 @@ const NARROWEST: u16 = 40;
 /// The files under review, and the one on screen.
 pub struct Review {
     changes: Vec<FileChange>,
+    tree: Tree,
     selected: usize,
+    opened: usize,
     first: usize,
     viewer: Option<Viewer>,
     sidebar: bool,
@@ -36,9 +38,18 @@ impl Review {
         reason = "the Error enum names the only failure, highlighting the selected file"
     )]
     pub fn new(changes: Vec<FileChange>, mode: Mode, wrap: bool, tab_width: usize) -> Result<Self> {
+        let tree = Tree::of(&changes);
+        let (selected, opened) = tree
+            .rows()
+            .iter()
+            .enumerate()
+            .find_map(|(index, row)| row.change.map(|change| (index, change)))
+            .unwrap_or_default();
         let mut review = Self {
+            tree,
             changes,
-            selected: 0,
+            selected,
+            opened,
             first: 0,
             viewer: None,
             sidebar: true,
@@ -53,12 +64,11 @@ impl Review {
         Ok(review)
     }
 
-    pub fn draw(&mut self, frame: &mut Frame) {
-        let area = frame.area();
+    pub fn draw(&mut self, frame: &mut Frame, area: Rect) {
         let style = Style::new().bg(color(self.tints.background));
         frame.buffer_mut().set_style(area, style);
 
-        let Some(change) = self.changes.get(self.selected) else {
+        let Some(change) = self.changes.get(self.opened) else {
             let style = style.fg(color(self.tints.foreground));
             frame.buffer_mut().set_stringn(area.x, area.y, "no changes", area.width.into(), style);
             return;
@@ -70,21 +80,31 @@ impl Review {
         let (sidebar, body) = self.panes(rest);
         self.listed = sidebar;
 
-        let line = format!("{} {}", change.status.letter(), change.path.display());
-        let counter = format!("{}/{} ", self.selected + 1, self.changes.len());
-        let room = u16::try_from(counter.len()).unwrap_or(0);
         let buffer = frame.buffer_mut();
         buffer.set_style(header, Style::new().bg(color(self.tints.filler)));
+
+        let titled = match sidebar {
+            Some(sidebar) => {
+                self.title(buffer, Rect::new(header.x, header.y, sidebar.width, 1), "CHANGES");
+
+                Rect::new(header.x + sidebar.width, header.y, header.width - sidebar.width, 1)
+            }
+            None => header,
+        };
+
+        let line = format!("{} {}", change.status.letter(), change.path.display());
+        let counter = format!("{}/{} ", self.opened + 1, self.changes.len());
+        let room = u16::try_from(counter.len()).unwrap_or(0);
         buffer.set_stringn(
-            header.x + 1,
-            header.y,
+            titled.x + 1,
+            titled.y,
             line,
-            header.width.saturating_sub(room + 2).into(),
+            titled.width.saturating_sub(room + 2).into(),
             Style::new().fg(color(self.tints.foreground)).bg(color(self.tints.filler)),
         );
         buffer.set_stringn(
-            header.x + header.width.saturating_sub(room),
-            header.y,
+            titled.x + titled.width.saturating_sub(room),
+            titled.y,
             counter,
             room.into(),
             Style::new().fg(color(self.tints.gutter)).bg(color(self.tints.filler)),
@@ -120,6 +140,7 @@ impl Review {
             KeyCode::Char('q') | KeyCode::Esc => return Ok(Control::Quit),
             KeyCode::Char(']') => self.select(self.selected.saturating_add(1))?,
             KeyCode::Char('[') => self.select(self.selected.saturating_sub(1))?,
+            KeyCode::Enter | KeyCode::Char(' ') => self.fold(),
             KeyCode::Char('F') => self.sidebar = !self.sidebar,
             _ => {
                 if let Some(viewer) = &mut self.viewer {
@@ -143,8 +164,12 @@ impl Review {
             MouseEventKind::Down(MouseButton::Left) => {
                 if let Some(area) = listed {
                     let index = self.first + usize::from(mouse.row - area.y);
-                    if index < self.changes.len() {
+                    if index < self.tree.rows().len() {
+                        let already = index == self.selected;
                         self.select(index)?;
+                        if already {
+                            self.fold();
+                        }
                     }
                 }
             }
@@ -162,6 +187,28 @@ impl Review {
         Ok(())
     }
 
+    #[expect(
+        clippy::missing_errors_doc,
+        reason = "the Error enum names the only failure, highlighting the file left selected"
+    )]
+    pub fn refresh(&mut self, changes: Vec<FileChange>) -> Result<()> {
+        let reading = self.changes.get(self.opened).map(|change| change.path.clone());
+
+        self.changes = changes;
+        self.tree = Tree::of(&self.changes);
+        self.opened = reading
+            .and_then(|path| self.changes.iter().position(|change| change.path == path))
+            .unwrap_or_default();
+        self.selected = self
+            .changes
+            .get(self.opened)
+            .and_then(|change| self.tree.row_of(&change.path))
+            .unwrap_or_default();
+        self.first = 0;
+
+        self.open()
+    }
+
     fn roll(&mut self, rows: isize) {
         if let Some(viewer) = &mut self.viewer {
             viewer.scroll_by(rows);
@@ -169,8 +216,16 @@ impl Review {
     }
 
     fn select(&mut self, index: usize) -> Result<()> {
-        let index = index.min(self.changes.len().saturating_sub(1));
+        let index = index.min(self.tree.rows().len().saturating_sub(1));
         if index == self.selected {
+            return Ok(());
+        }
+        self.selected = index;
+
+        let Some(change) = self.tree.rows().get(index).and_then(|row| row.change) else {
+            return Ok(());
+        };
+        if change == self.opened {
             return Ok(());
         }
 
@@ -178,13 +233,22 @@ impl Review {
             self.mode = viewer.mode();
             self.wrap = viewer.wrap();
         }
-        self.selected = index;
+        self.opened = change;
 
         self.open()
     }
 
+    fn fold(&mut self) {
+        let path = self.tree.rows().get(self.selected).map(|row| row.path.clone());
+        self.tree.toggle(self.selected);
+
+        if let Some(index) = path.and_then(|path| self.tree.row_of(&path)) {
+            self.selected = index;
+        }
+    }
+
     fn open(&mut self) -> Result<()> {
-        self.viewer = match self.changes.get(self.selected) {
+        self.viewer = match self.changes.get(self.opened) {
             Some(FileChange { content: Content::Text(diff), path, .. }) => {
                 Some(Viewer::new(diff.clone(), path, self.mode, self.wrap, self.tab_width)?)
             }
@@ -192,6 +256,34 @@ impl Review {
         };
 
         Ok(())
+    }
+
+    pub fn counted(&self) -> String {
+        match self.changes.len() {
+            1 => "1 file".to_owned(),
+            many => format!("{many} files"),
+        }
+    }
+
+    pub fn laid(&self) -> &'static str {
+        match self.viewer.as_ref().map_or(self.mode, Viewer::mode) {
+            Mode::SideBySide => "side by side",
+            Mode::Unified => "unified",
+        }
+    }
+
+    pub fn tabbed(&self) -> usize {
+        self.tab_width
+    }
+
+    fn title(&self, buffer: &mut Buffer, area: Rect, name: &str) {
+        buffer.set_stringn(
+            area.x + 1,
+            area.y,
+            name,
+            usize::from(area.width.saturating_sub(2)),
+            Style::new().fg(color(self.tints.muted)).bg(color(self.tints.filler)),
+        );
     }
 
     fn panes(&self, area: Rect) -> (Option<Rect>, Rect) {
@@ -213,17 +305,30 @@ impl Review {
             self.first = self.selected + 1 - height;
         }
 
-        for (y, index) in (0..area.height).zip(self.first..self.changes.len()) {
-            let change = &self.changes[index];
+        for (y, index) in (0..area.height).zip(self.first..self.tree.rows().len()) {
+            let listed = &self.tree.rows()[index];
             let selected = index == self.selected;
             let row = if selected { self.tints.filler } else { self.tints.background };
+            let indent = u16::try_from(listed.depth * 2).unwrap_or(0);
 
             buffer.set_style(
                 Rect::new(area.x, area.y + y, area.width, 1),
                 Style::new().bg(color(row)),
             );
+
+            let Some(change) = listed.change.and_then(|change| self.changes.get(change)) else {
+                buffer.set_stringn(
+                    area.x + 1 + indent,
+                    area.y + y,
+                    format!("{} {}", if listed.open { "▾" } else { "▸" }, listed.label),
+                    usize::from(area.width.saturating_sub(2 + indent)),
+                    Style::new().fg(color(self.tints.muted)).bg(color(row)),
+                );
+                continue;
+            };
+
             buffer.set_string(
-                area.x + 1,
+                area.x + 1 + indent,
                 area.y + y,
                 change.status.letter().to_string(),
                 Style::new()
@@ -231,10 +336,10 @@ impl Review {
                     .bg(color(self.swatch(change.status, selected))),
             );
             buffer.set_stringn(
-                area.x + 3,
+                area.x + 3 + indent,
                 area.y + y,
-                shortened(change, area.width),
-                usize::from(area.width.saturating_sub(4)),
+                &listed.label,
+                usize::from(area.width.saturating_sub(4 + indent)),
                 Style::new().fg(color(self.tints.foreground)).bg(color(row)),
             );
         }
@@ -259,18 +364,6 @@ impl Review {
             (Status::Modified, true) => self.tints.filler,
         }
     }
-}
-
-fn shortened(change: &FileChange, width: u16) -> String {
-    let path = change.path.display().to_string();
-    let room = usize::from(width).saturating_sub(4);
-    if path.chars().count() <= room {
-        return path;
-    }
-
-    let tail: String = path.chars().skip(path.chars().count().saturating_sub(room - 1)).collect();
-
-    format!("…{tail}")
 }
 
 fn color(rgb: Rgb) -> Color {

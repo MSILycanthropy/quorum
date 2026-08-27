@@ -1,5 +1,6 @@
 //! Quorum: a review surface for parallel coding agents.
 
+pub mod agent;
 pub mod color;
 pub mod diff;
 pub mod git;

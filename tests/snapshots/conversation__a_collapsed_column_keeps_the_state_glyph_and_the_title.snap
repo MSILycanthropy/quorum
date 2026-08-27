@@ -1,0 +1,7 @@
+---
+source: tests/conversation.rs
+assertion_line: 148
+expression: "collapsed(&transcript, 44)"
+---
+ ! fix the flaky auth test                  
+?!!mmmmmmmmmmmmmmmmmmmmmmm??????????????????

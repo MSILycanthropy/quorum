@@ -132,6 +132,14 @@ impl Repository {
 
     #[expect(
         clippy::missing_errors_doc,
+        reason = "the Error enum names the only failure, an unreadable HEAD"
+    )]
+    pub fn branch(&self) -> Result<Option<String>> {
+        Ok(self.inner.head_name()?.map(|name| name.shorten().to_string()))
+    }
+
+    #[expect(
+        clippy::missing_errors_doc,
         reason = "the Error enum names the only failures, an unborn HEAD or an unreadable reflog"
     )]
     pub fn base(&self) -> Result<String> {

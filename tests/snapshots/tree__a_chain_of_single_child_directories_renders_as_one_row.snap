@@ -1,0 +1,7 @@
+---
+source: tests/tree.rs
+assertion_line: 42
+expression: drawn(&tree)
+---
+▾ src/ui/widgets
+    tab.rs

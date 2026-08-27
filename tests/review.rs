@@ -75,10 +75,10 @@ fn moused(changes: Vec<FileChange>, width: u16, height: u16, mouse: &[MouseEvent
         Review::new(changes, Mode::SideBySide, false, 4).expect("the fixtures highlight");
     let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("test backend starts");
 
-    terminal.draw(|frame| review.draw(frame)).expect("draw succeeds");
+    terminal.draw(|frame| review.draw(frame, frame.area())).expect("draw succeeds");
     for event in mouse {
         review.mouse(*event).expect("the fixtures highlight");
-        terminal.draw(|frame| review.draw(frame)).expect("draw succeeds");
+        terminal.draw(|frame| review.draw(frame, frame.area())).expect("draw succeeds");
     }
 
     describe(terminal.backend().buffer())
@@ -89,10 +89,10 @@ fn shown(changes: Vec<FileChange>, width: u16, height: u16, keys: &[KeyCode]) ->
         Review::new(changes, Mode::SideBySide, false, 4).expect("the fixtures highlight");
     let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("test backend starts");
 
-    terminal.draw(|frame| review.draw(frame)).expect("draw succeeds");
+    terminal.draw(|frame| review.draw(frame, frame.area())).expect("draw succeeds");
     for key in keys {
         review.key(KeyEvent::new(*key, KeyModifiers::NONE)).expect("the fixtures highlight");
-        terminal.draw(|frame| review.draw(frame)).expect("draw succeeds");
+        terminal.draw(|frame| review.draw(frame, frame.area())).expect("draw succeeds");
     }
 
     describe(terminal.backend().buffer())
@@ -150,8 +150,8 @@ fn moving_past_the_last_file_stays_on_it() {
 }
 
 #[test]
-fn moving_back_from_the_first_file_stays_on_it() {
-    assert_eq!(shown(fixtures(), 90, 8, &[KeyCode::Char('[')]), shown(fixtures(), 90, 8, &[]));
+fn moving_back_from_the_first_file_lands_on_the_directory_holding_it() {
+    insta::assert_snapshot!(shown(fixtures(), 90, 8, &[KeyCode::Char('[')]));
 }
 
 #[test]
@@ -186,7 +186,7 @@ fn the_layout_chosen_in_one_file_survives_the_move_to_the_next() {
 fn clicking_a_file_in_the_list_selects_it() {
     let clicked = moused(fixtures(), 90, 8, &[click(6, 3)]);
 
-    assert_eq!(clicked, shown(fixtures(), 90, 8, &[KeyCode::Char(']'); 2]));
+    assert_eq!(clicked, shown(fixtures(), 90, 8, &[KeyCode::Char(']')]));
 }
 
 #[test]
@@ -215,4 +215,35 @@ fn the_wheel_over_the_diff_scrolls_it_and_leaves_the_file_alone() {
     let rolled = moused(vec![tall("src/tall.rs")], 90, 8, &[at(MouseEventKind::ScrollDown, 60, 4)]);
 
     assert_eq!(rolled, shown(vec![tall("src/tall.rs")], 90, 8, &[KeyCode::Char('j'); 3]));
+}
+
+#[test]
+fn a_rescan_that_adds_a_file_above_the_selection_keeps_the_file_you_were_reading() {
+    let mut review =
+        Review::new(fixtures(), Mode::SideBySide, false, 4).expect("the fixtures highlight");
+    review.key(KeyEvent::new(KeyCode::Char(']'), KeyModifiers::NONE)).expect("moving succeeds");
+
+    let mut grown = fixtures();
+    grown.insert(0, added("src/first.rs", "fn first() {}\n"));
+    review.refresh(grown).expect("the fixtures highlight");
+
+    let mut terminal = Terminal::new(TestBackend::new(80, 6)).expect("test backend starts");
+    terminal.draw(|frame| review.draw(frame, frame.area())).expect("draw succeeds");
+
+    insta::assert_snapshot!(describe(terminal.backend().buffer()));
+}
+
+#[test]
+fn a_rescan_that_drops_the_file_you_were_reading_falls_back_to_the_first() {
+    let mut review =
+        Review::new(fixtures(), Mode::SideBySide, false, 4).expect("the fixtures highlight");
+    review.key(KeyEvent::new(KeyCode::Char(']'), KeyModifiers::NONE)).expect("moving succeeds");
+    review
+        .refresh(vec![modified("src/total.rs", "let total = 1;\n", "let total = 42;\n")])
+        .expect("the fixtures highlight");
+
+    let mut terminal = Terminal::new(TestBackend::new(80, 6)).expect("test backend starts");
+    terminal.draw(|frame| review.draw(frame, frame.area())).expect("draw succeeds");
+
+    insta::assert_snapshot!(describe(terminal.backend().buffer()));
 }
