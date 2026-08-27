@@ -6,6 +6,7 @@ pub mod command;
 pub mod diff;
 pub mod git;
 pub mod project;
+pub mod store;
 pub mod syntax;
 pub mod theme;
 pub mod ui;

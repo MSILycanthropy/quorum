@@ -1,7 +1,9 @@
 //! What the agent has said and done, accumulated from its updates.
 
+use serde::{Deserialize, Serialize};
+
 /// How far a tool call got.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Progress {
     #[default]
     Pending,
@@ -11,7 +13,7 @@ pub enum Progress {
 }
 
 /// Why the agent stopped talking.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Ending {
     #[default]
     Finished,
@@ -30,53 +32,53 @@ pub struct Call {
 }
 
 /// One item on the checklist the agent maintains for itself.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Task {
     pub content: String,
     pub progress: Progress,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Cost {
     pub amount: f64,
     pub currency: String,
 }
 
 /// How much of the agent's context window the session has spent.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Usage {
     pub used: u64,
     pub size: u64,
     pub cost: Option<Cost>,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Command {
     pub name: String,
     pub description: String,
 }
 
 /// One of the agent's settings, flattened to what it currently reads as.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Setting {
     pub name: String,
     pub value: String,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Choice {
     pub id: String,
     pub name: String,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Permission {
     pub id: String,
     pub title: String,
     pub choices: Vec<Choice>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Update {
     Titled(String),
     Said(String),
