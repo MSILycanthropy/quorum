@@ -121,7 +121,9 @@ fn view(arguments: &Arguments) -> Result<()> {
         while let Ok(event) = events.recv() {
             match event {
                 Event::Key(key) => {
-                    if tab.key(key)? == Control::Quit {
+                    let control = tab.key(key)?;
+                    tab.apply_pending_activities();
+                    if control == Control::Quit {
                         return Ok(());
                     }
                 }

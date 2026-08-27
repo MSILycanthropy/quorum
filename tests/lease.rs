@@ -52,6 +52,29 @@ fn a_live_foreign_lease_is_not_taken_without_explicit_takeover()
 }
 
 #[test]
+fn renewing_a_lease_keeps_control_past_its_previous_expiry()
+-> Result<(), Box<dyn std::error::Error>> {
+    let store = Store::open(":memory:")?;
+    let project = Project::new(
+        ProjectId::new("project").expect("test identity is valid"),
+        "project",
+        PathBuf::from("/project"),
+        0,
+    );
+    store.save_project(&project)?;
+    let workspace = workspace();
+    store.save_workspace(&workspace)?;
+    let policy = LeasePolicy::new(Duration::from_millis(10));
+    store.acquire_lease(workspace.id(), "first", 100, policy, false)?;
+    assert!(store.renew_lease(workspace.id(), "first", 105, policy)?);
+    assert!(matches!(
+        store.acquire_lease(workspace.id(), "second", 111, policy, false)?,
+        LeaseAcquisition::Held(_)
+    ));
+    Ok(())
+}
+
+#[test]
 fn an_expired_lease_is_reclaimed_and_takeover_is_distinguishable()
 -> Result<(), Box<dyn std::error::Error>> {
     let store = Store::open(":memory:")?;

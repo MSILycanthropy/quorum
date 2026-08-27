@@ -240,8 +240,35 @@ impl Tab {
         self.session = Some(session);
     }
 
-    pub fn take_activities(&mut self) -> Vec<Activity> {
-        std::mem::take(&mut self.activities)
+    pub fn pending_activity(&self) -> Option<&Activity> {
+        self.activities.first()
+    }
+
+    pub fn apply_pending_activity(&mut self) {
+        if self.activities.is_empty() {
+            return;
+        }
+        let activity = self.activities.remove(0);
+        match activity {
+            Activity::Prompt(text) => {
+                if let Some(session) = &self.session {
+                    session.prompt(text.clone());
+                }
+                self.transcript.prompted(text);
+            }
+            Activity::PermissionAnswer { permission, choice } => {
+                if let Some(session) = &self.session {
+                    session.answer(&permission, &choice);
+                }
+                self.transcript.answered(&permission, &choice);
+            }
+        }
+    }
+
+    pub fn apply_pending_activities(&mut self) {
+        while self.pending_activity().is_some() {
+            self.apply_pending_activity();
+        }
     }
 
     pub fn file_paths(&self) -> Vec<std::path::PathBuf> {
@@ -265,10 +292,6 @@ impl Tab {
     }
 
     fn ask(&mut self, text: String) {
-        if let Some(session) = &self.session {
-            session.prompt(text.clone());
-        }
-        self.transcript.prompted(text.clone());
         self.activities.push(Activity::Prompt(text));
     }
 
@@ -281,10 +304,6 @@ impl Tab {
 
         let permission = pending.id.clone();
         let choice = choice.id.clone();
-        if let Some(session) = &self.session {
-            session.answer(&permission, &choice);
-        }
-        self.transcript.answered(&permission, &choice);
         self.activities.push(Activity::PermissionAnswer { permission, choice });
     }
 }

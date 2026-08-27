@@ -3,10 +3,10 @@
 use std::fmt::Write;
 use std::path::PathBuf;
 
-use quorum::agent::{Transcript, Update};
+use quorum::agent::{Choice, Permission, Transcript, Update};
 use quorum::diff::{FileDiff, Source};
 use quorum::git::{Content, FileChange, Status};
-use quorum::ui::{Opening, Prompt};
+use quorum::ui::{Activity, Opening, Prompt};
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::buffer::Buffer;
@@ -153,4 +153,33 @@ fn retained_workspace_surfaces_keep_their_transcripts_independent() {
     assert_eq!(first.transcript().entries().len(), 1);
     assert_eq!(second.transcript().entries().len(), 1);
     assert_ne!(first.transcript(), second.transcript());
+}
+
+#[test]
+fn permission_answers_wait_for_the_caller_to_commit_the_activity() {
+    let mut transcript = Transcript::default();
+    transcript.apply(Update::Asked(Permission {
+        id: "permission".to_owned(),
+        title: "write file".to_owned(),
+        choices: vec![Choice { id: "allow".to_owned(), name: "Allow".to_owned() }],
+    }));
+    let mut tab = Opening::default()
+        .tab_with_transcript(Vec::new(), None, transcript)
+        .expect("an empty surface can be opened");
+
+    tab.key(key(KeyCode::Char('1'), KeyModifiers::NONE)).expect("answering succeeds");
+
+    assert!(tab.transcript().pending().is_some());
+    assert_eq!(
+        tab.pending_activity(),
+        Some(&Activity::PermissionAnswer {
+            permission: "permission".to_owned(),
+            choice: "allow".to_owned(),
+        })
+    );
+
+    tab.apply_pending_activity();
+
+    assert!(tab.transcript().pending().is_none());
+    assert!(tab.pending_activity().is_none());
 }

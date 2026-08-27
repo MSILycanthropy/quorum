@@ -10,7 +10,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::mpsc::{Receiver, Sender, channel};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use ratatui::Frame;
 use ratatui::buffer::Buffer;
@@ -36,6 +36,8 @@ use crate::ui::{
     Activity, Control, Mode, Navigator, NavigatorSnapshot, Opening, Palette, PaletteAction,
     ProjectPresentation, Tab, WorkspacePresentation, WorkspaceState,
 };
+
+const LEASE_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(10);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RunOptions {
@@ -73,6 +75,7 @@ enum Event {
     Mouse(MouseEvent),
     Redraw,
     Agent { workspace_id: WorkspaceId, update: Update },
+    LeaseHeartbeat { workspace_id: WorkspaceId },
 }
 
 struct Surface {
@@ -171,12 +174,13 @@ impl Application {
             .map(|surface| surface.repository.workdir().to_path_buf())
             .ok_or_else(|| Error::WorkspaceOwned { workspace: workspace.clone() })?;
         let session = Spawn { command: command.to_owned(), directory }
-            .session(forward(sender, workspace.clone()))?;
+            .session(forward(sender.clone(), workspace.clone()))?;
         let surface = self
             .surfaces
             .get_mut(&workspace)
             .expect("the active workspace was used to build the agent directory");
         surface.tab.attach_session(session);
+        heartbeat(sender, workspace);
         Ok(())
     }
 
@@ -485,15 +489,23 @@ impl Application {
             return Ok(());
         };
         let now = now()?;
-        self.store.renew_lease(workspace, &self.owner, now, DEFAULT_LEASE_POLICY)?;
-        Ok(())
+        if self.store.renew_lease(workspace, &self.owner, now, DEFAULT_LEASE_POLICY)? {
+            Ok(())
+        } else {
+            Err(Error::WorkspaceOwned { workspace: workspace.clone() })
+        }
     }
 
     fn persist_activities(&mut self, workspace: &WorkspaceId) -> Result<()> {
-        let Some(surface) = self.surfaces.get_mut(workspace) else {
-            return Ok(());
-        };
-        for activity in surface.tab.take_activities() {
+        loop {
+            let activity = self
+                .surfaces
+                .get(workspace)
+                .and_then(|surface| surface.tab.pending_activity())
+                .cloned();
+            let Some(activity) = activity else {
+                return Ok(());
+            };
             match activity {
                 Activity::Prompt(prompt) => {
                     self.store.append_prompt(workspace, prompt)?;
@@ -502,8 +514,12 @@ impl Application {
                     self.store.append_permission_answer(workspace, permission, choice)?;
                 }
             }
+            self.surfaces
+                .get_mut(workspace)
+                .expect("the pending activity belongs to an open workspace")
+                .tab
+                .apply_pending_activity();
         }
-        Ok(())
     }
 
     fn refresh_navigator(&mut self) {
@@ -652,6 +668,12 @@ fn run_terminal(application: &mut Application, events: Receiver<Event>) -> Resul
                     application.update(workspace_id, update)?;
                     Control::Continue
                 }
+                Event::LeaseHeartbeat { workspace_id } => {
+                    if application.leased.as_ref() == Some(&workspace_id) {
+                        application.renew()?;
+                    }
+                    Control::Continue
+                }
                 Event::Redraw => Control::Continue,
             };
             if control == Control::Quit {
@@ -686,6 +708,23 @@ fn watch(sender: Sender<Event>) {
             }
         })
         .expect("a terminal event reader cannot fail to start");
+}
+
+fn heartbeat(sender: Sender<Event>, workspace_id: WorkspaceId) {
+    std::thread::Builder::new()
+        .name("workspace-lease".to_owned())
+        .spawn(move || {
+            loop {
+                std::thread::sleep(LEASE_HEARTBEAT_INTERVAL);
+                if sender
+                    .send(Event::LeaseHeartbeat { workspace_id: workspace_id.clone() })
+                    .is_err()
+                {
+                    return;
+                }
+            }
+        })
+        .expect("a workspace lease heartbeat cannot fail to start");
 }
 
 struct Reporting;
