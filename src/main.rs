@@ -35,7 +35,7 @@ enum Error {
 type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, Parser)]
-#[command(version, about = "A review surface for parallel coding agents.")]
+#[command(version, about = "A terminal workspace for directing parallel coding agents.")]
 struct Arguments {
     #[arg(num_args = 0..=2)]
     paths: Vec<PathBuf>,
@@ -74,16 +74,13 @@ fn view(arguments: &Arguments) -> Result<()> {
     let mode = if arguments.unified { Mode::Unified } else { Mode::SideBySide };
     let (sender, events) = channel();
 
-    let session = match subject.directory() {
-        Some(directory) => {
-            let spawn = Spawn {
-                command: arguments.agent.clone().unwrap_or(Spawn::default().command),
-                directory: directory.to_path_buf(),
-            };
+    let session = match (subject.directory(), arguments.agent.as_deref()) {
+        (Some(directory), Some(command)) => {
+            let spawn = Spawn { command: command.to_owned(), directory: directory.to_path_buf() };
 
             Some(spawn.session(forward(sender.clone()))?)
         }
-        None => None,
+        _ => None,
     };
     let opening = Opening {
         mode,

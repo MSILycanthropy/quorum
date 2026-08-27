@@ -1,4 +1,4 @@
-//! The review surface: a list of changed files, and the diff of one of them.
+//! A terminal workspace for directing parallel coding agents.
 
 mod conversation;
 mod prompt;

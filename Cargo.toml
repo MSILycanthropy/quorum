@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.96"
 license = "MIT OR Apache-2.0"
-description = "A review surface for parallel coding agents."
+description = "A terminal workspace for directing parallel coding agents."
 
 [dependencies]
 agent-client-protocol = "2.0.0"
