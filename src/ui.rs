@@ -2,6 +2,7 @@
 
 mod conversation;
 mod navigator;
+mod palette;
 mod prompt;
 mod review;
 mod split;
@@ -14,10 +15,11 @@ pub use navigator::{
     Navigator, NavigatorSnapshot, ProjectId, ProjectPresentation, WorkspaceId,
     WorkspacePresentation, WorkspaceState,
 };
+pub use palette::{Palette, PaletteAction};
 pub use prompt::Prompt;
 pub use review::Review;
 pub use split::{Columns, Split};
-pub use tab::{Opening, Tab};
+pub use tab::{Activity, Opening, Tab};
 pub use tree::{Row, Tree};
 pub use viewer::Viewer;
 

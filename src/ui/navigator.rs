@@ -166,6 +166,28 @@ impl Navigator {
         self.scroll = self.scroll.saturating_add_signed(rows);
     }
 
+    pub fn workspace_at(&self, area: Rect, row: u16) -> Option<WorkspaceId> {
+        if row <= area.y {
+            return None;
+        }
+        let index = self.scroll + usize::from(row - area.y - 1);
+        match self.rows().get(index) {
+            Some(VisibleRow::Workspace { workspace }) => Some(workspace.id.clone()),
+            Some(VisibleRow::Project { .. } | VisibleRow::EmptyProject) | None => None,
+        }
+    }
+
+    pub fn project_at(&self, area: Rect, row: u16) -> Option<ProjectId> {
+        if row <= area.y {
+            return None;
+        }
+        let index = self.scroll + usize::from(row - area.y - 1);
+        match self.rows().get(index) {
+            Some(VisibleRow::Project { id, .. }) => Some(id.clone()),
+            Some(VisibleRow::Workspace { .. } | VisibleRow::EmptyProject) | None => None,
+        }
+    }
+
     pub fn draw(&mut self, buffer: &mut Buffer, area: Rect) {
         self.render(buffer, area);
     }

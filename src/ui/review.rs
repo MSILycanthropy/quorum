@@ -292,6 +292,21 @@ impl Review {
         self.showing.then_some(self.listing)
     }
 
+    pub fn paths(&self) -> Vec<std::path::PathBuf> {
+        self.changes.iter().map(|change| change.path.clone()).collect()
+    }
+
+    #[expect(
+        clippy::missing_errors_doc,
+        reason = "the Error enum names the only failure, selecting a changed file"
+    )]
+    pub fn select_path(&mut self, path: &std::path::Path) -> Result<()> {
+        let Some(index) = self.tree.row_of(path) else {
+            return Ok(());
+        };
+        self.select(index)
+    }
+
     pub fn resize(&mut self, listing: u16) {
         if listing > 0 {
             self.listing = listing;

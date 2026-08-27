@@ -38,18 +38,38 @@ impl Opening {
         reason = "the Error enum names the only failure, highlighting the selected file"
     )]
     pub fn tab(self, changes: Vec<FileChange>, session: Option<Session>) -> Result<Tab> {
+        self.tab_with_transcript(changes, session, Transcript::default())
+    }
+
+    #[expect(
+        clippy::missing_errors_doc,
+        reason = "the Error enum names the only failure, highlighting the selected file"
+    )]
+    pub fn tab_with_transcript(
+        self,
+        changes: Vec<FileChange>,
+        session: Option<Session>,
+        transcript: Transcript,
+    ) -> Result<Tab> {
         Ok(Tab {
             review: Review::new(changes, self.mode, self.wrap, self.tab_width)?,
             conversation: Conversation::default(),
-            transcript: Transcript::default(),
+            transcript,
             prompt: Prompt::default(),
             split: Split::default(),
             session,
             branch: self.branch,
             base: self.base,
             tints: TokyoNight::TINTS,
+            activities: Vec::new(),
         })
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Activity {
+    Prompt(String),
+    PermissionAnswer { permission: String, choice: String },
 }
 
 /// A worktree and the agent working in it, as one surface.
@@ -63,11 +83,15 @@ pub struct Tab {
     branch: Option<String>,
     base: String,
     tints: Tints,
+    activities: Vec<Activity>,
 }
 
 impl Tab {
     pub fn draw(&mut self, frame: &mut Frame) {
-        let whole = frame.area();
+        self.draw_in(frame, frame.area());
+    }
+
+    pub fn draw_in(&mut self, frame: &mut Frame, whole: Rect) {
         let standing = Rect::new(whole.x, whole.y + whole.height - 1, whole.width, 1);
         let area = Rect::new(whole.x, whole.y, whole.width, whole.height - 1);
         self.standing(frame.buffer_mut(), standing);
@@ -204,6 +228,34 @@ impl Tab {
         self.transcript.apply(update)
     }
 
+    pub fn transcript(&self) -> &Transcript {
+        &self.transcript
+    }
+
+    pub fn has_session(&self) -> bool {
+        self.session.is_some()
+    }
+
+    pub fn attach_session(&mut self, session: Session) {
+        self.session = Some(session);
+    }
+
+    pub fn take_activities(&mut self) -> Vec<Activity> {
+        std::mem::take(&mut self.activities)
+    }
+
+    pub fn file_paths(&self) -> Vec<std::path::PathBuf> {
+        self.review.paths()
+    }
+
+    #[expect(
+        clippy::missing_errors_doc,
+        reason = "the Error enum names the only failure, selecting a changed file"
+    )]
+    pub fn select_file(&mut self, path: &std::path::Path) -> Result<()> {
+        self.review.select_path(path)
+    }
+
     #[expect(
         clippy::missing_errors_doc,
         reason = "the Error enum names the only failure, highlighting the file left selected"
@@ -216,7 +268,8 @@ impl Tab {
         if let Some(session) = &self.session {
             session.prompt(text.clone());
         }
-        self.transcript.prompted(text);
+        self.transcript.prompted(text.clone());
+        self.activities.push(Activity::Prompt(text));
     }
 
     fn choose(&mut self, digit: char) {
@@ -232,6 +285,7 @@ impl Tab {
             session.answer(&permission, &choice);
         }
         self.transcript.answered(&permission, &choice);
+        self.activities.push(Activity::PermissionAnswer { permission, choice });
     }
 }
 

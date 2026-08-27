@@ -230,6 +230,11 @@ impl Workspace {
         self.worktree = WorktreeState::attached(worktree);
     }
 
+    pub fn attach_as(&mut self, kind: WorkspaceKind, worktree: Worktree) {
+        self.kind = kind;
+        self.attach(worktree);
+    }
+
     pub fn mark_unavailable(&mut self) {
         let WorktreeState::Attached(worktree) = &self.worktree else {
             return;

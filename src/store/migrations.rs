@@ -1,10 +1,11 @@
 //! Embedded schema migrations for Quorum's local database.
 
-pub const CURRENT_SCHEMA_VERSION: i64 = 1;
+pub const CURRENT_SCHEMA_VERSION: i64 = 2;
 
-pub const MIGRATIONS: &[(i64, &str)] = &[(
-    1,
-    "
+pub const MIGRATIONS: &[(i64, &str)] = &[
+    (
+        1,
+        "
     CREATE TABLE projects (
         id TEXT PRIMARY KEY NOT NULL,
         name TEXT NOT NULL,
@@ -31,4 +32,15 @@ pub const MIGRATIONS: &[(i64, &str)] = &[(
         PRIMARY KEY (workspace_id, sequence)
     );
     ",
-)];
+    ),
+    (
+        2,
+        "
+    CREATE TABLE workspace_leases (
+        workspace_id TEXT PRIMARY KEY NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+        owner TEXT NOT NULL,
+        expires_at INTEGER NOT NULL
+    );
+    ",
+    ),
+];

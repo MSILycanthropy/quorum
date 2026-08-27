@@ -12,6 +12,7 @@ use clap::Parser;
 use quorum::agent::{Consequence, Spawn, Update};
 use quorum::diff::{FileDiff, Source};
 use quorum::git::{Content, FileChange, Repository, Status};
+use quorum::project::WorkspaceId;
 use quorum::ui::{Control, Mode, Opening};
 use ratatui::crossterm::event::{
     self, DisableMouseCapture, EnableMouseCapture, KeyEvent, KeyEventKind,
@@ -30,6 +31,8 @@ enum Error {
     Ui(#[from] quorum::ui::Error),
     #[error(transparent)]
     Io(#[from] std::io::Error),
+    #[error(transparent)]
+    Shell(#[from] quorum::shell::Error),
 }
 
 type Result<T> = std::result::Result<T, Error>;
@@ -66,19 +69,38 @@ enum Event {
     Key(KeyEvent),
     Mouse(MouseEvent),
     Redraw,
-    Agent(Update),
+    Agent { workspace_id: WorkspaceId, update: Update },
 }
 
 fn view(arguments: &Arguments) -> Result<()> {
     let subject = Subject::open(arguments)?;
     let mode = if arguments.unified { Mode::Unified } else { Mode::SideBySide };
+    if let Subject::Worktree { repository, against } = subject {
+        let inventory = repository.inventory()?;
+        quorum::shell::run(
+            repository,
+            inventory,
+            against,
+            quorum::shell::RunOptions {
+                mode,
+                wrap: arguments.wrap,
+                tab_width: arguments.tab_width,
+                revision: arguments.revision.clone(),
+                agent: arguments.agent.clone(),
+            },
+        )?;
+        return Ok(());
+    }
     let (sender, events) = channel();
 
     let session = match (subject.directory(), arguments.agent.as_deref()) {
         (Some(directory), Some(command)) => {
             let spawn = Spawn { command: command.to_owned(), directory: directory.to_path_buf() };
 
-            Some(spawn.session(forward(sender.clone()))?)
+            Some(spawn.session(forward(
+                sender.clone(),
+                WorkspaceId::new("file-mode").expect("the file-mode event identity is valid"),
+            ))?)
         }
         _ => None,
     };
@@ -104,7 +126,8 @@ fn view(arguments: &Arguments) -> Result<()> {
                     }
                 }
                 Event::Mouse(mouse) => tab.mouse(mouse)?,
-                Event::Agent(update) => {
+                Event::Agent { workspace_id, update } => {
+                    let _ = workspace_id;
                     if tab.apply(update) == Consequence::Rescan {
                         tab.refresh(subject.changes()?)?;
                     }
@@ -136,11 +159,11 @@ fn watch(sender: Sender<Event>) {
     });
 }
 
-fn forward(sender: Sender<Event>) -> Sender<Update> {
+fn forward(sender: Sender<Event>, workspace_id: WorkspaceId) -> Sender<Update> {
     let (updates, incoming) = channel();
     spawn("agent-events", move || {
         while let Ok(update) = incoming.recv() {
-            if sender.send(Event::Agent(update)).is_err() {
+            if sender.send(Event::Agent { workspace_id: workspace_id.clone(), update }).is_err() {
                 return;
             }
         }

@@ -240,7 +240,11 @@ fn newer_schema_versions_are_rejected() -> Result<(), Box<dyn std::error::Error>
     let connection = Connection::open(&path)?;
     connection.pragma_update(None, "user_version", CURRENT_SCHEMA_VERSION + 1)?;
 
-    assert!(matches!(Store::open_at(&path), Err(Error::NewerSchema { found: 2, current: 1 })));
+    assert!(matches!(
+        Store::open_at(&path),
+        Err(Error::NewerSchema { found, current })
+            if found == CURRENT_SCHEMA_VERSION + 1 && current == CURRENT_SCHEMA_VERSION
+    ));
     Ok(())
 }
 

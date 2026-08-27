@@ -23,6 +23,7 @@ pub use migrations::CURRENT_SCHEMA_VERSION;
 
 pub const CURRENT_EVENT_ENCODING_VERSION: i64 = 1;
 const USER_LOCAL_DATABASE: &str = "quorum.sqlite3";
+pub const DEFAULT_LEASE_POLICY: LeasePolicy = LeasePolicy { duration: Duration::from_secs(30) };
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -40,6 +41,8 @@ pub enum Error {
     NoUserDataDirectory,
     #[error("invalid {field} value in the database: {value}")]
     InvalidValue { field: &'static str, value: String },
+    #[error("workspace does not exist: {0}")]
+    WorkspaceNotFound(WorkspaceId),
     #[error(transparent)]
     Io(#[from] std::io::Error),
     #[error(transparent)]
@@ -49,6 +52,171 @@ pub enum Error {
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
+
+/// The fixed lifetime used by a workspace ownership lease.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct LeasePolicy {
+    pub duration: Duration,
+}
+
+impl LeasePolicy {
+    pub const fn new(duration: Duration) -> Self {
+        Self { duration }
+    }
+
+    pub fn expires_at(self, now: i64) -> Result<i64> {
+        let duration =
+            i64::try_from(self.duration.as_millis()).map_err(|_| Error::InvalidValue {
+                field: "lease duration",
+                value: self.duration.as_millis().to_string(),
+            })?;
+        now.checked_add(duration)
+            .ok_or_else(|| Error::InvalidValue { field: "lease expiry", value: now.to_string() })
+    }
+}
+
+/// A live workspace lease as it is stored in `SQLite`.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct LeaseInfo {
+    pub workspace_id: WorkspaceId,
+    pub owner: String,
+    pub expires_at: i64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum LeaseAcquisition {
+    Acquired(LeaseInfo),
+    Renewed(LeaseInfo),
+    Reclaimed(LeaseInfo),
+    TakenOver(LeaseInfo),
+    Held(LeaseInfo),
+}
+
+impl Store {
+    pub fn inspect_lease(&self, workspace_id: &WorkspaceId, now: i64) -> Result<Option<LeaseInfo>> {
+        self.connection
+            .query_row(
+                "SELECT owner, expires_at FROM workspace_leases WHERE workspace_id = ?1",
+                [workspace_id.as_str()],
+                |row| {
+                    Ok(LeaseInfo {
+                        workspace_id: workspace_id.clone(),
+                        owner: row.get(0)?,
+                        expires_at: row.get(1)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(Into::into)
+            .map(|lease| lease.filter(|lease| lease.expires_at > now))
+    }
+
+    pub fn acquire_lease(
+        &self,
+        workspace_id: &WorkspaceId,
+        owner: &str,
+        now: i64,
+        policy: LeasePolicy,
+        takeover: bool,
+    ) -> Result<LeaseAcquisition> {
+        let exists: bool = self.connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM workspaces WHERE id = ?1)",
+            [workspace_id.as_str()],
+            |row| row.get(0),
+        )?;
+        if !exists {
+            return Err(Error::WorkspaceNotFound(workspace_id.clone()));
+        }
+        let expires_at = policy.expires_at(now)?;
+        let expired = self
+            .connection
+            .query_row(
+                "SELECT expires_at <= ?2 FROM workspace_leases WHERE workspace_id = ?1",
+                params![workspace_id.as_str(), now],
+                |row| row.get(0),
+            )
+            .optional()?
+            .unwrap_or(false);
+        self.connection.execute(
+            "DELETE FROM workspace_leases WHERE workspace_id = ?1 AND expires_at <= ?2",
+            params![workspace_id.as_str(), now],
+        )?;
+
+        let inserted = self.connection.execute(
+            "
+            INSERT OR IGNORE INTO workspace_leases (workspace_id, owner, expires_at)
+            VALUES (?1, ?2, ?3)
+            ",
+            params![workspace_id.as_str(), owner, expires_at],
+        )?;
+        if inserted != 0 {
+            let lease = LeaseInfo {
+                workspace_id: workspace_id.clone(),
+                owner: owner.to_owned(),
+                expires_at,
+            };
+            return Ok(if expired {
+                LeaseAcquisition::Reclaimed(lease)
+            } else {
+                LeaseAcquisition::Acquired(lease)
+            });
+        }
+
+        let current = self.inspect_lease(workspace_id, now)?;
+        let Some(current) = current else {
+            return self.acquire_lease(workspace_id, owner, now, policy, takeover);
+        };
+        if current.owner == owner {
+            self.connection.execute(
+                "UPDATE workspace_leases SET expires_at = ?2 WHERE workspace_id = ?1 AND owner = ?3",
+                params![workspace_id.as_str(), expires_at, owner],
+            )?;
+            return Ok(LeaseAcquisition::Renewed(LeaseInfo {
+                workspace_id: workspace_id.clone(),
+                owner: owner.to_owned(),
+                expires_at,
+            }));
+        }
+        if !takeover {
+            return Ok(LeaseAcquisition::Held(current));
+        }
+
+        self.connection.execute(
+            "UPDATE workspace_leases SET owner = ?2, expires_at = ?3 WHERE workspace_id = ?1",
+            params![workspace_id.as_str(), owner, expires_at],
+        )?;
+        Ok(LeaseAcquisition::TakenOver(LeaseInfo {
+            workspace_id: workspace_id.clone(),
+            owner: owner.to_owned(),
+            expires_at,
+        }))
+    }
+
+    pub fn renew_lease(
+        &self,
+        workspace_id: &WorkspaceId,
+        owner: &str,
+        now: i64,
+        policy: LeasePolicy,
+    ) -> Result<bool> {
+        let expires_at = policy.expires_at(now)?;
+        Ok(self.connection.execute(
+            "
+            UPDATE workspace_leases
+            SET expires_at = ?3
+            WHERE workspace_id = ?1 AND owner = ?2 AND expires_at > ?4
+            ",
+            params![workspace_id.as_str(), owner, expires_at, now],
+        )? != 0)
+    }
+
+    pub fn release_lease(&self, workspace_id: &WorkspaceId, owner: &str) -> Result<bool> {
+        Ok(self.connection.execute(
+            "DELETE FROM workspace_leases WHERE workspace_id = ?1 AND owner = ?2",
+            params![workspace_id.as_str(), owner],
+        )? != 0)
+    }
+}
 
 /// A Quorum-owned event that can be replayed into a transcript.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

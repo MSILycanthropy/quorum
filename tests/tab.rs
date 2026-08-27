@@ -3,6 +3,7 @@
 use std::fmt::Write;
 use std::path::PathBuf;
 
+use quorum::agent::{Transcript, Update};
 use quorum::diff::{FileDiff, Source};
 use quorum::git::{Content, FileChange, Status};
 use quorum::ui::{Opening, Prompt};
@@ -134,4 +135,22 @@ fn a_bare_enter_sends_every_line_at_once() {
     assert_eq!(prompt.key(key(KeyCode::Enter, KeyModifiers::NONE)), Some("a\nb".to_owned()));
     assert!(!prompt.entered());
     assert_eq!(prompt.height(44), 3);
+}
+
+#[test]
+fn retained_workspace_surfaces_keep_their_transcripts_independent() {
+    let mut first_transcript = Transcript::default();
+    first_transcript.prompted("first".to_owned());
+    let mut second_transcript = Transcript::default();
+    second_transcript.apply(Update::Said("second".to_owned()));
+    let first = Opening::default()
+        .tab_with_transcript(Vec::new(), None, first_transcript)
+        .expect("an empty surface can be opened");
+    let second = Opening::default()
+        .tab_with_transcript(Vec::new(), None, second_transcript)
+        .expect("an empty surface can be opened");
+
+    assert_eq!(first.transcript().entries().len(), 1);
+    assert_eq!(second.transcript().entries().len(), 1);
+    assert_ne!(first.transcript(), second.transcript());
 }
