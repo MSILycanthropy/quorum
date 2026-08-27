@@ -127,10 +127,18 @@ impl Navigator {
     }
 
     pub fn select_workspace(&mut self, id: &WorkspaceId) -> bool {
-        if self.workspace(id).is_none() {
+        let project = self.snapshot.projects.iter().find_map(|project| {
+            project
+                .workspaces
+                .iter()
+                .any(|workspace| workspace.id == *id)
+                .then(|| project.id.clone())
+        });
+        let Some(project) = project else {
             return false;
-        }
+        };
 
+        self.collapsed.remove(&project);
         self.selected = Some(id.clone());
         true
     }
@@ -410,9 +418,13 @@ impl Navigator {
             .selected
             .as_ref()
             .and_then(|selected| visible.iter().position(|id| id == selected));
-        let next = current.map_or(0, |index| {
-            index.saturating_add_signed(direction).min(visible.len().saturating_sub(1))
-        });
+        let next = match (current, direction) {
+            (None, previous) if previous < 0 => visible.len() - 1,
+            (None, _) => 0,
+            (Some(0), previous) if previous < 0 => visible.len() - 1,
+            (Some(index), previous) if previous < 0 => index - 1,
+            (Some(index), _) => (index + 1) % visible.len(),
+        };
         self.selected = Some(visible[next].clone());
         self.selected.as_ref()
     }

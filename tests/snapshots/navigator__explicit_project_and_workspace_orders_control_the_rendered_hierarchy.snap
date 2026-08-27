@@ -1,0 +1,9 @@
+---
+source: tests/navigator.rs
+expression: "shown(&mut navigator, 24, 5)"
+---
+PROJECTS
+▾ earlier project
+  ○ earlier
+▾ later project
+  ● later

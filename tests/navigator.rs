@@ -110,14 +110,10 @@ fn explicit_project_and_workspace_orders_control_the_rendered_hierarchy() {
     ]);
     let mut navigator = Navigator::new(snapshot);
 
-    insta::assert_snapshot!(shown(&mut navigator, 24, 5), @"
-PROJECTS
-▾ earlier project
-  ○ earlier
-▾ later project
-  ● later
-    
-");
+    insta::assert_snapshot!(
+        "explicit_project_and_workspace_orders_control_the_rendered_hierarchy",
+        shown(&mut navigator, 24, 5)
+    );
 }
 
 #[test]
@@ -163,6 +159,26 @@ fn selection_moves_through_visible_workspaces_and_scrolls_into_view() {
 }
 
 #[test]
+fn workspace_movement_cycles_at_both_ends() {
+    let mut navigator = navigator();
+
+    assert_eq!(navigator.previous_workspace(), Some(&workspace_id("comms")));
+    assert_eq!(navigator.next_workspace(), Some(&workspace_id("auth")));
+}
+
+#[test]
+fn selecting_a_workspace_expands_its_project() {
+    let mut navigator = navigator();
+    let project = project_id("kicksite");
+    navigator.toggle_project(&project);
+
+    assert!(navigator.collapsed().contains(&project));
+    assert!(navigator.select_workspace(&workspace_id("comms")));
+    assert!(!navigator.collapsed().contains(&project));
+    assert_eq!(navigator.selected(), Some(&workspace_id("comms")));
+}
+
+#[test]
 fn selection_and_collapse_survive_insertions_and_updates_by_identity() {
     let mut navigator = navigator();
     navigator.select_workspace(&workspace_id("perf"));
@@ -201,19 +217,10 @@ fn selection_falls_back_when_the_selected_workspace_disappears() {
 fn empty_navigator_and_empty_projects_have_deliberate_output() {
     let mut navigator =
         Navigator::new(NavigatorSnapshot::new(vec![project("empty", "empty", vec![])]));
-    insta::assert_snapshot!(shown(&mut navigator, 24, 4), @"
-PROJECTS
-▾ empty
-  (empty project)
-    
-");
+    insta::assert_snapshot!("empty_project", shown(&mut navigator, 24, 4));
 
     let mut navigator = Navigator::new(NavigatorSnapshot::default());
-    insta::assert_snapshot!(shown(&mut navigator, 24, 3), @"
-PROJECTS
-  (no projects)
-   
-");
+    insta::assert_snapshot!("empty_navigator", shown(&mut navigator, 24, 3));
 }
 
 #[test]

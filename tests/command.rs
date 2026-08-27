@@ -5,6 +5,15 @@ use quorum::command::{
     ApplicationCommand, ApplicationContext, CommandCatalog, FileTarget, InterruptionState,
     PaletteEntry, PaletteModel, PaletteTarget, ProjectTarget, SkillTarget, WorkspaceTarget,
 };
+use quorum::project::{ProjectId, WorkspaceId};
+
+fn project_id(value: &str) -> ProjectId {
+    ProjectId::new(value).expect("test project identity is valid")
+}
+
+fn workspace_id(value: &str) -> WorkspaceId {
+    WorkspaceId::new(value).expect("test workspace identity is valid")
+}
 
 #[test]
 fn every_catalog_command_has_a_unique_nonempty_label() {
@@ -92,13 +101,16 @@ fn permission_shortcuts_require_an_explicit_interruption() {
 #[test]
 fn palette_ranks_exact_then_prefix_then_subsequence() {
     let entries = vec![
-        PaletteEntry::new(PaletteTarget::Project(ProjectTarget::new("one", "Open")), "Open"),
         PaletteEntry::new(
-            PaletteTarget::Project(ProjectTarget::new("two", "Open changes")),
+            PaletteTarget::Project(ProjectTarget::new(project_id("one"), "Open")),
+            "Open",
+        ),
+        PaletteEntry::new(
+            PaletteTarget::Project(ProjectTarget::new(project_id("two"), "Open changes")),
             "Open changes",
         ),
         PaletteEntry::new(
-            PaletteTarget::Project(ProjectTarget::new("three", "Drop event")),
+            PaletteTarget::Project(ProjectTarget::new(project_id("three"), "Drop event")),
             "Drop event",
         ),
     ];
@@ -112,8 +124,14 @@ fn palette_ranks_exact_then_prefix_then_subsequence() {
 #[test]
 fn palette_breaks_equal_scores_by_supplied_order() {
     let entries = vec![
-        PaletteEntry::new(PaletteTarget::Project(ProjectTarget::new("first", "Alpha")), "Alpha"),
-        PaletteEntry::new(PaletteTarget::Project(ProjectTarget::new("second", "Alpine")), "Alpine"),
+        PaletteEntry::new(
+            PaletteTarget::Project(ProjectTarget::new(project_id("first"), "Alpha")),
+            "Alpha",
+        ),
+        PaletteEntry::new(
+            PaletteTarget::Project(ProjectTarget::new(project_id("second"), "Alpine")),
+            "Alpine",
+        ),
     ];
 
     let ranked = PaletteModel.rank("al", &entries);
@@ -125,8 +143,14 @@ fn palette_breaks_equal_scores_by_supplied_order() {
 #[test]
 fn an_empty_palette_query_preserves_supplied_order() {
     let entries = vec![
-        PaletteEntry::new(PaletteTarget::Project(ProjectTarget::new("first", "First")), "First"),
-        PaletteEntry::new(PaletteTarget::Project(ProjectTarget::new("second", "Second")), "Second"),
+        PaletteEntry::new(
+            PaletteTarget::Project(ProjectTarget::new(project_id("first"), "First")),
+            "First",
+        ),
+        PaletteEntry::new(
+            PaletteTarget::Project(ProjectTarget::new(project_id("second"), "Second")),
+            "Second",
+        ),
     ];
 
     let ranked = PaletteModel.rank("", &entries);
@@ -138,13 +162,17 @@ fn an_empty_palette_query_preserves_supplied_order() {
 fn mixed_palette_entries_retain_typed_identity_and_ownership() {
     let entries = vec![
         PaletteEntry::new(
-            PaletteTarget::Workspace(WorkspaceTarget::new("project", "workspace", "Workspace")),
+            PaletteTarget::Workspace(WorkspaceTarget::new(
+                project_id("project"),
+                workspace_id("workspace"),
+                "Workspace",
+            )),
             "Workspace",
         ),
         PaletteEntry::new(
             PaletteTarget::File(FileTarget::new(
-                "project",
-                "workspace",
+                project_id("project"),
+                workspace_id("workspace"),
                 PathBuf::from("src/main.rs"),
             )),
             "src/main.rs",
@@ -162,10 +190,10 @@ fn mixed_palette_entries_retain_typed_identity_and_ownership() {
     let ranked = PaletteModel.rank("", &entries);
 
     assert!(
-        matches!(ranked[0].target(), PaletteTarget::Workspace(target) if target.project == "project")
+        matches!(ranked[0].target(), PaletteTarget::Workspace(target) if target.project == project_id("project"))
     );
     assert!(
-        matches!(ranked[1].target(), PaletteTarget::File(target) if target.workspace == "workspace" && target.path == *"src/main.rs")
+        matches!(ranked[1].target(), PaletteTarget::File(target) if target.workspace == workspace_id("workspace") && target.path == *"src/main.rs")
     );
     assert!(
         matches!(ranked[2].target(), PaletteTarget::Skill(target) if target.namespace == "quorum")

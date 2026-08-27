@@ -4,6 +4,8 @@ use std::path::PathBuf;
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
+use crate::project::{ProjectId, WorkspaceId};
+
 /// The visible commands owned by Quorum, not commands reported by an agent.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ApplicationCommand {
@@ -27,8 +29,6 @@ pub enum ApplicationCommand {
     PreviousDiffPage,
     ScrollDiffLeft,
     ScrollDiffRight,
-    NextHunk,
-    PreviousHunk,
     ToggleLayout,
     ToggleWrapping,
     EqualizeDividers,
@@ -411,28 +411,6 @@ impl CommandCatalog {
             },
         );
         catalog.add(
-            ApplicationCommand::NextHunk,
-            "Next hunk",
-            &[plain('}')],
-            CommandCategory::Diff,
-            CommandRequirements {
-                active_workspace: true,
-                selected_file: true,
-                ..Default::default()
-            },
-        );
-        catalog.add(
-            ApplicationCommand::PreviousHunk,
-            "Previous hunk",
-            &[plain('{')],
-            CommandCategory::Diff,
-            CommandRequirements {
-                active_workspace: true,
-                selected_file: true,
-                ..Default::default()
-            },
-        );
-        catalog.add(
             ApplicationCommand::ToggleLayout,
             "Toggle layout",
             &[plain('s')],
@@ -566,52 +544,44 @@ fn ctrl(character: char) -> Shortcut {
 /// A project identity and its palette label.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ProjectTarget {
-    pub id: String,
+    pub id: ProjectId,
     pub label: String,
 }
 
 impl ProjectTarget {
-    pub fn new(id: impl Into<String>, label: impl Into<String>) -> Self {
-        Self { id: id.into(), label: label.into() }
+    pub fn new(id: ProjectId, label: impl Into<String>) -> Self {
+        Self { id, label: label.into() }
     }
 }
 
 /// A workspace identity, retaining the project that owns it.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct WorkspaceTarget {
-    pub project: String,
-    pub id: String,
+    pub project: ProjectId,
+    pub id: WorkspaceId,
     pub label: String,
 }
 
 impl WorkspaceTarget {
-    pub fn new(
-        project: impl Into<String>,
-        id: impl Into<String>,
-        label: impl Into<String>,
-    ) -> Self {
-        Self { project: project.into(), id: id.into(), label: label.into() }
+    pub fn new(project: ProjectId, id: WorkspaceId, label: impl Into<String>) -> Self {
+        Self { project, id, label: label.into() }
     }
 }
 
 /// A file identity, retaining both its workspace and project ownership.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct FileTarget {
-    pub project: String,
-    pub workspace: String,
+    pub project: ProjectId,
+    pub workspace: WorkspaceId,
     pub path: PathBuf,
     pub label: String,
 }
 
 impl FileTarget {
-    pub fn new(
-        project: impl Into<String>,
-        workspace: impl Into<String>,
-        path: impl Into<PathBuf>,
-    ) -> Self {
+    pub fn new(project: ProjectId, workspace: WorkspaceId, path: impl Into<PathBuf>) -> Self {
         let path = path.into();
         let label = path.display().to_string();
-        Self { project: project.into(), workspace: workspace.into(), path, label }
+        Self { project, workspace, path, label }
     }
 }
 
