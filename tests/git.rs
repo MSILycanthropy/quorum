@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use quorum::git::{Content, Error, FileChange, Repository, Status};
+use quorum::git::{Content, Error, FileChange, Repository, Status, WorktreeRole};
 
 fn git(root: &Path, arguments: &[&str]) {
     let status = Command::new("git")
@@ -291,4 +291,106 @@ fn a_linked_worktree_reads_its_own_checked_out_revision() {
         repository.change("HEAD", &linked.join("file.rs")).expect("the file is on both sides");
 
     assert_eq!(sides(&change), ("on agent\n", "on agent\n"));
+}
+
+#[test]
+fn discovering_from_main_and_linked_worktrees_returns_the_same_project_inventory() {
+    let root = committed("inventory_from_linked", "file.rs", "on main\n");
+    git(&root, &["branch", "agent"]);
+
+    let linked = root.with_file_name("agent");
+    git(&root, &["worktree", "add", "--quiet", "../agent", "agent"]);
+
+    let from_main = Repository::discover(&root)
+        .expect("the main worktree is a repository")
+        .inventory()
+        .expect("the main inventory is readable");
+    let from_linked = Repository::discover(&linked)
+        .expect("the linked worktree is a repository")
+        .inventory()
+        .expect("the linked inventory is readable");
+
+    assert_eq!(from_main, from_linked);
+    assert_eq!(
+        from_main.common_dir,
+        root.join(".git").canonicalize().expect("the common directory is valid")
+    );
+    assert_eq!(from_main.worktrees.len(), 2);
+    assert_eq!(from_main.worktrees[0].path, root.canonicalize().expect("the main path is valid"));
+    assert_eq!(from_main.worktrees[0].role, WorktreeRole::Main);
+    assert_eq!(from_main.worktrees[0].branch.as_deref(), Some("main"));
+    assert_eq!(
+        from_main.worktrees[1].path,
+        linked.canonicalize().expect("the linked path is valid")
+    );
+    assert_eq!(from_main.worktrees[1].role, WorktreeRole::Linked);
+    assert_eq!(from_main.worktrees[1].branch.as_deref(), Some("agent"));
+}
+
+#[test]
+fn inventory_lists_linked_worktrees_in_stable_path_order_and_keeps_detached_heads_detached() {
+    let root = committed("inventory_order", "file.rs", "on main\n");
+    git(&root, &["branch", "feature"]);
+    git(&root, &["branch", "second"]);
+
+    let detached = root.with_file_name("a detached");
+    let second = root.with_file_name("m second");
+    let feature = root.with_file_name("z feature");
+    git(&root, &["worktree", "add", "--quiet", "--detach", "../a detached", "HEAD"]);
+    git(&root, &["worktree", "add", "--quiet", "../m second", "second"]);
+    git(&root, &["worktree", "add", "--quiet", "../z feature", "feature"]);
+
+    let inventory = Repository::discover(&root)
+        .expect("the repository is readable")
+        .inventory()
+        .expect("the inventory is readable");
+    let worktrees: Vec<_> = inventory
+        .worktrees
+        .iter()
+        .map(|worktree| (worktree.path.clone(), worktree.role, worktree.branch.clone()))
+        .collect();
+
+    assert_eq!(
+        worktrees,
+        vec![
+            (
+                root.canonicalize().expect("the main path is valid"),
+                WorktreeRole::Main,
+                Some("main".into())
+            ),
+            (
+                detached.canonicalize().expect("the detached path is valid"),
+                WorktreeRole::Linked,
+                None,
+            ),
+            (
+                second.canonicalize().expect("the second path is valid"),
+                WorktreeRole::Linked,
+                Some("second".into()),
+            ),
+            (
+                feature.canonicalize().expect("the feature path is valid"),
+                WorktreeRole::Linked,
+                Some("feature".into()),
+            ),
+        ]
+    );
+}
+
+#[test]
+fn inventory_skips_a_linked_worktree_whose_checkout_is_stale() {
+    let root = committed("inventory_stale", "file.rs", "on main\n");
+    git(&root, &["branch", "stale"]);
+
+    let stale = root.with_file_name("stale");
+    git(&root, &["worktree", "add", "--quiet", "../stale", "stale"]);
+    std::fs::remove_dir_all(&stale).expect("the stale worktree is removable");
+
+    let inventory = Repository::discover(&root)
+        .expect("the repository is readable")
+        .inventory()
+        .expect("a stale worktree does not make inventory fail");
+
+    assert_eq!(inventory.worktrees.len(), 1);
+    assert_eq!(inventory.worktrees[0].path, root.canonicalize().expect("the main path is valid"));
 }
