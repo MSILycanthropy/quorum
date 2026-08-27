@@ -3,6 +3,7 @@
 mod conversation;
 mod prompt;
 mod review;
+mod split;
 mod tab;
 mod tree;
 mod viewer;
@@ -10,6 +11,7 @@ mod viewer;
 pub use conversation::Conversation;
 pub use prompt::Prompt;
 pub use review::Review;
+pub use split::{Columns, Split};
 pub use tab::{Opening, Tab};
 pub use tree::{Row, Tree};
 pub use viewer::Viewer;

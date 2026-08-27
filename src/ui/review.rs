@@ -24,7 +24,8 @@ pub struct Review {
     opened: usize,
     first: usize,
     viewer: Option<Viewer>,
-    sidebar: bool,
+    showing: bool,
+    listing: u16,
     listed: Option<Rect>,
     mode: Mode,
     wrap: bool,
@@ -52,7 +53,8 @@ impl Review {
             opened,
             first: 0,
             viewer: None,
-            sidebar: true,
+            showing: true,
+            listing: SIDEBAR,
             listed: None,
             mode,
             wrap,
@@ -141,7 +143,7 @@ impl Review {
             KeyCode::Char(']') => self.select(self.selected.saturating_add(1))?,
             KeyCode::Char('[') => self.select(self.selected.saturating_sub(1))?,
             KeyCode::Enter | KeyCode::Char(' ') => self.fold(),
-            KeyCode::Char('F') => self.sidebar = !self.sidebar,
+            KeyCode::Char('F') => self.showing = !self.showing,
             _ => {
                 if let Some(viewer) = &mut self.viewer {
                     viewer.key(key);
@@ -286,13 +288,25 @@ impl Review {
         );
     }
 
-    fn panes(&self, area: Rect) -> (Option<Rect>, Rect) {
-        if !self.sidebar || area.width < SIDEBAR + NARROWEST {
-            return (None, area);
-        }
+    pub fn sidebar(&self) -> Option<u16> {
+        self.showing.then_some(self.listing)
+    }
 
-        let sidebar = Rect::new(area.x, area.y, SIDEBAR, area.height);
-        let rest = Rect::new(area.x + SIDEBAR, area.y, area.width - SIDEBAR, area.height);
+    pub fn resize(&mut self, listing: u16) {
+        if listing > 0 {
+            self.listing = listing;
+        }
+    }
+
+    fn panes(&self, area: Rect) -> (Option<Rect>, Rect) {
+        let Some(listing) =
+            self.sidebar().filter(|listing| area.width >= listing.saturating_add(NARROWEST))
+        else {
+            return (None, area);
+        };
+
+        let sidebar = Rect::new(area.x, area.y, listing, area.height);
+        let rest = Rect::new(area.x + listing, area.y, area.width - listing, area.height);
 
         (Some(sidebar), rest)
     }

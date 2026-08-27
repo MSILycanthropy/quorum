@@ -26,11 +26,22 @@ impl Default for Conversation {
 }
 
 impl Conversation {
+    pub fn gutter(&self, buffer: &mut Buffer, area: Rect) {
+        for y in 0..area.height {
+            let ground = if y == 0 { self.tints.filler } else { self.tints.background };
+            buffer.set_string(
+                area.x,
+                area.y + y,
+                "│",
+                Style::new().fg(color(self.tints.gutter)).bg(color(ground)),
+            );
+        }
+    }
+
     pub fn draw(&self, buffer: &mut Buffer, area: Rect, transcript: &Transcript) {
         buffer.set_style(area, Style::new().bg(color(self.tints.background)));
 
-        let header =
-            Rect::new(area.x + 1, area.y, area.width.saturating_sub(1), 1.min(area.height));
+        let header = Rect::new(area.x, area.y, area.width, 1.min(area.height));
         buffer.set_style(header, Style::new().bg(color(self.tints.filler)));
         buffer.set_stringn(
             header.x + 1,
@@ -48,20 +59,10 @@ impl Conversation {
             Style::new().fg(color(tint)).bg(color(self.tints.filler)),
         );
 
-        for y in 0..area.height {
-            let ground = if y == 0 { self.tints.filler } else { self.tints.background };
-            buffer.set_string(
-                area.x,
-                area.y + y,
-                "│",
-                Style::new().fg(color(self.tints.gutter)).bg(color(ground)),
-            );
-        }
-
         let area =
             Rect::new(area.x, area.y + header.height, area.width, area.height - header.height);
 
-        let text = Rect::new(area.x + 2, area.y, area.width.saturating_sub(3), area.height);
+        let text = Rect::new(area.x + 1, area.y, area.width.saturating_sub(2), area.height);
         if text.width == 0 || text.height == 0 {
             return;
         }
@@ -89,10 +90,10 @@ impl Conversation {
 
         for (y, task) in (0..area.height).zip(transcript.plan()) {
             buffer.set_line(
-                area.x + 2,
+                area.x + 1,
                 area.y + y,
-                &self.task(task, usize::from(area.width.saturating_sub(3))),
-                area.width.saturating_sub(3),
+                &self.task(task, usize::from(area.width.saturating_sub(2))),
+                area.width.saturating_sub(2),
             );
         }
     }
