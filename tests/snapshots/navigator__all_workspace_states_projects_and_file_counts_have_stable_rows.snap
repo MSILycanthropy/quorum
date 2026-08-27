@@ -1,0 +1,14 @@
+---
+source: tests/navigator.rs
+assertion_line: 81
+expression: "shown(&mut navigator(), 32, 10)"
+---
+PROJECTS
+▾ quorum                       !
+  ● auth-fix                   3
+  ! dashboard
+  ✓ perf-pass                 12
+  ✓ reviewed                   1
+  ○ main                       4
+▾ kicksite-web
+  ○ COMMS-434                  5
