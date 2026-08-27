@@ -1,6 +1,7 @@
 //! A terminal workspace for directing parallel coding agents.
 
 mod conversation;
+mod navigator;
 mod prompt;
 mod review;
 mod split;
@@ -9,6 +10,10 @@ mod tree;
 mod viewer;
 
 pub use conversation::Conversation;
+pub use navigator::{
+    Navigator, NavigatorSnapshot, ProjectId, ProjectPresentation, WorkspaceId,
+    WorkspacePresentation, WorkspaceState,
+};
 pub use prompt::Prompt;
 pub use review::Review;
 pub use split::{Columns, Split};
