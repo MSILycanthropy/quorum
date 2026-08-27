@@ -1,0 +1,9 @@
+---
+source: tests/navigator.rs
+assertion_line: 95
+expression: "shown(&mut navigator, 32, 6)"
+---
+PROJECTS
+▸ quorum                       !
+▾ kicksite-web
+  ○ COMMS-434                  5

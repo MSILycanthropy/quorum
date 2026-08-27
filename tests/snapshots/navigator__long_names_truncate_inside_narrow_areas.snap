@@ -1,0 +1,8 @@
+---
+source: tests/navigator.rs
+assertion_line: 117
+expression: "shown(&mut navigator, 15, 4)"
+---
+PROJECTS
+▾ a-project-wi…
+  ● a-worksp… 7
