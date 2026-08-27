@@ -20,6 +20,8 @@ pub enum Error {
     #[error(transparent)]
     Discover(#[from] gix::discover::Error),
     #[error(transparent)]
+    Open(#[from] gix::open::Error),
+    #[error(transparent)]
     Revision(#[from] gix::revision::spec::parse::single::Error),
     #[error(transparent)]
     Object(#[from] gix::object::find::existing::Error),
@@ -79,6 +81,33 @@ pub struct FileChange {
     pub content: Content,
 }
 
+/// The role a worktree has in its repository.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum WorktreeRole {
+    Main,
+    Linked,
+}
+
+/// Git facts about one available worktree.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct WorktreeInventory {
+    /// The canonical path to the worktree checkout.
+    pub path: PathBuf,
+    pub role: WorktreeRole,
+    /// The branch checked out here, or `None` for a detached HEAD.
+    pub branch: Option<String>,
+}
+
+/// The repository and all of its available worktrees.
+///
+/// `common_dir` is the stable Git-level key shared by the main and linked
+/// worktrees. It is deliberately not a Quorum Project ID.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ProjectInventory {
+    pub common_dir: PathBuf,
+    pub worktrees: Vec<WorktreeInventory>,
+}
+
 /// A repository open on a worktree, addressed by paths relative to that worktree.
 pub struct Repository {
     inner: gix::Repository,
@@ -104,6 +133,45 @@ impl Repository {
 
     pub fn workdir(&self) -> &Path {
         &self.workdir
+    }
+
+    #[expect(
+        clippy::missing_errors_doc,
+        reason = "the Error enum names the only failures, an unreadable repository or worktree metadata"
+    )]
+    pub fn inventory(&self) -> Result<ProjectInventory> {
+        let main_repository = self.inner.main_repo()?;
+        let main_workdir = main_repository
+            .workdir()
+            .ok_or_else(|| Error::BareRepository(main_repository.git_dir().to_path_buf()))?
+            .canonicalize()?;
+        let common_dir = main_repository.common_dir().canonicalize()?;
+        let main = WorktreeInventory {
+            path: main_workdir,
+            role: WorktreeRole::Main,
+            branch: main_repository.head_name()?.map(|name| name.shorten().to_string()),
+        };
+        let mut linked = Vec::new();
+
+        for proxy in main_repository.worktrees()? {
+            let path = match proxy.base()?.canonicalize() {
+                Ok(path) if path.is_dir() => path,
+                Ok(_) => continue,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) => return Err(error.into()),
+            };
+            let repository = proxy.into_repo_with_possibly_inaccessible_worktree()?;
+            let branch = repository.head_name()?.map(|name| name.shorten().to_string());
+            linked.push(WorktreeInventory { path, role: WorktreeRole::Linked, branch });
+        }
+
+        linked.sort_by(|left, right| left.path.cmp(&right.path));
+
+        let mut worktrees = Vec::with_capacity(linked.len() + 1);
+        worktrees.push(main);
+        worktrees.extend(linked);
+
+        Ok(ProjectInventory { common_dir, worktrees })
     }
 
     #[expect(
