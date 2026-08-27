@@ -1,7 +1,6 @@
 //! The project and workspace navigator, independent of the application shell.
 
 use std::collections::HashSet;
-use std::fmt;
 
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
@@ -9,61 +8,8 @@ use ratatui::style::{Color, Modifier, Style};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use crate::color::Rgb;
+pub use crate::project::{ProjectId, WorkspaceId};
 use crate::theme::{Tints, TokyoNight};
-
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Ord, PartialOrd)]
-pub struct ProjectId(pub String);
-
-impl ProjectId {
-    pub fn new(value: impl Into<String>) -> Self {
-        Self(value.into())
-    }
-}
-
-impl From<&str> for ProjectId {
-    fn from(value: &str) -> Self {
-        Self::new(value)
-    }
-}
-
-impl From<String> for ProjectId {
-    fn from(value: String) -> Self {
-        Self::new(value)
-    }
-}
-
-impl fmt::Display for ProjectId {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.fmt(formatter)
-    }
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Ord, PartialOrd)]
-pub struct WorkspaceId(pub String);
-
-impl WorkspaceId {
-    pub fn new(value: impl Into<String>) -> Self {
-        Self(value.into())
-    }
-}
-
-impl From<&str> for WorkspaceId {
-    fn from(value: &str) -> Self {
-        Self::new(value)
-    }
-}
-
-impl From<String> for WorkspaceId {
-    fn from(value: String) -> Self {
-        Self::new(value)
-    }
-}
-
-impl fmt::Display for WorkspaceId {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.fmt(formatter)
-    }
-}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum WorkspaceState {
@@ -76,10 +22,11 @@ pub enum WorkspaceState {
     Idle,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct WorkspacePresentation {
     pub id: WorkspaceId,
     pub label: String,
+    pub order: usize,
     pub state: WorkspaceState,
     pub changed_files: usize,
     pub main: bool,
@@ -87,25 +34,35 @@ pub struct WorkspacePresentation {
 }
 
 impl WorkspacePresentation {
-    pub fn new(id: impl Into<WorkspaceId>, label: impl Into<String>) -> Self {
-        Self { id: id.into(), label: label.into(), ..Self::default() }
+    pub fn new(id: WorkspaceId, label: impl Into<String>, order: usize) -> Self {
+        Self {
+            id,
+            label: label.into(),
+            order,
+            state: WorkspaceState::default(),
+            changed_files: 0,
+            main: false,
+            unavailable: false,
+        }
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ProjectPresentation {
     pub id: ProjectId,
     pub name: String,
+    pub order: usize,
     pub workspaces: Vec<WorkspacePresentation>,
 }
 
 impl ProjectPresentation {
     pub fn new(
-        id: impl Into<ProjectId>,
+        id: ProjectId,
         name: impl Into<String>,
+        order: usize,
         workspaces: Vec<WorkspacePresentation>,
     ) -> Self {
-        Self { id: id.into(), name: name.into(), workspaces }
+        Self { id, name: name.into(), order, workspaces }
     }
 }
 
@@ -372,7 +329,7 @@ impl Navigator {
 
     fn rows(&self) -> Vec<VisibleRow> {
         let mut rows = Vec::new();
-        for project in &self.snapshot.projects {
+        for project in self.ordered_projects() {
             let open = !self.collapsed.contains(&project.id);
             let blocked = project
                 .workspaces
@@ -386,9 +343,8 @@ impl Navigator {
             });
             if open {
                 rows.extend(
-                    project
-                        .workspaces
-                        .iter()
+                    Self::ordered_workspaces(project)
+                        .into_iter()
                         .cloned()
                         .map(|workspace| VisibleRow::Workspace { workspace }),
                 );
@@ -412,15 +368,26 @@ impl Navigator {
         self.snapshot.projects.iter().find(|project| project.id == *id)
     }
 
+    fn ordered_projects(&self) -> Vec<&ProjectPresentation> {
+        let mut projects: Vec<_> = self.snapshot.projects.iter().collect();
+        projects.sort_by_key(|project| project.order);
+        projects
+    }
+
+    fn ordered_workspaces(project: &ProjectPresentation) -> Vec<&WorkspacePresentation> {
+        let mut workspaces: Vec<_> = project.workspaces.iter().collect();
+        workspaces.sort_by_key(|workspace| workspace.order);
+        workspaces
+    }
+
     fn reconcile_selection(&mut self) {
         if self.selected.as_ref().is_some_and(|id| self.workspace(id).is_some()) {
             return;
         }
         self.selected = self
-            .snapshot
-            .projects
-            .iter()
-            .flat_map(|project| &project.workspaces)
+            .ordered_projects()
+            .into_iter()
+            .flat_map(Self::ordered_workspaces)
             .map(|workspace| workspace.id.clone())
             .next();
     }

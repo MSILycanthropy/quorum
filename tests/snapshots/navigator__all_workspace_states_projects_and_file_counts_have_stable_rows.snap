@@ -1,6 +1,6 @@
 ---
 source: tests/navigator.rs
-assertion_line: 81
+assertion_line: 87
 expression: "shown(&mut navigator(), 32, 10)"
 ---
 PROJECTS

@@ -19,16 +19,22 @@ fn workspace(
     changed_files: usize,
 ) -> WorkspacePresentation {
     WorkspacePresentation {
-        id: WorkspaceId::from(id),
-        label: label.to_owned(),
         state,
         changed_files,
-        ..WorkspacePresentation::default()
+        ..WorkspacePresentation::new(workspace_id(id), label, 0)
     }
 }
 
 fn project(id: &str, name: &str, workspaces: Vec<WorkspacePresentation>) -> ProjectPresentation {
-    ProjectPresentation { id: ProjectId::from(id), name: name.to_owned(), workspaces }
+    ProjectPresentation { id: project_id(id), name: name.to_owned(), order: 0, workspaces }
+}
+
+fn project_id(value: &str) -> ProjectId {
+    ProjectId::new(value).expect("test project identity is valid")
+}
+
+fn workspace_id(value: &str) -> WorkspaceId {
+    WorkspaceId::new(value).expect("test workspace identity is valid")
 }
 
 fn shown(navigator: &mut Navigator, width: u16, height: u16) -> String {
@@ -82,26 +88,53 @@ fn all_workspace_states_projects_and_file_counts_have_stable_rows() {
 }
 
 #[test]
+fn explicit_project_and_workspace_orders_control_the_rendered_hierarchy() {
+    let mut later_workspace =
+        WorkspacePresentation::new(workspace_id("later-workspace"), "later", 1);
+    later_workspace.state = WorkspaceState::Working;
+    let earlier_workspace =
+        WorkspacePresentation::new(workspace_id("earlier-workspace"), "earlier", 0);
+    let snapshot = NavigatorSnapshot::new(vec![
+        ProjectPresentation::new(
+            project_id("later-project"),
+            "later project",
+            1,
+            vec![later_workspace],
+        ),
+        ProjectPresentation::new(
+            project_id("earlier-project"),
+            "earlier project",
+            0,
+            vec![earlier_workspace],
+        ),
+    ]);
+    let mut navigator = Navigator::new(snapshot);
+
+    insta::assert_snapshot!(shown(&mut navigator, 24, 5), @"
+PROJECTS
+▾ earlier project
+  ○ earlier
+▾ later project
+  ● later
+    
+");
+}
+
+#[test]
 fn collapsing_a_project_keeps_a_blocked_descendant_loud() {
     let mut navigator = navigator();
-    navigator.toggle_project(&ProjectId::from("quorum"));
+    navigator.toggle_project(&project_id("quorum"));
 
     insta::assert_snapshot!(shown(&mut navigator, 32, 6));
 }
 
 #[test]
 fn unavailable_worktrees_and_main_workspaces_remain_visible() {
-    let mut navigator = Navigator::new(NavigatorSnapshot::new(vec![project(
-        "project",
-        "project",
-        vec![WorkspacePresentation {
-            id: WorkspaceId::from("main"),
-            label: "main".to_owned(),
-            main: true,
-            unavailable: true,
-            ..WorkspacePresentation::default()
-        }],
-    )]));
+    let mut main = WorkspacePresentation::new(workspace_id("main"), "main", 0);
+    main.main = true;
+    main.unavailable = true;
+    let mut navigator =
+        Navigator::new(NavigatorSnapshot::new(vec![project("project", "project", vec![main])]));
 
     insta::assert_snapshot!(shown(&mut navigator, 32, 4));
 }
@@ -124,7 +157,7 @@ fn selection_moves_through_visible_workspaces_and_scrolls_into_view() {
         navigator.next_workspace();
     }
 
-    assert_eq!(navigator.selected(), Some(&WorkspaceId::from("comms")));
+    assert_eq!(navigator.selected(), Some(&workspace_id("comms")));
     insta::assert_snapshot!(shown(&mut navigator, 32, 4));
     assert!(navigator.scroll_position() > 0);
 }
@@ -132,8 +165,8 @@ fn selection_moves_through_visible_workspaces_and_scrolls_into_view() {
 #[test]
 fn selection_and_collapse_survive_insertions_and_updates_by_identity() {
     let mut navigator = navigator();
-    navigator.select_workspace(&WorkspaceId::from("perf"));
-    navigator.toggle_project(&ProjectId::from("kicksite"));
+    navigator.select_workspace(&workspace_id("perf"));
+    navigator.toggle_project(&project_id("kicksite"));
     navigator.set_snapshot(NavigatorSnapshot::new(vec![
         project(
             "quorum",
@@ -147,21 +180,21 @@ fn selection_and_collapse_survive_insertions_and_updates_by_identity() {
         project("kicksite", "kicksite-web", vec![]),
     ]));
 
-    assert_eq!(navigator.selected(), Some(&WorkspaceId::from("perf")));
-    assert!(navigator.collapsed().contains(&ProjectId::from("kicksite")));
+    assert_eq!(navigator.selected(), Some(&workspace_id("perf")));
+    assert!(navigator.collapsed().contains(&project_id("kicksite")));
 }
 
 #[test]
 fn selection_falls_back_when_the_selected_workspace_disappears() {
     let mut navigator = navigator();
-    navigator.select_workspace(&WorkspaceId::from("dashboard"));
+    navigator.select_workspace(&workspace_id("dashboard"));
     navigator.set_snapshot(NavigatorSnapshot::new(vec![project(
         "quorum",
         "quorum",
         vec![workspace("auth", "auth-fix", WorkspaceState::Idle, 0)],
     )]));
 
-    assert_eq!(navigator.selected(), Some(&WorkspaceId::from("auth")));
+    assert_eq!(navigator.selected(), Some(&workspace_id("auth")));
 }
 
 #[test]
@@ -187,10 +220,10 @@ PROJECTS
 fn selecting_and_moving_in_an_empty_navigator_is_safe() {
     let mut empty_navigator = Navigator::default();
 
-    assert!(!empty_navigator.select_workspace(&WorkspaceId::from("missing")));
+    assert!(!empty_navigator.select_workspace(&workspace_id("missing")));
     assert_eq!(empty_navigator.next_workspace(), None);
     assert_eq!(empty_navigator.previous_workspace(), None);
-    assert!(!empty_navigator.toggle_project(&ProjectId::from("missing")));
+    assert!(!empty_navigator.toggle_project(&project_id("missing")));
     assert_eq!(shown(&mut empty_navigator, 0, 0), "");
     assert_eq!(shown(&mut empty_navigator, 1, 1), "P\n");
     assert!(!shown(&mut navigator(), 1, 4).is_empty());
@@ -199,14 +232,14 @@ fn selecting_and_moving_in_an_empty_navigator_is_safe() {
 #[test]
 fn selection_survives_a_changed_attention_state() {
     let mut navigator = navigator();
-    navigator.select_workspace(&WorkspaceId::from("auth"));
+    navigator.select_workspace(&workspace_id("auth"));
     navigator.set_snapshot(NavigatorSnapshot::new(vec![project(
         "quorum",
         "quorum",
         vec![workspace("auth", "auth-fix", WorkspaceState::Blocked, 10)],
     )]));
 
-    assert_eq!(navigator.selected(), Some(&WorkspaceId::from("auth")));
+    assert_eq!(navigator.selected(), Some(&workspace_id("auth")));
 }
 
 #[test]
