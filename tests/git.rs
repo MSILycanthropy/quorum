@@ -1,7 +1,8 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use quorum::git::{Content, Error, FileChange, Repository, Status, WorktreeRole};
+use quorum::git::{Content, Error, FileChange, Repository, Status};
+use quorum::project::WorkspaceKind;
 
 fn git(root: &Path, arguments: &[&str]) {
     let status = Command::new("git")
@@ -312,19 +313,22 @@ fn discovering_from_main_and_linked_worktrees_returns_the_same_project_inventory
 
     assert_eq!(from_main, from_linked);
     assert_eq!(
-        from_main.common_dir,
+        from_main.common_directory,
         root.join(".git").canonicalize().expect("the common directory is valid")
     );
     assert_eq!(from_main.worktrees.len(), 2);
-    assert_eq!(from_main.worktrees[0].path, root.canonicalize().expect("the main path is valid"));
-    assert_eq!(from_main.worktrees[0].role, WorktreeRole::Main);
-    assert_eq!(from_main.worktrees[0].branch.as_deref(), Some("main"));
     assert_eq!(
-        from_main.worktrees[1].path,
+        from_main.worktrees[0].worktree.location(),
+        root.canonicalize().expect("the main path is valid")
+    );
+    assert_eq!(from_main.worktrees[0].kind, WorkspaceKind::Main);
+    assert_eq!(from_main.worktrees[0].worktree.branch(), Some("main"));
+    assert_eq!(
+        from_main.worktrees[1].worktree.location(),
         linked.canonicalize().expect("the linked path is valid")
     );
-    assert_eq!(from_main.worktrees[1].role, WorktreeRole::Linked);
-    assert_eq!(from_main.worktrees[1].branch.as_deref(), Some("agent"));
+    assert_eq!(from_main.worktrees[1].kind, WorkspaceKind::Linked);
+    assert_eq!(from_main.worktrees[1].worktree.branch(), Some("agent"));
 }
 
 #[test]
@@ -347,7 +351,13 @@ fn inventory_lists_linked_worktrees_in_stable_path_order_and_keeps_detached_head
     let worktrees: Vec<_> = inventory
         .worktrees
         .iter()
-        .map(|worktree| (worktree.path.clone(), worktree.role, worktree.branch.clone()))
+        .map(|entry| {
+            (
+                entry.worktree.location().to_owned(),
+                entry.kind,
+                entry.worktree.branch().map(str::to_owned),
+            )
+        })
         .collect();
 
     assert_eq!(
@@ -355,22 +365,22 @@ fn inventory_lists_linked_worktrees_in_stable_path_order_and_keeps_detached_head
         vec![
             (
                 root.canonicalize().expect("the main path is valid"),
-                WorktreeRole::Main,
+                WorkspaceKind::Main,
                 Some("main".into())
             ),
             (
                 detached.canonicalize().expect("the detached path is valid"),
-                WorktreeRole::Linked,
+                WorkspaceKind::Linked,
                 None,
             ),
             (
                 second.canonicalize().expect("the second path is valid"),
-                WorktreeRole::Linked,
+                WorkspaceKind::Linked,
                 Some("second".into()),
             ),
             (
                 feature.canonicalize().expect("the feature path is valid"),
-                WorktreeRole::Linked,
+                WorkspaceKind::Linked,
                 Some("feature".into()),
             ),
         ]
@@ -392,5 +402,8 @@ fn inventory_skips_a_linked_worktree_whose_checkout_is_stale() {
         .expect("a stale worktree does not make inventory fail");
 
     assert_eq!(inventory.worktrees.len(), 1);
-    assert_eq!(inventory.worktrees[0].path, root.canonicalize().expect("the main path is valid"));
+    assert_eq!(
+        inventory.worktrees[0].worktree.location(),
+        root.canonicalize().expect("the main path is valid")
+    );
 }

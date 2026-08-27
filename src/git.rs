@@ -8,6 +8,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use crate::diff::{FileDiff, Source};
+use crate::project::{WorkspaceKind, Worktree};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -81,30 +82,20 @@ pub struct FileChange {
     pub content: Content,
 }
 
-/// The role a worktree has in its repository.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum WorktreeRole {
-    Main,
-    Linked,
-}
-
-/// Git facts about one available worktree.
+/// Git facts about one available worktree and its project role.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct WorktreeInventory {
-    /// The canonical path to the worktree checkout.
-    pub path: PathBuf,
-    pub role: WorktreeRole,
-    /// The branch checked out here, or `None` for a detached HEAD.
-    pub branch: Option<String>,
+    pub kind: WorkspaceKind,
+    pub worktree: Worktree,
 }
 
 /// The repository and all of its available worktrees.
 ///
-/// `common_dir` is the stable Git-level key shared by the main and linked
+/// `common_directory` is the stable Git-level key shared by the main and linked
 /// worktrees. It is deliberately not a Quorum Project ID.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ProjectInventory {
-    pub common_dir: PathBuf,
+    pub common_directory: PathBuf,
     pub worktrees: Vec<WorktreeInventory>,
 }
 
@@ -147,9 +138,11 @@ impl Repository {
             .canonicalize()?;
         let common_dir = main_repository.common_dir().canonicalize()?;
         let main = WorktreeInventory {
-            path: main_workdir,
-            role: WorktreeRole::Main,
-            branch: main_repository.head_name()?.map(|name| name.shorten().to_string()),
+            kind: WorkspaceKind::Main,
+            worktree: Worktree::new(
+                main_workdir,
+                main_repository.head_name()?.map(|name| name.shorten().to_string()),
+            ),
         };
         let mut linked = Vec::new();
 
@@ -162,16 +155,19 @@ impl Repository {
             };
             let repository = proxy.into_repo_with_possibly_inaccessible_worktree()?;
             let branch = repository.head_name()?.map(|name| name.shorten().to_string());
-            linked.push(WorktreeInventory { path, role: WorktreeRole::Linked, branch });
+            linked.push(WorktreeInventory {
+                kind: WorkspaceKind::Linked,
+                worktree: Worktree::new(path, branch),
+            });
         }
 
-        linked.sort_by(|left, right| left.path.cmp(&right.path));
+        linked.sort_by(|left, right| left.worktree.location().cmp(right.worktree.location()));
 
         let mut worktrees = Vec::with_capacity(linked.len() + 1);
         worktrees.push(main);
         worktrees.extend(linked);
 
-        Ok(ProjectInventory { common_dir, worktrees })
+        Ok(ProjectInventory { common_directory: common_dir, worktrees })
     }
 
     #[expect(
