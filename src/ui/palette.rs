@@ -1,12 +1,16 @@
-//! The keyboard-driven overlay for commands and workspace targets.
+//! The keyboard-driven overlay for running a command or jumping to a file by name.
 
 use ratatui::Frame;
 use ratatui::buffer::Buffer;
-use ratatui::crossterm::event::{KeyCode, KeyEvent};
+use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
+use ratatui::widgets::Clear;
+use unicode_width::UnicodeWidthStr;
 
+use crate::color::Rgb;
 use crate::command::{PaletteEntry, PaletteModel, PaletteTarget};
+use crate::theme::{Tints, TokyoNight};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PaletteAction {
@@ -15,17 +19,33 @@ pub enum PaletteAction {
     Execute(PaletteTarget),
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct Palette {
     entries: Vec<PaletteEntry>,
+    title: &'static str,
     query: String,
     selected: usize,
     model: PaletteModel,
+    tints: Tints,
+}
+
+impl Default for Palette {
+    fn default() -> Self {
+        Self {
+            entries: Vec::new(),
+            title: "",
+            query: String::new(),
+            selected: 0,
+            model: PaletteModel,
+            tints: TokyoNight::TINTS,
+        }
+    }
 }
 
 impl Palette {
-    pub fn open(&mut self, entries: Vec<PaletteEntry>) {
+    pub fn open(&mut self, title: &'static str, entries: Vec<PaletteEntry>) {
         self.entries = entries;
+        self.title = title;
         self.query.clear();
         self.selected = 0;
     }
@@ -52,23 +72,35 @@ impl Palette {
         if !self.is_open() {
             return PaletteAction::None;
         }
+        let control = key.modifiers.contains(KeyModifiers::CONTROL);
         match key.code {
             KeyCode::Esc => {
                 self.close();
                 PaletteAction::Close
             }
-            KeyCode::Enter => {
-                let target = self.selected().map(|entry| entry.target().clone());
+            KeyCode::Char('c') if control => {
                 self.close();
-                target.map_or(PaletteAction::None, PaletteAction::Execute)
+                PaletteAction::Close
             }
-            KeyCode::Up => {
+            KeyCode::Enter => {
+                let target = self.selected().map(|entry| entry.target.clone());
+                self.close();
+                target.map_or(PaletteAction::Close, PaletteAction::Execute)
+            }
+            KeyCode::Up | KeyCode::BackTab => {
                 self.selected = self.selected.saturating_sub(1);
                 PaletteAction::None
             }
-            KeyCode::Down => {
-                let count = self.model.rank(&self.query, &self.entries).len();
-                self.selected = self.selected.saturating_add(1).min(count.saturating_sub(1));
+            KeyCode::Char('p' | 'k') if control => {
+                self.selected = self.selected.saturating_sub(1);
+                PaletteAction::None
+            }
+            KeyCode::Down | KeyCode::Tab => {
+                self.down();
+                PaletteAction::None
+            }
+            KeyCode::Char('n' | 'j') if control => {
+                self.down();
                 PaletteAction::None
             }
             KeyCode::Backspace => {
@@ -76,7 +108,7 @@ impl Palette {
                 self.selected = 0;
                 PaletteAction::None
             }
-            KeyCode::Char(character) => {
+            KeyCode::Char(character) if !control => {
                 self.query.push(character);
                 self.selected = 0;
                 PaletteAction::None
@@ -90,60 +122,69 @@ impl Palette {
             return;
         }
         let area = frame.area();
-        let width = area.width.saturating_sub(8).min(90);
-        let height = area.height.saturating_sub(4).min(16);
+        let width = area.width.saturating_sub(4).min(80);
+        let ranked = self.model.rank(&self.query, &self.entries);
+        let wanted = u16::try_from(ranked.len().max(1) + 1).unwrap_or(u16::MAX);
+        let height = area.height.saturating_sub(4).min(18).min(wanted);
         let left = area.x + area.width.saturating_sub(width) / 2;
-        let top = area.y + area.height.saturating_sub(height) / 2;
+        let top = area.y + area.height.saturating_sub(height) / 3;
         let popup = Rect::new(left, top, width, height);
+        frame.render_widget(Clear, popup);
         let buffer = frame.buffer_mut();
-        buffer.set_style(popup, Style::default().bg(Color::Black).fg(Color::White));
-        write(
-            buffer,
+
+        let base = Style::new().bg(color(self.tints.filler)).fg(color(self.tints.foreground));
+        let muted = base.fg(color(self.tints.muted));
+        buffer.set_style(popup, base);
+        let inner = popup.width.saturating_sub(2);
+
+        let (x, _) = buffer.set_stringn(
             popup.x + 1,
             popup.y,
-            popup.width.saturating_sub(2),
-            &format!("> {}", self.query),
+            format!("{} › ", self.title),
+            usize::from(inner),
+            muted,
         );
+        let typed = popup.x + 1 + inner;
+        let (cursor, _) =
+            buffer.set_stringn(x, popup.y, &self.query, usize::from(typed.saturating_sub(x)), base);
+        if cursor < typed {
+            buffer.set_string(cursor, popup.y, " ", base.add_modifier(Modifier::REVERSED));
+        }
 
-        for (offset, entry) in self.model.rank(&self.query, &self.entries).iter().enumerate() {
-            let row = u16::try_from(offset + 1).unwrap_or(u16::MAX);
-            if row >= popup.height {
-                break;
-            }
+        let room = usize::from(popup.height.saturating_sub(1));
+        let first = (self.selected + 1).saturating_sub(room);
+        for (offset, entry) in ranked.iter().enumerate().skip(first).take(room) {
+            let y = popup.y + 1 + u16::try_from(offset - first).unwrap_or(u16::MAX);
             let selected = offset == self.selected;
-            let style = if selected {
-                Style::default().bg(Color::DarkGray).add_modifier(Modifier::BOLD)
-            } else {
-                Style::default()
-            };
-            buffer.set_style(Rect::new(popup.x, popup.y + row, popup.width, 1), style);
-            let shortcuts = entry
-                .shortcuts()
-                .iter()
-                .map(|shortcut| shortcut.display())
-                .collect::<Vec<_>>()
-                .join(", ");
-            let label = if shortcuts.is_empty() {
-                entry.label().to_owned()
-            } else {
-                format!("{}  {}", entry.label(), shortcuts)
-            };
-            write_styled(
-                buffer,
-                popup.x + 1,
-                popup.y + row,
-                popup.width.saturating_sub(2),
-                &label,
-                style,
+            let style = if selected { base.bg(color(self.tints.gutter)) } else { base };
+            self.row(buffer, Rect::new(popup.x, y, popup.width, 1), entry, style);
+        }
+        if ranked.is_empty() {
+            buffer.set_stringn(popup.x + 1, popup.y + 1, "no matches", usize::from(inner), muted);
+        }
+    }
+
+    fn down(&mut self) {
+        let count = self.model.rank(&self.query, &self.entries).len();
+        self.selected = self.selected.saturating_add(1).min(count.saturating_sub(1));
+    }
+
+    fn row(&self, buffer: &mut Buffer, area: Rect, entry: &PaletteEntry, style: Style) {
+        buffer.set_style(area, style);
+        let keys = u16::try_from(entry.keys.width()).unwrap_or(0);
+        let label_room = area.width.saturating_sub(keys + 4);
+        buffer.set_stringn(area.x + 1, area.y, &entry.label, usize::from(label_room), style);
+        if keys > 0 && keys + 4 < area.width {
+            buffer.set_string(
+                area.x + area.width - keys - 1,
+                area.y,
+                &entry.keys,
+                style.fg(color(self.tints.attention)),
             );
         }
     }
 }
 
-fn write(buffer: &mut Buffer, x: u16, y: u16, width: u16, text: &str) {
-    write_styled(buffer, x, y, width, text, Style::default());
-}
-
-fn write_styled(buffer: &mut Buffer, x: u16, y: u16, width: u16, text: &str, style: Style) {
-    buffer.set_stringn(x, y, text, usize::from(width), style);
+fn color(rgb: Rgb) -> Color {
+    Color::Rgb(rgb.red, rgb.green, rgb.blue)
 }

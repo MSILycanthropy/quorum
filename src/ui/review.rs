@@ -2,16 +2,15 @@
 
 use ratatui::Frame;
 use ratatui::buffer::Buffer;
-use ratatui::crossterm::event::{
-    KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
-};
+use ratatui::crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
 use ratatui::layout::{Position, Rect};
 use ratatui::style::{Color, Style};
 
 use crate::color::Rgb;
+use crate::command::Command;
 use crate::git::{Content, FileChange, Status};
 use crate::theme::{Tints, TokyoNight};
-use crate::ui::{Control, Mode, Result, Tree, Viewer};
+use crate::ui::{Landing, Mode, Result, Tree, Viewer};
 
 const SIDEBAR: u16 = 34;
 const NARROWEST: u16 = 40;
@@ -95,7 +94,14 @@ impl Review {
         };
 
         let line = format!("{} {}", change.status.letter(), change.path.display());
-        let counter = format!("{}/{} ", self.opened + 1, self.changes.len());
+        let position = self
+            .tree
+            .rows()
+            .iter()
+            .filter_map(|row| row.change)
+            .position(|change| change == self.opened)
+            .map_or(0, |position| position + 1);
+        let counter = format!("{position}/{} ", self.changes.len());
         let room = u16::try_from(counter.len()).unwrap_or(0);
         buffer.set_stringn(
             titled.x + 1,
@@ -134,24 +140,76 @@ impl Review {
         clippy::missing_errors_doc,
         reason = "the Error enum names the only failure, highlighting the file moved to"
     )]
-    pub fn key(&mut self, key: KeyEvent) -> Result<Control> {
-        match key.code {
-            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                return Ok(Control::Quit);
+    pub fn run(&mut self, command: Command) -> Result<()> {
+        match command {
+            Command::NextFile => {
+                self.step(Step::Forward)?;
             }
-            KeyCode::Char('q') | KeyCode::Esc => return Ok(Control::Quit),
-            KeyCode::Char(']') => self.select(self.selected.saturating_add(1))?,
-            KeyCode::Char('[') => self.select(self.selected.saturating_sub(1))?,
-            KeyCode::Enter | KeyCode::Char(' ') => self.fold(),
-            KeyCode::Char('F') => self.showing = !self.showing,
-            _ => {
+            Command::PreviousFile => {
+                self.step(Step::Backward)?;
+            }
+            Command::ToggleFileList => self.showing = !self.showing,
+            Command::NextHunk => {
+                let moved = self.viewer.as_mut().is_some_and(Viewer::next_hunk);
+                if !moved && self.step(Step::Forward)? {
+                    self.land(Landing::FirstHunk);
+                }
+            }
+            Command::PreviousHunk => {
+                let moved = self.viewer.as_mut().is_some_and(Viewer::previous_hunk);
+                if !moved && self.step(Step::Backward)? {
+                    self.land(Landing::LastHunk);
+                }
+            }
+            command => {
                 if let Some(viewer) = &mut self.viewer {
-                    viewer.key(key);
+                    viewer.run(command);
                 }
             }
         }
 
-        Ok(Control::Continue)
+        Ok(())
+    }
+
+    pub fn path(&self) -> Option<&std::path::Path> {
+        self.changes.get(self.opened).map(|change| change.path.as_path())
+    }
+
+    pub fn line(&self) -> Option<usize> {
+        self.viewer.as_ref().and_then(Viewer::line)
+    }
+
+    pub fn hunk(&self) -> (Option<usize>, usize) {
+        self.viewer.as_ref().map_or((None, 0), Viewer::hunk)
+    }
+
+    fn step(&mut self, step: Step) -> Result<bool> {
+        let rows = self.tree.rows();
+        let target = match step {
+            Step::Forward => rows
+                .iter()
+                .enumerate()
+                .skip(self.selected + 1)
+                .find(|(_, row)| row.change.is_some()),
+            Step::Backward => rows
+                .iter()
+                .enumerate()
+                .take(self.selected)
+                .rev()
+                .find(|(_, row)| row.change.is_some()),
+        };
+        let Some((index, _)) = target else {
+            return Ok(false);
+        };
+        self.select(index)?;
+
+        Ok(true)
+    }
+
+    fn land(&mut self, landing: Landing) {
+        if let Some(viewer) = &mut self.viewer {
+            viewer.land_on(landing);
+        }
     }
 
     #[expect(
@@ -195,12 +253,17 @@ impl Review {
     )]
     pub fn refresh(&mut self, changes: Vec<FileChange>) -> Result<()> {
         let reading = self.changes.get(self.opened).map(|change| change.path.clone());
+        let place = self.viewer.as_ref().map(Viewer::place);
+        if let Some(viewer) = &self.viewer {
+            self.mode = viewer.mode();
+            self.wrap = viewer.wrap();
+        }
 
         self.changes = changes;
         self.tree = Tree::of(&self.changes);
-        self.opened = reading
-            .and_then(|path| self.changes.iter().position(|change| change.path == path))
-            .unwrap_or_default();
+        let kept =
+            reading.and_then(|path| self.changes.iter().position(|change| change.path == path));
+        self.opened = kept.unwrap_or_default();
         self.selected = self
             .changes
             .get(self.opened)
@@ -208,7 +271,12 @@ impl Review {
             .unwrap_or_default();
         self.first = 0;
 
-        self.open()
+        self.open()?;
+        if let (Some(_), Some(place), Some(viewer)) = (kept, place, &mut self.viewer) {
+            viewer.return_to(place);
+        }
+
+        Ok(())
     }
 
     fn roll(&mut self, rows: isize) {
@@ -393,6 +461,12 @@ impl Review {
             (Status::Modified, true) => self.tints.filler,
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+enum Step {
+    Forward,
+    Backward,
 }
 
 fn color(rgb: Rgb) -> Color {

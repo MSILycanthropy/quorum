@@ -1,8 +1,0 @@
----
-source: tests/navigator.rs
-expression: "shown(&mut navigator, 24, 4)"
----
-PROJECTS
-▾ empty
-  (empty project)
-

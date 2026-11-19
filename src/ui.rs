@@ -1,27 +1,18 @@
-//! A terminal workspace for directing parallel coding agents.
+//! The terminal surfaces: the file list, the diff, and the overlays over them.
 
-mod conversation;
-mod navigator;
+mod help;
 mod palette;
-mod prompt;
 mod review;
-mod split;
-mod tab;
+mod surface;
 mod tree;
 mod viewer;
 
-pub use conversation::Conversation;
-pub use navigator::{
-    Navigator, NavigatorSnapshot, ProjectId, ProjectPresentation, WorkspaceId,
-    WorkspacePresentation, WorkspaceState,
-};
+pub use help::Help;
 pub use palette::{Palette, PaletteAction};
-pub use prompt::Prompt;
 pub use review::Review;
-pub use split::{Columns, Split};
-pub use tab::{Activity, Opening, Tab};
+pub use surface::{Opening, Surface};
 pub use tree::{Row, Tree};
-pub use viewer::Viewer;
+pub use viewer::{Landing, Place, Viewer};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -41,9 +32,16 @@ pub enum Mode {
     Unified,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+/// What the surface asks of the program around it after a key.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub enum Control {
     #[default]
     Continue,
     Quit,
+    Reload,
+    Edit {
+        path: std::path::PathBuf,
+        line: Option<usize>,
+    },
+    Copy(String),
 }

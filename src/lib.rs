@@ -1,14 +1,9 @@
-//! A terminal workspace for directing parallel coding agents.
+//! A terminal diff viewer over git.
 
-pub mod agent;
-pub mod application;
 pub mod color;
 pub mod command;
 pub mod diff;
 pub mod git;
-pub mod project;
-pub mod shell;
-pub mod store;
 pub mod syntax;
 pub mod theme;
 pub mod ui;

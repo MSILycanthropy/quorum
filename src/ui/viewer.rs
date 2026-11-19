@@ -4,18 +4,35 @@ use std::path::Path;
 
 use ratatui::Frame;
 use ratatui::buffer::Buffer;
-use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
 
 use crate::color::Rgb;
+use crate::command::Command;
 use crate::diff::{
     Align, Cells, FileDiff, Highlighting, Layout, Painted, Row, RowKind, ScreenRow, Viewport,
     unified,
 };
 use crate::syntax::Syntax;
 use crate::theme::{Tints, TokyoNight};
-use crate::ui::{Control, Mode, Result};
+use crate::ui::{Mode, Result};
+
+/// How many rows of context a hunk jump leaves above the hunk.
+const CONTEXT: usize = 3;
+
+/// Which hunk to land on once the diff has been laid out for the first time.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Landing {
+    FirstHunk,
+    LastHunk,
+}
+
+/// Where the reader was scrolled to, kept across a reload of the same file.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub struct Place {
+    pub top: usize,
+    pub left: usize,
+}
 
 /// A view of one diff, and where the reader is looking at it.
 pub struct Viewer {
@@ -30,8 +47,12 @@ pub struct Viewer {
     tab_width: usize,
     top: usize,
     left: usize,
+    height: usize,
     screen: Vec<ScreenRow>,
+    hunks: Vec<usize>,
+    focus: Option<usize>,
     laid_out: Option<Geometry>,
+    landing: Option<Landing>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -72,15 +93,29 @@ impl Viewer {
             tab_width,
             top: 0,
             left: 0,
+            height: 0,
             screen: Vec::new(),
+            hunks: Vec::new(),
+            focus: None,
             laid_out: None,
+            landing: None,
         })
     }
 
     pub fn draw(&mut self, frame: &mut Frame, area: Rect) {
         let gutter = self.gutter();
         let pane = pane_width(area, gutter, self.mode);
+        self.height = usize::from(area.height);
         self.lay_out(pane);
+        match self.landing.take() {
+            Some(Landing::FirstHunk) => {
+                self.land((!self.hunks.is_empty()).then_some(0));
+            }
+            Some(Landing::LastHunk) => {
+                self.land(self.hunks.len().checked_sub(1));
+            }
+            None => {}
+        }
         self.top = self.top.min(self.screen.len().saturating_sub(1));
 
         let buffer = frame.buffer_mut();
@@ -109,35 +144,106 @@ impl Viewer {
         self.top = self.top.saturating_add_signed(rows);
     }
 
-    pub fn key(&mut self, key: KeyEvent) -> Control {
-        let page = 10;
-        match key.code {
-            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                return Control::Quit;
-            }
-            KeyCode::Char('q') | KeyCode::Esc => return Control::Quit,
-            KeyCode::Char('j') | KeyCode::Down => self.top += 1,
-            KeyCode::Char('k') | KeyCode::Up => self.top = self.top.saturating_sub(1),
-            KeyCode::PageDown => self.top += page,
-            KeyCode::PageUp => self.top = self.top.saturating_sub(page),
-            KeyCode::Char('g') | KeyCode::Home => self.top = 0,
-            KeyCode::Char('G') | KeyCode::End => self.top = self.screen.len(),
-            KeyCode::Char('h') | KeyCode::Left => self.left = self.left.saturating_sub(4),
-            KeyCode::Char('l') | KeyCode::Right => self.left += 4,
-            KeyCode::Char('w') => {
+    pub fn place(&self) -> Place {
+        Place { top: self.top, left: self.left }
+    }
+
+    pub fn return_to(&mut self, place: Place) {
+        self.top = place.top;
+        self.left = place.left;
+    }
+
+    pub fn land_on(&mut self, landing: Landing) {
+        self.landing = Some(landing);
+    }
+
+    pub fn run(&mut self, command: Command) {
+        let page = self.height.max(2);
+        if !matches!(command, Command::NextHunk | Command::PreviousHunk) {
+            self.focus = None;
+        }
+        match command {
+            Command::NextLine => self.top += 1,
+            Command::PreviousLine => self.top = self.top.saturating_sub(1),
+            Command::HalfPageDown => self.top += page / 2,
+            Command::HalfPageUp => self.top = self.top.saturating_sub(page / 2),
+            Command::PageDown => self.top += page - 1,
+            Command::PageUp => self.top = self.top.saturating_sub(page - 1),
+            Command::Top => self.top = 0,
+            Command::Bottom => self.top = self.screen.len(),
+            Command::ScrollLeft => self.left = self.left.saturating_sub(4),
+            Command::ScrollRight => self.left += 4,
+            Command::ToggleWrapping => {
                 self.wrap = !self.wrap;
                 self.left = 0;
             }
-            KeyCode::Char('s') => {
+            Command::ToggleLayout => {
                 self.mode = match self.mode {
                     Mode::SideBySide => Mode::Unified,
                     Mode::Unified => Mode::SideBySide,
                 };
                 self.top = 0;
             }
+            Command::NextHunk => {
+                self.next_hunk();
+            }
+            Command::PreviousHunk => {
+                self.previous_hunk();
+            }
             _ => {}
         }
-        Control::Continue
+    }
+
+    pub fn next_hunk(&mut self) -> bool {
+        let reading = self.top + CONTEXT;
+        let next = self.focus.map_or_else(
+            || self.hunks.iter().position(|&start| start > reading),
+            |focus| Some(focus + 1).filter(|&next| next < self.hunks.len()),
+        );
+        self.land(next)
+    }
+
+    pub fn previous_hunk(&mut self) -> bool {
+        let previous = self.focus.map_or_else(
+            || self.hunks.iter().rposition(|&start| start < self.top),
+            |focus| focus.checked_sub(1),
+        );
+        self.land(previous)
+    }
+
+    pub fn hunk(&self) -> (Option<usize>, usize) {
+        let current = self.focus.or_else(|| {
+            let reading = self.top + CONTEXT;
+            self.hunks.iter().rposition(|&start| start <= reading)
+        });
+
+        (current.map(|index| index + 1), self.hunks.len())
+    }
+
+    pub fn line(&self) -> Option<usize> {
+        let rows = self.rows();
+        let bottom = (self.top + self.height.max(1)).min(self.screen.len());
+        let visible = self.top.min(bottom)..bottom;
+        let focused = self.focus.and_then(|focus| self.hunks.get(focus).copied());
+        let changed = self.hunks.iter().copied().find(|start| visible.contains(start));
+        let reading = focused.or(changed).unwrap_or(visible.start);
+
+        self.screen
+            .iter()
+            .skip(reading)
+            .chain(self.screen.iter().take(reading).rev())
+            .find_map(|painted| rows[painted.row].new.line)
+            .map(|line| line + 1)
+    }
+
+    fn land(&mut self, hunk: Option<usize>) -> bool {
+        let Some(start) = hunk.and_then(|hunk| self.hunks.get(hunk).copied()) else {
+            return false;
+        };
+        self.focus = hunk;
+        self.top = start.saturating_sub(CONTEXT);
+
+        true
     }
 
     fn rows(&self) -> &[Row] {
@@ -170,6 +276,8 @@ impl Viewer {
             new_syntax: &self.new_syntax,
         };
         self.screen = layout.screen_rows(&self.diff, self.rows());
+        self.hunks = hunks(&self.screen, self.rows());
+        self.focus = None;
         self.laid_out = Some(geometry);
     }
 }
@@ -274,6 +382,20 @@ impl Screen<'_> {
             );
         }
     }
+}
+
+fn hunks(screen: &[ScreenRow], rows: &[Row]) -> Vec<usize> {
+    let mut starts = Vec::new();
+    let mut inside = false;
+    for (index, painted) in screen.iter().enumerate() {
+        let changed = rows[painted.row].kind != RowKind::Equal;
+        if changed && !inside {
+            starts.push(index);
+        }
+        inside = changed;
+    }
+
+    starts
 }
 
 fn numbers(painted: &ScreenRow, row: &Row) -> (Option<usize>, Option<usize>) {

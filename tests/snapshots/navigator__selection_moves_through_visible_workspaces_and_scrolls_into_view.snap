@@ -1,9 +1,0 @@
----
-source: tests/navigator.rs
-assertion_line: 128
-expression: "shown(&mut navigator, 32, 4)"
----
-PROJECTS
-  ○ main                       4
-▾ kicksite-web
-  ○ COMMS-434                  5
