@@ -1,0 +1,10 @@
+---
+source: tests/surface.rs
+assertion_line: 88
+expression: "screen(&mut surface(), 140, 5)"
+---
+ CHANGES                           M src/other.rs                                                                                       1/2
+ ▾ src                           │1 one                                               │1 one
+   M other.rs                    │2 two                                               │2 three
+   M total.rs                    │3                                                   │3
+ ⎇ main · HEAD → worktree · 2 files · hunk 1/1 · side by side           n hunk  ] file  C-b files  / find  e edit  s layout  ? help  q quit

@@ -1,49 +1,57 @@
 # Quorum
 
-A terminal workspace for parallel coding agents.
+A terminal diff viewer over git. It shows side-by-side or unified diffs with
+syntax highlighting and intraline emphasis, and a file tree next to them.
 
-Quorum keeps the whole agentic work loop in one place: start agents in isolated
-git worktrees, see who needs attention, converse and intervene, inspect what they
-changed, run commands yourself, and decide what happens to the result.
+## Usage
 
-Review is a first-class feature, not the frame around the application. Work and
-Review are explicit surfaces within each agent workspace, with a shell drawer
-available when the work needs a human hand.
+Run it inside a repository:
 
-## What it does
+```bash
+quorum                  # working tree against HEAD
+quorum --staged         # what's staged, against HEAD
+quorum main             # working tree against main
+quorum main..feature    # main against feature
+quorum main...feature   # what feature did since it branched off main
+quorum --show HEAD~2    # one commit against its parent
+quorum -- src/          # only paths under src/
+```
 
-- **Agent workspaces** — one stable tab per agent and worktree, including
-  worktrees Quorum did not create.
-- **Attention triage** — working, blocked and finished agents stay visible
-  without pulling you away from the tab you are using.
-- **Interchangeable agents** — sessions are driven over
-  [ACP](https://agentclientprotocol.com), rather than scraping a rendered TUI.
-- **Integrated review** — worktree diffs are anchored on each agent's base
-  commit because agent work is usually still uncommitted.
-- **Human intervention** — a shell drawer opens in the active worktree and its
-  processes survive tab switches.
-- **Cross-agent awareness** — overlapping work is surfaced before agents try to
-  land incompatible changes.
+`quorum --no-index old.rs new.rs` compares two files outside a repository.
 
-Terminal first. The core is UI-agnostic; a GUI can come later without touching it.
+## Keys
+
+Press `?` for every key. The status line shows the ones you'll use most. These
+are the main ones:
+
+```
+n / N       next / previous hunk, carrying on into the next file
+] / [       next / previous file
+/           find a file by name
+:  ctrl-p   run any command by name
+e           open $EDITOR at the line you're looking at
+y           copy the file's path
+s           side by side or unified
+w           wrap long lines
+ctrl-b  f   show or hide the file list
+r           reload from git
+q           quit
+```
+
+`j`/`k`, `ctrl-d`/`ctrl-u`, `g`/`G` and the arrow keys scroll like you'd expect.
+After `e` the diff reloads, so you see your edit straight away.
 
 ## Layout
 
-One crate for now; the seams below are module boundaries, not crate
-boundaries, and get split out when they earn it.
+    src/command.rs   every command and the keys bound to it
+    src/diff         diff model, side-by-side alignment, wrapping
+    src/git.rs       what changed between a revision and the worktree, index or another revision
+    src/ui           the file list, the diff, and the help and palette overlays
 
-    src/agent    ACP sessions and transcripts
-    src/diff     diff model, side-by-side alignment, wrapping
-    src/git      worktree discovery and git plumbing
-    src/ui       Work, Review and shell surfaces
+The key catalog in `command.rs` is the one place a key gets its meaning. The
+help overlay, the palette and the status line hints are all drawn from it, so
+they can't drift apart.
 
 ## Requires
 
 Rust stable (edition 2024) and git ≥ 2.38.
-
-## Status
-
-Early. The current build can drive one ACP agent and inspect one worktree with a
-side-by-side or unified diff. The multi-worktree application shell, explicit
-Work and Review surfaces, shell drawer, lifecycle verbs and cross-agent
-awareness described in `DESIGN.md` are still being built.

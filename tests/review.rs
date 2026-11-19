@@ -4,6 +4,7 @@ use std::fmt::Write;
 use std::path::PathBuf;
 
 use quorum::color::Rgb;
+use quorum::command::Command;
 use quorum::diff::{FileDiff, Source};
 use quorum::git::{Content, FileChange, Status};
 use quorum::theme::TokyoNight;
@@ -11,9 +12,7 @@ use quorum::ui::{Mode, Review};
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::buffer::Buffer;
-use ratatui::crossterm::event::{
-    KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
-};
+use ratatui::crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::style::Color;
 
 fn modified(path: &str, old: &str, new: &str) -> FileChange {
@@ -84,14 +83,14 @@ fn moused(changes: Vec<FileChange>, width: u16, height: u16, mouse: &[MouseEvent
     describe(terminal.backend().buffer())
 }
 
-fn shown(changes: Vec<FileChange>, width: u16, height: u16, keys: &[KeyCode]) -> String {
+fn shown(changes: Vec<FileChange>, width: u16, height: u16, commands: &[Command]) -> String {
     let mut review =
         Review::new(changes, Mode::SideBySide, false, 4).expect("the fixtures highlight");
     let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("test backend starts");
 
     terminal.draw(|frame| review.draw(frame, frame.area())).expect("draw succeeds");
-    for key in keys {
-        review.key(KeyEvent::new(*key, KeyModifiers::NONE)).expect("the fixtures highlight");
+    for command in commands {
+        review.run(*command).expect("the fixtures highlight");
         terminal.draw(|frame| review.draw(frame, frame.area())).expect("draw succeeds");
     }
 
@@ -139,29 +138,57 @@ fn the_sidebar_lists_every_change_beside_the_diff_of_the_selected_one() {
 
 #[test]
 fn moving_to_the_next_file_selects_it_and_swaps_the_diff() {
-    insta::assert_snapshot!(shown(fixtures(), 90, 8, &[KeyCode::Char(']')]));
+    insta::assert_snapshot!(shown(fixtures(), 90, 8, &[Command::NextFile]));
 }
 
 #[test]
 fn moving_past_the_last_file_stays_on_it() {
-    let keys = [KeyCode::Char(']'); 9];
+    let commands = [Command::NextFile; 9];
 
-    assert_eq!(shown(fixtures(), 90, 8, &keys), shown(fixtures(), 90, 8, &[KeyCode::Char(']'); 2]));
+    assert_eq!(
+        shown(fixtures(), 90, 8, &commands),
+        shown(fixtures(), 90, 8, &[Command::NextFile; 2])
+    );
 }
 
 #[test]
-fn moving_back_from_the_first_file_lands_on_the_directory_holding_it() {
-    insta::assert_snapshot!(shown(fixtures(), 90, 8, &[KeyCode::Char('[')]));
+fn moving_back_from_the_first_file_stays_on_it_rather_than_selecting_its_directory() {
+    assert_eq!(shown(fixtures(), 90, 8, &[Command::PreviousFile]), shown(fixtures(), 90, 8, &[]));
+}
+
+#[test]
+fn the_next_hunk_past_the_last_one_in_a_file_is_the_first_one_in_the_next_file() {
+    let hunked = shown(fixtures(), 90, 8, &[Command::NextHunk]);
+
+    assert_eq!(hunked, shown(fixtures(), 90, 8, &[Command::NextFile]));
+}
+
+#[test]
+fn the_previous_hunk_before_the_first_one_is_the_last_one_in_the_previous_file() {
+    let hunked = shown(fixtures(), 90, 8, &[Command::NextFile, Command::PreviousHunk]);
+
+    assert_eq!(hunked, shown(fixtures(), 90, 8, &[]));
+}
+
+#[test]
+fn hunks_are_counted_for_the_file_on_screen() {
+    let mut review = Review::new(vec![tall("src/tall.rs")], Mode::SideBySide, false, 4)
+        .expect("the fixtures highlight");
+    let mut terminal = Terminal::new(TestBackend::new(90, 8)).expect("test backend starts");
+    terminal.draw(|frame| review.draw(frame, frame.area())).expect("draw succeeds");
+
+    assert_eq!(review.hunk(), (Some(1), 1));
+    assert_eq!(review.line(), Some(4));
 }
 
 #[test]
 fn hiding_the_sidebar_gives_its_width_to_the_diff() {
-    insta::assert_snapshot!(shown(fixtures(), 90, 8, &[KeyCode::Char('F')]));
+    insta::assert_snapshot!(shown(fixtures(), 90, 8, &[Command::ToggleFileList]));
 }
 
 #[test]
 fn a_terminal_too_narrow_for_both_drops_the_sidebar() {
-    assert_eq!(shown(fixtures(), 60, 6, &[]), shown(fixtures(), 60, 6, &[KeyCode::Char('F')]));
+    assert_eq!(shown(fixtures(), 60, 6, &[]), shown(fixtures(), 60, 6, &[Command::ToggleFileList]));
 }
 
 #[test]
@@ -176,8 +203,8 @@ fn a_review_of_nothing_says_so() {
 
 #[test]
 fn the_layout_chosen_in_one_file_survives_the_move_to_the_next() {
-    let switched = shown(fixtures(), 90, 8, &[KeyCode::Char('s'), KeyCode::Char(']')]);
-    let unified = shown(fixtures(), 90, 8, &[KeyCode::Char(']'), KeyCode::Char('s')]);
+    let switched = shown(fixtures(), 90, 8, &[Command::ToggleLayout, Command::NextFile]);
+    let unified = shown(fixtures(), 90, 8, &[Command::NextFile, Command::ToggleLayout]);
 
     assert_eq!(switched, unified);
 }
@@ -186,7 +213,7 @@ fn the_layout_chosen_in_one_file_survives_the_move_to_the_next() {
 fn clicking_a_file_in_the_list_selects_it() {
     let clicked = moused(fixtures(), 90, 8, &[click(6, 3)]);
 
-    assert_eq!(clicked, shown(fixtures(), 90, 8, &[KeyCode::Char(']')]));
+    assert_eq!(clicked, shown(fixtures(), 90, 8, &[Command::NextFile]));
 }
 
 #[test]
@@ -207,21 +234,21 @@ fn clicking_in_the_diff_does_not_change_the_file() {
 fn the_wheel_over_the_list_moves_between_files() {
     let rolled = moused(fixtures(), 90, 8, &[at(MouseEventKind::ScrollDown, 6, 2)]);
 
-    assert_eq!(rolled, shown(fixtures(), 90, 8, &[KeyCode::Char(']')]));
+    assert_eq!(rolled, shown(fixtures(), 90, 8, &[Command::NextFile]));
 }
 
 #[test]
 fn the_wheel_over_the_diff_scrolls_it_and_leaves_the_file_alone() {
     let rolled = moused(vec![tall("src/tall.rs")], 90, 8, &[at(MouseEventKind::ScrollDown, 60, 4)]);
 
-    assert_eq!(rolled, shown(vec![tall("src/tall.rs")], 90, 8, &[KeyCode::Char('j'); 3]));
+    assert_eq!(rolled, shown(vec![tall("src/tall.rs")], 90, 8, &[Command::NextLine; 3]));
 }
 
 #[test]
 fn a_rescan_that_adds_a_file_above_the_selection_keeps_the_file_you_were_reading() {
     let mut review =
         Review::new(fixtures(), Mode::SideBySide, false, 4).expect("the fixtures highlight");
-    review.key(KeyEvent::new(KeyCode::Char(']'), KeyModifiers::NONE)).expect("moving succeeds");
+    review.run(Command::NextFile).expect("moving succeeds");
 
     let mut grown = fixtures();
     grown.insert(0, added("src/first.rs", "fn first() {}\n"));
@@ -237,7 +264,7 @@ fn a_rescan_that_adds_a_file_above_the_selection_keeps_the_file_you_were_reading
 fn a_rescan_that_drops_the_file_you_were_reading_falls_back_to_the_first() {
     let mut review =
         Review::new(fixtures(), Mode::SideBySide, false, 4).expect("the fixtures highlight");
-    review.key(KeyEvent::new(KeyCode::Char(']'), KeyModifiers::NONE)).expect("moving succeeds");
+    review.run(Command::NextFile).expect("moving succeeds");
     review
         .refresh(vec![modified("src/total.rs", "let total = 1;\n", "let total = 42;\n")])
         .expect("the fixtures highlight");
@@ -246,4 +273,22 @@ fn a_rescan_that_drops_the_file_you_were_reading_falls_back_to_the_first() {
     terminal.draw(|frame| review.draw(frame, frame.area())).expect("draw succeeds");
 
     insta::assert_snapshot!(describe(terminal.backend().buffer()));
+}
+
+#[test]
+fn a_rescan_of_the_file_you_were_reading_keeps_your_place_and_layout() {
+    let mut review = Review::new(vec![tall("src/tall.rs")], Mode::SideBySide, false, 4)
+        .expect("the fixtures highlight");
+    let mut terminal = Terminal::new(TestBackend::new(90, 8)).expect("test backend starts");
+    terminal.draw(|frame| review.draw(frame, frame.area())).expect("draw succeeds");
+    for command in [Command::ToggleLayout, Command::NextLine, Command::NextLine] {
+        review.run(command).expect("the fixtures highlight");
+    }
+    terminal.draw(|frame| review.draw(frame, frame.area())).expect("draw succeeds");
+    let before = describe(terminal.backend().buffer());
+
+    review.refresh(vec![tall("src/tall.rs")]).expect("the fixtures highlight");
+    terminal.draw(|frame| review.draw(frame, frame.area())).expect("draw succeeds");
+
+    assert_eq!(describe(terminal.backend().buffer()), before);
 }

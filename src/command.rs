@@ -1,42 +1,39 @@
-//! Quorum's application commands and the UI-independent palette model.
+//! Every command the viewer understands, the keys bound to it, and the palette model.
 
 use std::path::PathBuf;
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-use crate::project::{ProjectId, WorkspaceId};
-
-/// The visible commands owned by Quorum, not commands reported by an agent.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum ApplicationCommand {
-    OpenPalette,
+pub enum Command {
+    Help,
+    Palette,
+    FindFile,
     Quit,
-    NextProject,
-    PreviousProject,
-    ToggleProject,
-    NextWorkspace,
-    PreviousWorkspace,
-    OpenSelectedFile,
+    Reload,
     NextFile,
     PreviousFile,
     ToggleFileList,
-    ToggleFileTreeNode,
-    NextDiffLine,
-    PreviousDiffLine,
-    FirstDiff,
-    LastDiff,
-    NextDiffPage,
-    PreviousDiffPage,
-    ScrollDiffLeft,
-    ScrollDiffRight,
+    Edit,
+    CopyPath,
+    NextHunk,
+    PreviousHunk,
+    NextLine,
+    PreviousLine,
+    HalfPageDown,
+    HalfPageUp,
+    PageDown,
+    PageUp,
+    Top,
+    Bottom,
+    ScrollLeft,
+    ScrollRight,
     ToggleLayout,
     ToggleWrapping,
-    EqualizeDividers,
-    EnterPrompt,
-    AnswerPermission(usize),
 }
 
-/// A key combination independent of key press/release reporting.
+/// A key combination. Shift is folded into the character it produces, so `G`
+/// and `?` match however the terminal reports them.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Shortcut {
     pub code: KeyCode,
@@ -50,604 +47,253 @@ impl Shortcut {
 
     pub fn display(self) -> String {
         let key = match self.code {
-            KeyCode::Char(character) if self.modifiers.is_empty() => character.to_string(),
-            KeyCode::Char(character) => character.to_uppercase().to_string(),
-            KeyCode::Backspace => "Backspace".to_owned(),
+            KeyCode::Char(' ') => "Space".to_owned(),
+            KeyCode::Char(character) => character.to_string(),
             KeyCode::Enter => "Enter".to_owned(),
-            KeyCode::Left => "Left".to_owned(),
-            KeyCode::Right => "Right".to_owned(),
-            KeyCode::Up => "Up".to_owned(),
-            KeyCode::Down => "Down".to_owned(),
+            KeyCode::Left => "←".to_owned(),
+            KeyCode::Right => "→".to_owned(),
+            KeyCode::Up => "↑".to_owned(),
+            KeyCode::Down => "↓".to_owned(),
             KeyCode::Home => "Home".to_owned(),
             KeyCode::End => "End".to_owned(),
-            KeyCode::PageUp => "PageUp".to_owned(),
-            KeyCode::PageDown => "PageDown".to_owned(),
+            KeyCode::PageUp => "PgUp".to_owned(),
+            KeyCode::PageDown => "PgDn".to_owned(),
             KeyCode::Tab => "Tab".to_owned(),
-            KeyCode::BackTab => "BackTab".to_owned(),
-            KeyCode::Delete => "Delete".to_owned(),
-            KeyCode::Insert => "Insert".to_owned(),
-            KeyCode::F(number) => format!("F{number}"),
+            KeyCode::BackTab => "S-Tab".to_owned(),
             KeyCode::Esc => "Esc".to_owned(),
             code => format!("{code:?}"),
         };
-        let modifiers = [
-            (KeyModifiers::CONTROL, "Ctrl"),
-            (KeyModifiers::ALT, "Alt"),
-            (KeyModifiers::SHIFT, "Shift"),
-            (KeyModifiers::SUPER, "Super"),
-        ]
-        .into_iter()
-        .filter_map(|(modifier, name)| self.modifiers.contains(modifier).then_some(name))
-        .collect::<Vec<_>>()
-        .join("-");
 
-        if modifiers.is_empty() { key } else { format!("{modifiers}-{key}") }
-    }
-
-    pub fn matches(self, key: KeyEvent) -> bool {
-        self.code == key.code && self.modifiers == key.modifiers
+        if self.modifiers.contains(KeyModifiers::CONTROL) { format!("C-{key}") } else { key }
     }
 }
 
 impl From<KeyEvent> for Shortcut {
     fn from(key: KeyEvent) -> Self {
-        Self::new(key.code, key.modifiers)
-    }
-}
-
-/// Explicit facts that determine whether an application command can run.
-#[expect(
-    clippy::struct_excessive_bools,
-    reason = "these independent facts are the explicit application state used by availability"
-)]
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
-pub struct ApplicationContext {
-    pub project_count: usize,
-    pub workspace_count: usize,
-    pub file_count: usize,
-    pub active_project: bool,
-    pub active_workspace: bool,
-    pub selected_file: bool,
-    pub attached_agent: bool,
-    pub interruption: Option<InterruptionState>,
-}
-
-/// The interruption state in which permission choices are meaningful.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
-pub struct InterruptionState {
-    pub choice_count: usize,
-}
-
-impl InterruptionState {
-    pub const fn new(choice_count: usize) -> Self {
-        Self { choice_count }
-    }
-}
-
-/// The target facts a command needs before it is available.
-#[expect(
-    clippy::struct_excessive_bools,
-    reason = "each requirement names a separate target or capture fact"
-)]
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
-pub struct CommandRequirements {
-    pub active_project: bool,
-    pub active_workspace: bool,
-    pub selected_file: bool,
-    pub attached_agent: bool,
-    pub interruption: bool,
-    pub minimum_projects: usize,
-    pub minimum_workspaces: usize,
-    pub minimum_files: usize,
-}
-
-impl CommandRequirements {
-    fn satisfied_by(self, command: ApplicationCommand, context: &ApplicationContext) -> bool {
-        if self.active_project && !context.active_project
-            || self.active_workspace && !context.active_workspace
-            || self.selected_file && !context.selected_file
-            || self.attached_agent && !context.attached_agent
-            || self.minimum_projects > context.project_count
-            || self.minimum_workspaces > context.workspace_count
-            || self.minimum_files > context.file_count
-        {
-            return false;
-        }
-
-        let Some(interruption) = context.interruption else {
-            return !self.interruption;
+        let modifiers = match key.code {
+            KeyCode::Char(_) | KeyCode::BackTab => key.modifiers.difference(KeyModifiers::SHIFT),
+            _ => key.modifiers,
         };
-        if !self.interruption {
-            return true;
-        }
 
-        match command {
-            ApplicationCommand::AnswerPermission(choice) => interruption.choice_count >= choice,
-            _ => true,
-        }
+        Self::new(key.code, modifiers)
     }
 }
 
-/// One catalog entry, including the identity used for dispatch.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct CommandDefinition {
-    command: ApplicationCommand,
-    label: String,
-    shortcuts: Vec<Shortcut>,
-    category: CommandCategory,
-    requirements: CommandRequirements,
-}
-
-impl CommandDefinition {
-    pub fn command(&self) -> ApplicationCommand {
-        self.command
-    }
-
-    pub fn label(&self) -> &str {
-        &self.label
-    }
-
-    pub fn shortcuts(&self) -> &[Shortcut] {
-        &self.shortcuts
-    }
-
-    pub fn category(&self) -> CommandCategory {
-        self.category
-    }
-
-    pub fn requirements(&self) -> CommandRequirements {
-        self.requirements
-    }
-
-    pub fn available(&self, context: &ApplicationContext) -> bool {
-        self.requirements.satisfied_by(self.command, context)
-    }
-
-    pub fn globally_available(&self) -> bool {
-        self.available(&ApplicationContext::default())
-    }
-}
-
-/// The palette grouping for an application command.
+/// The groups the help overlay lays commands out under.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum CommandCategory {
-    Application,
-    Projects,
-    Workspaces,
+pub enum Category {
+    General,
     Files,
     Diff,
-    Layout,
-    Agent,
-    Permission,
+    View,
 }
 
-/// The complete catalog of application commands currently understood by Quorum.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct CommandCatalog {
-    commands: Vec<CommandDefinition>,
-}
+impl Category {
+    pub const ALL: [Self; 4] = [Self::General, Self::Files, Self::Diff, Self::View];
 
-impl CommandCatalog {
-    #[expect(
-        clippy::too_many_lines,
-        reason = "the catalog stays as one ordered inventory so palette order is explicit"
-    )]
-    pub fn new() -> Self {
-        let mut catalog = Self { commands: Vec::new() };
-        catalog.add(
-            ApplicationCommand::OpenPalette,
-            "Open palette",
-            &[ctrl('t')],
-            CommandCategory::Application,
-            CommandRequirements::default(),
-        );
-        catalog.add(
-            ApplicationCommand::Quit,
-            "Quit",
-            &[plain('q'), plain_code(KeyCode::Esc), ctrl('c')],
-            CommandCategory::Application,
-            CommandRequirements::default(),
-        );
-        catalog.add(
-            ApplicationCommand::NextProject,
-            "Next project",
-            &[],
-            CommandCategory::Projects,
-            CommandRequirements { minimum_projects: 2, ..Default::default() },
-        );
-        catalog.add(
-            ApplicationCommand::PreviousProject,
-            "Previous project",
-            &[],
-            CommandCategory::Projects,
-            CommandRequirements { minimum_projects: 2, ..Default::default() },
-        );
-        catalog.add(
-            ApplicationCommand::ToggleProject,
-            "Toggle project",
-            &[],
-            CommandCategory::Projects,
-            CommandRequirements { active_project: true, ..Default::default() },
-        );
-        catalog.add(
-            ApplicationCommand::NextWorkspace,
-            "Next workspace",
-            &[],
-            CommandCategory::Workspaces,
-            CommandRequirements { minimum_workspaces: 2, ..Default::default() },
-        );
-        catalog.add(
-            ApplicationCommand::PreviousWorkspace,
-            "Previous workspace",
-            &[],
-            CommandCategory::Workspaces,
-            CommandRequirements { minimum_workspaces: 2, ..Default::default() },
-        );
-        catalog.add(
-            ApplicationCommand::OpenSelectedFile,
-            "Open selected file",
-            &[],
-            CommandCategory::Files,
-            CommandRequirements {
-                active_workspace: true,
-                selected_file: true,
-                ..Default::default()
-            },
-        );
-        catalog.add(
-            ApplicationCommand::NextFile,
-            "Next file",
-            &[plain(']')],
-            CommandCategory::Files,
-            CommandRequirements { active_workspace: true, minimum_files: 2, ..Default::default() },
-        );
-        catalog.add(
-            ApplicationCommand::PreviousFile,
-            "Previous file",
-            &[plain('[')],
-            CommandCategory::Files,
-            CommandRequirements { active_workspace: true, minimum_files: 2, ..Default::default() },
-        );
-        catalog.add(
-            ApplicationCommand::ToggleFileList,
-            "Toggle changed files",
-            &[plain('F')],
-            CommandCategory::Files,
-            CommandRequirements { active_workspace: true, ..Default::default() },
-        );
-        catalog.add(
-            ApplicationCommand::ToggleFileTreeNode,
-            "Toggle file group",
-            &[plain_code(KeyCode::Enter), plain_code(KeyCode::Char(' '))],
-            CommandCategory::Files,
-            CommandRequirements { active_workspace: true, ..Default::default() },
-        );
-        catalog.add(
-            ApplicationCommand::NextDiffLine,
-            "Next diff line",
-            &[plain('j'), plain_code(KeyCode::Down)],
-            CommandCategory::Diff,
-            CommandRequirements {
-                active_workspace: true,
-                selected_file: true,
-                ..Default::default()
-            },
-        );
-        catalog.add(
-            ApplicationCommand::PreviousDiffLine,
-            "Previous diff line",
-            &[plain('k'), plain_code(KeyCode::Up)],
-            CommandCategory::Diff,
-            CommandRequirements {
-                active_workspace: true,
-                selected_file: true,
-                ..Default::default()
-            },
-        );
-        catalog.add(
-            ApplicationCommand::FirstDiff,
-            "First diff line",
-            &[plain('g'), plain_code(KeyCode::Home)],
-            CommandCategory::Diff,
-            CommandRequirements {
-                active_workspace: true,
-                selected_file: true,
-                ..Default::default()
-            },
-        );
-        catalog.add(
-            ApplicationCommand::LastDiff,
-            "Last diff line",
-            &[plain('G'), plain_code(KeyCode::End)],
-            CommandCategory::Diff,
-            CommandRequirements {
-                active_workspace: true,
-                selected_file: true,
-                ..Default::default()
-            },
-        );
-        catalog.add(
-            ApplicationCommand::NextDiffPage,
-            "Next diff page",
-            &[plain_code(KeyCode::PageDown)],
-            CommandCategory::Diff,
-            CommandRequirements {
-                active_workspace: true,
-                selected_file: true,
-                ..Default::default()
-            },
-        );
-        catalog.add(
-            ApplicationCommand::PreviousDiffPage,
-            "Previous diff page",
-            &[plain_code(KeyCode::PageUp)],
-            CommandCategory::Diff,
-            CommandRequirements {
-                active_workspace: true,
-                selected_file: true,
-                ..Default::default()
-            },
-        );
-        catalog.add(
-            ApplicationCommand::ScrollDiffLeft,
-            "Scroll diff left",
-            &[plain('h'), plain_code(KeyCode::Left)],
-            CommandCategory::Diff,
-            CommandRequirements {
-                active_workspace: true,
-                selected_file: true,
-                ..Default::default()
-            },
-        );
-        catalog.add(
-            ApplicationCommand::ScrollDiffRight,
-            "Scroll diff right",
-            &[plain('l'), plain_code(KeyCode::Right)],
-            CommandCategory::Diff,
-            CommandRequirements {
-                active_workspace: true,
-                selected_file: true,
-                ..Default::default()
-            },
-        );
-        catalog.add(
-            ApplicationCommand::ToggleLayout,
-            "Toggle layout",
-            &[plain('s')],
-            CommandCategory::Layout,
-            CommandRequirements { active_workspace: true, ..Default::default() },
-        );
-        catalog.add(
-            ApplicationCommand::ToggleWrapping,
-            "Toggle wrapping",
-            &[plain('w')],
-            CommandCategory::Layout,
-            CommandRequirements { active_workspace: true, ..Default::default() },
-        );
-        catalog.add(
-            ApplicationCommand::EqualizeDividers,
-            "Equalize dividers",
-            &[plain('=')],
-            CommandCategory::Layout,
-            CommandRequirements { active_workspace: true, ..Default::default() },
-        );
-        catalog.add(
-            ApplicationCommand::EnterPrompt,
-            "Enter prompt",
-            &[plain('i')],
-            CommandCategory::Agent,
-            CommandRequirements {
-                active_workspace: true,
-                attached_agent: true,
-                ..Default::default()
-            },
-        );
-        for (choice, digit) in ('1'..='9').enumerate() {
-            let choice = choice + 1;
-            catalog.add(
-                ApplicationCommand::AnswerPermission(choice),
-                format!("Answer permission {choice}"),
-                &[plain(digit)],
-                CommandCategory::Permission,
-                CommandRequirements { interruption: true, ..Default::default() },
-            );
+    pub fn title(self) -> &'static str {
+        match self {
+            Self::General => "General",
+            Self::Files => "Files",
+            Self::Diff => "Diff",
+            Self::View => "View",
         }
-        catalog
+    }
+}
+
+/// One command, what it is called, and how to reach it. A binding with a hint
+/// is advertised in the status line.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Binding {
+    pub command: Command,
+    pub label: &'static str,
+    pub shortcuts: Vec<Shortcut>,
+    pub category: Category,
+    pub hint: Option<&'static str>,
+}
+
+impl Binding {
+    pub fn keys(&self) -> String {
+        self.shortcuts.iter().map(|shortcut| shortcut.display()).collect::<Vec<_>>().join(" ")
+    }
+}
+
+/// The single source of truth for what a key does.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Catalog {
+    bindings: Vec<Binding>,
+}
+
+impl Default for Catalog {
+    fn default() -> Self {
+        use Category::{Diff, Files, General, View};
+        use Command as C;
+
+        let bind = |command, label, shortcuts: &[Shortcut], category, hint| Binding {
+            command,
+            label,
+            shortcuts: shortcuts.to_vec(),
+            category,
+            hint,
+        };
+
+        Self {
+            bindings: vec![
+                bind(C::Help, "Show every key", &[plain('?')], General, Some("help")),
+                bind(C::Palette, "Command palette", &[plain(':'), ctrl('p')], General, None),
+                bind(C::Reload, "Reload from git", &[plain('r')], General, None),
+                bind(
+                    C::Quit,
+                    "Quit",
+                    &[plain('q'), code(KeyCode::Esc), ctrl('c')],
+                    General,
+                    Some("quit"),
+                ),
+                bind(
+                    C::NextFile,
+                    "Next file",
+                    &[plain(']'), code(KeyCode::Tab)],
+                    Files,
+                    Some("file"),
+                ),
+                bind(
+                    C::PreviousFile,
+                    "Previous file",
+                    &[plain('['), code(KeyCode::BackTab)],
+                    Files,
+                    None,
+                ),
+                bind(C::FindFile, "Find file", &[plain('/')], Files, Some("find")),
+                bind(
+                    C::ToggleFileList,
+                    "Toggle file list",
+                    &[ctrl('b'), plain('f')],
+                    Files,
+                    Some("files"),
+                ),
+                bind(C::Edit, "Open in $EDITOR", &[plain('e')], Files, Some("edit")),
+                bind(C::CopyPath, "Copy path", &[plain('y')], Files, None),
+                bind(C::NextHunk, "Next hunk", &[plain('n')], Diff, Some("hunk")),
+                bind(C::PreviousHunk, "Previous hunk", &[plain('N'), plain('p')], Diff, None),
+                bind(C::NextLine, "Down a line", &[plain('j'), code(KeyCode::Down)], Diff, None),
+                bind(C::PreviousLine, "Up a line", &[plain('k'), code(KeyCode::Up)], Diff, None),
+                bind(C::HalfPageDown, "Down half a page", &[ctrl('d')], Diff, None),
+                bind(C::HalfPageUp, "Up half a page", &[ctrl('u')], Diff, None),
+                bind(
+                    C::PageDown,
+                    "Down a page",
+                    &[code(KeyCode::PageDown), ctrl('f'), plain(' ')],
+                    Diff,
+                    None,
+                ),
+                bind(C::PageUp, "Up a page", &[code(KeyCode::PageUp)], Diff, None),
+                bind(C::Top, "Top of the file", &[plain('g'), code(KeyCode::Home)], Diff, None),
+                bind(
+                    C::Bottom,
+                    "Bottom of the file",
+                    &[plain('G'), code(KeyCode::End)],
+                    Diff,
+                    None,
+                ),
+                bind(C::ScrollLeft, "Scroll left", &[plain('h'), code(KeyCode::Left)], Diff, None),
+                bind(
+                    C::ScrollRight,
+                    "Scroll right",
+                    &[plain('l'), code(KeyCode::Right)],
+                    Diff,
+                    None,
+                ),
+                bind(C::ToggleLayout, "Split or unified", &[plain('s')], View, Some("layout")),
+                bind(C::ToggleWrapping, "Wrap long lines", &[plain('w')], View, None),
+            ],
+        }
+    }
+}
+
+impl Catalog {
+    pub fn bindings(&self) -> &[Binding] {
+        &self.bindings
     }
 
-    pub fn commands(&self) -> &[CommandDefinition] {
-        &self.commands
+    pub fn command(&self, key: KeyEvent) -> Option<Command> {
+        let pressed = Shortcut::from(key);
+
+        self.bindings
+            .iter()
+            .find(|binding| binding.shortcuts.contains(&pressed))
+            .map(|binding| binding.command)
     }
 
-    pub fn definition(&self, command: ApplicationCommand) -> Option<&CommandDefinition> {
-        self.commands.iter().find(|definition| definition.command == command)
-    }
+    pub fn hints(&self) -> impl Iterator<Item = (String, &'static str)> + '_ {
+        HINTED.iter().filter_map(|command| {
+            let binding = self.bindings.iter().find(|binding| binding.command == *command)?;
+            let hint = binding.hint?;
+            let key = binding.shortcuts.first()?.display();
 
-    pub fn by_shortcut(
-        &self,
-        shortcut: Shortcut,
-        context: &ApplicationContext,
-    ) -> Option<&CommandDefinition> {
-        self.commands.iter().find(|definition| {
-            definition.available(context) && definition.shortcuts.contains(&shortcut)
+            Some((key, hint))
         })
     }
 
-    pub fn command_for_shortcut(
-        &self,
-        shortcut: Shortcut,
-        context: &ApplicationContext,
-    ) -> Option<ApplicationCommand> {
-        self.by_shortcut(shortcut, context).map(CommandDefinition::command)
-    }
-
-    pub fn by_key(
-        &self,
-        key: KeyEvent,
-        context: &ApplicationContext,
-    ) -> Option<&CommandDefinition> {
-        self.by_shortcut(key.into(), context)
-    }
-
-    pub fn command_for_key(
-        &self,
-        key: KeyEvent,
-        context: &ApplicationContext,
-    ) -> Option<ApplicationCommand> {
-        self.by_key(key, context).map(CommandDefinition::command)
-    }
-
-    pub fn available(&self, context: &ApplicationContext) -> Vec<&CommandDefinition> {
-        self.commands.iter().filter(|command| command.available(context)).collect()
-    }
-
-    pub fn palette_entries(&self, context: &ApplicationContext) -> Vec<PaletteEntry> {
-        self.available(context).into_iter().map(PaletteEntry::command).collect()
-    }
-
-    fn add(
-        &mut self,
-        command: ApplicationCommand,
-        label: impl Into<String>,
-        shortcuts: &[Shortcut],
-        category: CommandCategory,
-        requirements: CommandRequirements,
-    ) {
-        self.commands.push(CommandDefinition {
-            command,
-            label: label.into(),
-            shortcuts: shortcuts.to_vec(),
-            category,
-            requirements,
-        });
+    pub fn palette_entries(&self) -> Vec<PaletteEntry> {
+        self.bindings
+            .iter()
+            .filter(|binding| binding.command != Command::Palette)
+            .map(|binding| PaletteEntry {
+                target: PaletteTarget::Command(binding.command),
+                label: binding.label.to_owned(),
+                keys: binding.keys(),
+            })
+            .collect()
     }
 }
 
-impl Default for CommandCatalog {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+const HINTED: [Command; 8] = [
+    Command::NextHunk,
+    Command::NextFile,
+    Command::ToggleFileList,
+    Command::FindFile,
+    Command::Edit,
+    Command::ToggleLayout,
+    Command::Help,
+    Command::Quit,
+];
 
-fn plain(character: char) -> Shortcut {
+const fn plain(character: char) -> Shortcut {
     Shortcut::new(KeyCode::Char(character), KeyModifiers::NONE)
 }
 
-fn plain_code(code: KeyCode) -> Shortcut {
+const fn code(code: KeyCode) -> Shortcut {
     Shortcut::new(code, KeyModifiers::NONE)
 }
 
-fn ctrl(character: char) -> Shortcut {
+const fn ctrl(character: char) -> Shortcut {
     Shortcut::new(KeyCode::Char(character), KeyModifiers::CONTROL)
 }
 
-/// A project identity and its palette label.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct ProjectTarget {
-    pub id: ProjectId,
-    pub label: String,
-}
-
-impl ProjectTarget {
-    pub fn new(id: ProjectId, label: impl Into<String>) -> Self {
-        Self { id, label: label.into() }
-    }
-}
-
-/// A workspace identity, retaining the project that owns it.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct WorkspaceTarget {
-    pub project: ProjectId,
-    pub id: WorkspaceId,
-    pub label: String,
-}
-
-impl WorkspaceTarget {
-    pub fn new(project: ProjectId, id: WorkspaceId, label: impl Into<String>) -> Self {
-        Self { project, id, label: label.into() }
-    }
-}
-
-/// A file identity, retaining both its workspace and project ownership.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct FileTarget {
-    pub project: ProjectId,
-    pub workspace: WorkspaceId,
-    pub path: PathBuf,
-    pub label: String,
-}
-
-impl FileTarget {
-    pub fn new(project: ProjectId, workspace: WorkspaceId, path: impl Into<PathBuf>) -> Self {
-        let path = path.into();
-        let label = path.display().to_string();
-        Self { project, workspace, path, label }
-    }
-}
-
-/// A future skill target without loading or invoking skills.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct SkillTarget {
-    pub namespace: String,
-    pub name: String,
-    pub label: String,
-}
-
-impl SkillTarget {
-    pub fn new(
-        namespace: impl Into<String>,
-        name: impl Into<String>,
-        label: impl Into<String>,
-    ) -> Self {
-        Self { namespace: namespace.into(), name: name.into(), label: label.into() }
-    }
-}
-
-/// A typed item that can appear in the unified palette.
+/// What choosing a palette entry does.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum PaletteTarget {
-    ApplicationCommand(ApplicationCommand),
-    Project(ProjectTarget),
-    Workspace(WorkspaceTarget),
-    File(FileTarget),
-    Skill(SkillTarget),
+    Command(Command),
+    File(PathBuf),
 }
 
-/// A palette item with the label and shortcuts shown by the UI.
+/// A palette row: what it does, what it says, and the keys that do it directly.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct PaletteEntry {
-    target: PaletteTarget,
-    label: String,
-    shortcuts: Vec<Shortcut>,
+    pub target: PaletteTarget,
+    pub label: String,
+    pub keys: String,
 }
 
 impl PaletteEntry {
-    pub fn new(target: PaletteTarget, label: impl Into<String>) -> Self {
-        Self { target, label: label.into(), shortcuts: Vec::new() }
-    }
+    pub fn file(path: PathBuf) -> Self {
+        let label = path.display().to_string();
 
-    pub fn command(definition: &CommandDefinition) -> Self {
-        Self {
-            target: PaletteTarget::ApplicationCommand(definition.command),
-            label: definition.label.clone(),
-            shortcuts: definition.shortcuts.clone(),
-        }
-    }
-
-    pub fn target(&self) -> &PaletteTarget {
-        &self.target
-    }
-
-    pub fn label(&self) -> &str {
-        &self.label
-    }
-
-    pub fn shortcuts(&self) -> &[Shortcut] {
-        &self.shortcuts
+        Self { target: PaletteTarget::File(path), label, keys: String::new() }
     }
 }
 
-/// A deterministic, case-insensitive ranker for mixed palette entries.
+/// A deterministic, case-insensitive ranker for palette entries.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct PaletteModel;
 
@@ -666,7 +312,7 @@ impl PaletteModel {
             .iter()
             .enumerate()
             .filter_map(|(order, entry)| {
-                let score = score(&query, &lower(entry.label()))?;
+                let score = score(&query, &lower(&entry.label))?;
                 Some((score, order, entry))
             })
             .collect::<Vec<_>>();
@@ -686,6 +332,13 @@ fn score(query: &[char], label: &[char]) -> Option<u8> {
     if label.starts_with(query) {
         return Some(1);
     }
+    let name = label.rsplit(|character| *character == '/').next().unwrap_or(label);
+    if name.starts_with(query) {
+        return Some(1);
+    }
+    if label.windows(query.len()).any(|window| window == query) {
+        return Some(2);
+    }
 
     let mut label = label.iter();
     for character in query {
@@ -693,5 +346,5 @@ fn score(query: &[char], label: &[char]) -> Option<u8> {
             return None;
         }
     }
-    Some(2)
+    Some(3)
 }
