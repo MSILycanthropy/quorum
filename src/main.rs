@@ -30,13 +30,19 @@ use ratatui::crossterm::terminal::{
 #[derive(Debug, thiserror::Error)]
 enum Error {
     #[error(transparent)]
-    Git(#[from] quorum::git::Error),
+    Git(Box<quorum::git::Error>),
     #[error(transparent)]
     Ui(#[from] quorum::ui::Error),
     #[error(transparent)]
     Io(#[from] std::io::Error),
     #[error("{0}")]
     Usage(String),
+}
+
+impl From<quorum::git::Error> for Error {
+    fn from(error: quorum::git::Error) -> Self {
+        Self::Git(Box::new(error))
+    }
 }
 
 type Result<T> = std::result::Result<T, Error>;

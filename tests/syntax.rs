@@ -90,3 +90,26 @@ fn a_file_without_an_extension_is_highlighted_by_its_shebang() {
     assert_eq!(color_of(&painted, "#!/usr/bin/env bash"), "#565f89");
     assert_eq!(color_of(&painted, "echo"), "#7aa2f7");
 }
+
+#[test]
+fn a_yml_file_is_highlighted_as_yaml() {
+    let painted = painted("name: quorum\n", "config.yml");
+
+    assert_ne!(color_of(&painted, "name"), "#c0caf5");
+}
+
+#[test]
+fn an_erb_template_paints_its_ruby_and_its_html() {
+    let painted = painted("<p><%= user.name if admin? %></p>\n", "show.html.erb");
+
+    assert_eq!(color_of(&painted, "<%="), "#9d7cd8");
+    assert_ne!(color_of(&painted, "if"), "#c0caf5");
+    assert_ne!(color_of(&painted, "p"), "#c0caf5");
+}
+
+#[test]
+fn a_gemfile_is_highlighted_as_ruby() {
+    let painted = painted("gem \"rails\"\n", "Gemfile");
+
+    assert_eq!(color_of(&painted, "\"rails\""), "#9ece6a");
+}

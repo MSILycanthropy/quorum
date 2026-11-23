@@ -2233,6 +2233,7 @@ dependencies = [
  "ratatui",
  "similar 3.2.0",
  "thiserror 2.0.20",
+ "tree-sitter-embedded-template",
  "unicode-segmentation",
  "unicode-width",
 ]
@@ -2902,6 +2903,16 @@ dependencies = [
  "cc",
  "regex",
  "regex-syntax",
+ "tree-sitter-language",
+]
+
+[[package]]
+name = "tree-sitter-embedded-template"
+version = "0.23.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "790063ef14e5b67556abc0b3be0ed863fb41d65ee791cf8c0b20eb42a1fa46af"
+dependencies = [
+ "cc",
  "tree-sitter-language",
 ]
 
