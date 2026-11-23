@@ -114,6 +114,7 @@ fn view(arguments: &Arguments) -> Result<()> {
         tab_width: arguments.tab_width,
         branch: subject.branch()?,
         comparing: subject.describe(),
+        files: subject.files()?,
     };
     let mut shown = subject.changes()?;
     let mut surface = opening.surface(shown.clone())?;
@@ -138,6 +139,10 @@ fn view(arguments: &Arguments) -> Result<()> {
                         reload(&mut surface, &subject, &mut shown)?;
                         surface.notify("reloaded");
                     }
+                    Control::Open { path, line } => match subject.file(&path) {
+                        Ok(content) => surface.peek(path, &content, line)?,
+                        Err(error) => surface.notify(error.to_string()),
+                    },
                     Control::Copy(text) => {
                         copy(&text)?;
                         surface.notify(format!("copied {text}"));
@@ -175,6 +180,13 @@ fn reload(surface: &mut Surface, subject: &Subject, shown: &mut Vec<FileChange>)
         return Ok(false);
     }
     surface.refresh(changes.clone())?;
+    surface.replace_files(subject.files()?);
+    if let Some(path) = surface.peeked().map(Path::to_path_buf) {
+        match subject.file(&path) {
+            Ok(content) => surface.peek(path, &content, None)?,
+            Err(error) => surface.notify(error.to_string()),
+        }
+    }
     *shown = changes;
 
     Ok(true)
@@ -396,6 +408,22 @@ impl Subject {
         match self {
             Self::Repository { label, .. } => label.clone(),
             Self::Pair { old, new } => format!("{} → {}", old.display(), new.display()),
+        }
+    }
+
+    fn files(&self) -> Result<Vec<PathBuf>> {
+        match self {
+            Self::Repository { repository, comparison, .. } => Ok(repository.files(comparison)?),
+            Self::Pair { .. } => Ok(Vec::new()),
+        }
+    }
+
+    fn file(&self, path: &Path) -> Result<Content> {
+        match self {
+            Self::Repository { repository, comparison, .. } => {
+                Ok(repository.file(comparison, path)?)
+            }
+            Self::Pair { .. } => Err(Error::Usage(format!("{} is not compared", path.display()))),
         }
     }
 

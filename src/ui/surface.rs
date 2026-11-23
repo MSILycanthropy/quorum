@@ -1,6 +1,6 @@
 //! The whole screen: the review, the status line beneath it, and the overlays above it.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use ratatui::Frame;
 use ratatui::buffer::Buffer;
@@ -11,7 +11,7 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::color::Rgb;
 use crate::command::{Catalog, Command, PaletteEntry, PaletteTarget};
-use crate::git::FileChange;
+use crate::git::{Content, FileChange};
 use crate::theme::{Tints, TokyoNight};
 use crate::ui::{Control, Help, Mode, Palette, PaletteAction, Result, Review};
 
@@ -23,6 +23,7 @@ pub struct Opening {
     pub tab_width: usize,
     pub branch: Option<String>,
     pub comparing: String,
+    pub files: Vec<PathBuf>,
 }
 
 impl Default for Opening {
@@ -33,6 +34,7 @@ impl Default for Opening {
             tab_width: 4,
             branch: None,
             comparing: String::new(),
+            files: Vec::new(),
         }
     }
 }
@@ -50,6 +52,7 @@ impl Opening {
             help: Help::default(),
             branch: self.branch,
             comparing: self.comparing,
+            files: self.files,
             notice: None,
             tints: TokyoNight::TINTS,
         })
@@ -64,6 +67,7 @@ pub struct Surface {
     help: Help,
     branch: Option<String>,
     comparing: String,
+    files: Vec<PathBuf>,
     notice: Option<String>,
     tints: Tints,
 }
@@ -98,8 +102,11 @@ impl Surface {
         if self.palette.is_open() {
             return match self.palette.key(key) {
                 PaletteAction::Execute(PaletteTarget::Command(command)) => self.run(command),
-                PaletteAction::Execute(PaletteTarget::File(path)) => {
-                    self.review.select_path(&path)?;
+                PaletteAction::Execute(PaletteTarget::File { path, line }) => {
+                    if !self.review.is_changed(&path) {
+                        return Ok(Control::Open { path, line });
+                    }
+                    self.review.select_path(&path, line)?;
                     Ok(Control::Continue)
                 }
                 PaletteAction::Close | PaletteAction::None => Ok(Control::Continue),
@@ -132,6 +139,22 @@ impl Surface {
         self.review.refresh(changes)
     }
 
+    pub fn replace_files(&mut self, files: Vec<PathBuf>) {
+        self.files = files;
+    }
+
+    #[expect(
+        clippy::missing_errors_doc,
+        reason = "the Error enum names the only failure, highlighting the file opened"
+    )]
+    pub fn peek(&mut self, path: PathBuf, content: &Content, line: Option<usize>) -> Result<()> {
+        self.review.peek(path, content, line)
+    }
+
+    pub fn peeked(&self) -> Option<&Path> {
+        self.review.peeked()
+    }
+
     pub fn notify(&mut self, notice: impl Into<String>) {
         self.notice = Some(notice.into());
     }
@@ -143,11 +166,18 @@ impl Surface {
     pub fn run(&mut self, command: Command) -> Result<Control> {
         match command {
             Command::Quit => return Ok(Control::Quit),
+            Command::Back => {
+                if !self.review.close_peek() {
+                    return Ok(Control::Quit);
+                }
+            }
             Command::Help => self.help.toggle(),
             Command::Palette => self.palette.open("command", self.catalog.palette_entries()),
             Command::FindFile => {
-                let files = self.review.paths().into_iter().map(PaletteEntry::file).collect();
-                self.palette.open("file", files);
+                let changed = self.review.paths();
+                let unchanged = self.files.iter().filter(|path| !changed.contains(path)).cloned();
+                let files = changed.iter().cloned().chain(unchanged).map(PaletteEntry::file);
+                self.palette.open("file", files.collect());
             }
             Command::Reload => return Ok(Control::Reload),
             Command::Edit => {

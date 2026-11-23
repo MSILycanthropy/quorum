@@ -44,6 +44,8 @@ pub enum Error {
     #[error(transparent)]
     TreeDiff(#[from] gix::repository::diff_tree_to_tree::Error),
     #[error(transparent)]
+    Traverse(#[from] gix::traverse::tree::breadthfirst::Error),
+    #[error(transparent)]
     MergeBase(#[from] gix::repository::merge_base::Error),
     #[error(transparent)]
     Io(#[from] std::io::Error),
@@ -163,6 +165,55 @@ impl Repository {
         let paths = reader.changed_paths()?;
 
         paths.iter().map(|path| reader.change(path)).collect()
+    }
+
+    #[expect(
+        clippy::missing_errors_doc,
+        reason = "the Error enum names the only failures, a missing revision or an unreadable snapshot"
+    )]
+    pub fn files(&self, comparison: &Comparison) -> Result<Vec<PathBuf>> {
+        let mut paths = match &comparison.new {
+            Snapshot::Worktree | Snapshot::Index => {
+                let index = self.inner.index_or_empty()?;
+                index
+                    .entries()
+                    .iter()
+                    .map(|entry| gix::path::from_bstr(entry.path(&index)).into_owned())
+                    .collect()
+            }
+            Snapshot::Revision(revision) => {
+                let mut recorder = gix::traverse::tree::Recorder::default();
+                self.tree(revision)?.traverse().breadthfirst(&mut recorder)?;
+                recorder
+                    .records
+                    .into_iter()
+                    .filter(|entry| !entry.mode.is_tree())
+                    .map(|entry| gix::path::from_bstring(entry.filepath))
+                    .collect::<Vec<_>>()
+            }
+        };
+        paths.sort();
+        paths.dedup();
+
+        Ok(paths)
+    }
+
+    #[expect(
+        clippy::missing_errors_doc,
+        reason = "the Error enum names the only failures, a missing revision or a path in neither side"
+    )]
+    pub fn file(&self, comparison: &Comparison, path: &Path) -> Result<Content> {
+        let mut reader = Reader::new(self, comparison)?;
+        let Some(bytes) = reader.current(path)? else {
+            return Err(Error::Missing { revision: reader.label, path: path.to_path_buf() });
+        };
+
+        Ok(match text(bytes) {
+            Some(text) => {
+                Content::Text(FileDiff::compute(Source::new(text.clone()), Source::new(text)))
+            }
+            None => Content::Binary,
+        })
     }
 
     #[expect(

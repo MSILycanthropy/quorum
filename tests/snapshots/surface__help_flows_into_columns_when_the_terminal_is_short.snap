@@ -10,16 +10,16 @@ expression: "screen(&mut surface, 100, 24)"
               ?               Show every key       n               Next hunk
               : C-p           Command palette      N p             Previous hunk
               r               Reload from git      j ↓             Down a line
-              q Esc C-c       Quit                 k ↑             Up a line
-                                                   C-d             Down half a page
-              Files                                C-u             Up half a page
-              ] Tab           Next file            PgDn C-f Space  Down a page
-              [ S-Tab         Previous file        PgUp            Up a page
-              /               Find file            g Home          Top of the file
-              C-b f           Toggle file list     G End           Bottom of the file
-              e               Open in $EDITOR      h ←             Scroll left
-              y               Copy path            l →             Scroll right
-
+              q C-c           Quit                 k ↑             Up a line
+              Esc             Back, or quit        C-d             Down half a page
+                                                   C-u             Up half a page
+              Files                                PgDn C-f Space  Down a page
+              ] Tab           Next file            PgUp            Up a page
+              [ S-Tab         Previous file        g Home          Top of the file
+              /               Find file            G End           Bottom of the file
+              C-b f           Toggle file list     h ←             Scroll left
+              e               Open in $EDITOR      l →             Scroll right
+              y               Copy path
                                                    View
                                                    s               Split or unified
                                                    w               Wrap long lines
