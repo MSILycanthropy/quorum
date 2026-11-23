@@ -1,6 +1,6 @@
 //! What changed between two snapshots, as line ranges.
 
-use similar::{Algorithm, DiffOp, TextDiff};
+use gix::diff::blob::{Algorithm, Diff, InternedInput};
 use std::borrow::Cow;
 use std::ops::Range;
 
@@ -120,16 +120,14 @@ impl FileDiff {
     pub fn compute_with(old: Source, new: Source, whitespace: Whitespace) -> Self {
         let old_keys: Vec<Cow<str>> = old.lines().map(|line| whitespace.key(line)).collect();
         let new_keys: Vec<Cow<str>> = new.lines().map(|line| whitespace.key(line)).collect();
-        let old_lines: Vec<&str> = old_keys.iter().map(AsRef::as_ref).collect();
-        let new_lines: Vec<&str> = new_keys.iter().map(AsRef::as_ref).collect();
 
-        let changes = TextDiff::configure()
-            .algorithm(Algorithm::Histogram)
-            .diff_slices(&old_lines, &new_lines)
-            .ops()
-            .iter()
-            .map(Change::from_operation)
-            .collect();
+        let mut input = InternedInput::default();
+        input.before = old_keys.iter().map(|key| input.interner.intern(key.as_ref())).collect();
+        input.after = new_keys.iter().map(|key| input.interner.intern(key.as_ref())).collect();
+        let mut diff = Diff::compute(Algorithm::Histogram, &input);
+        diff.postprocess_lines(&input);
+
+        let changes = from_hunks(&diff, old.len(), new.len());
 
         Self { old, new, changes }
     }
@@ -150,24 +148,34 @@ impl FileDiff {
     }
 }
 
-impl Change {
-    fn from_operation(operation: &DiffOp) -> Self {
-        let (kind, old, new) = match *operation {
-            DiffOp::Equal { old_index, new_index, len } => {
-                (ChangeKind::Equal, old_index..old_index + len, new_index..new_index + len)
-            }
-            DiffOp::Delete { old_index, old_len, new_index } => {
-                (ChangeKind::Delete, old_index..old_index + old_len, new_index..new_index)
-            }
-            DiffOp::Insert { old_index, new_index, new_len } => {
-                (ChangeKind::Insert, old_index..old_index, new_index..new_index + new_len)
-            }
-            DiffOp::Replace { old_index, old_len, new_index, new_len } => (
-                ChangeKind::Replace,
-                old_index..old_index + old_len,
-                new_index..new_index + new_len,
-            ),
+fn from_hunks(diff: &Diff, old_len: usize, new_len: usize) -> Vec<Change> {
+    let mut changes = Vec::new();
+    let (mut old_at, mut new_at) = (0, 0);
+    for hunk in diff.hunks() {
+        let old = hunk.before.start as usize..hunk.before.end as usize;
+        let new = hunk.after.start as usize..hunk.after.end as usize;
+        if old.start > old_at {
+            changes.push(Change {
+                kind: ChangeKind::Equal,
+                old: old_at..old.start,
+                new: new_at..new.start,
+            });
+        }
+        let kind = match (old.is_empty(), new.is_empty()) {
+            (true, _) => ChangeKind::Insert,
+            (_, true) => ChangeKind::Delete,
+            _ => ChangeKind::Replace,
         };
-        Self { kind, old, new }
+        (old_at, new_at) = (old.end, new.end);
+        changes.push(Change { kind, old, new });
     }
+    if old_at < old_len {
+        changes.push(Change {
+            kind: ChangeKind::Equal,
+            old: old_at..old_len,
+            new: new_at..new_len,
+        });
+    }
+
+    changes
 }
