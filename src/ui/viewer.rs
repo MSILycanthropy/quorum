@@ -1,10 +1,12 @@
 //! One file's diff, and where the reader is looking at it.
 
+use std::collections::HashSet;
+use std::ops::Range;
 use std::path::Path;
 
 use ratatui::Frame;
 use ratatui::buffer::Buffer;
-use ratatui::layout::Rect;
+use ratatui::layout::{Position, Rect};
 use ratatui::style::{Color, Style};
 
 use crate::color::Rgb;
@@ -17,7 +19,8 @@ use crate::syntax::Syntax;
 use crate::theme::{Tints, TokyoNight};
 use crate::ui::{Mode, Result};
 
-/// How many rows of context a hunk jump leaves above the hunk.
+/// How many rows of context a hunk jump leaves above the hunk, and folding
+/// leaves around it.
 const CONTEXT: usize = 3;
 
 /// Where to land once the diff has been laid out for the first time: a hunk,
@@ -51,11 +54,23 @@ pub struct Viewer {
     top: usize,
     left: usize,
     height: usize,
-    screen: Vec<ScreenRow>,
+    area: Rect,
+    wrapped: Vec<ScreenRow>,
+    screen: Vec<Line>,
+    folding: bool,
+    opened: HashSet<usize>,
     hunks: Vec<usize>,
     focus: Option<usize>,
     laid_out: Option<Geometry>,
     landing: Option<Landing>,
+}
+
+/// One screen row: a wrapped piece of a diff row, or a run of unchanged lines
+/// folded away. A fold is named by the first newer-side line it hides.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+enum Line {
+    Text(ScreenRow),
+    Fold { first: usize, hidden: usize },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -99,7 +114,11 @@ impl Viewer {
             top: 0,
             left: 0,
             height: 0,
+            area: Rect::default(),
+            wrapped: Vec::new(),
             screen: Vec::new(),
+            folding: true,
+            opened: HashSet::new(),
             hunks: Vec::new(),
             focus: None,
             laid_out: None,
@@ -115,6 +134,7 @@ impl Viewer {
             pane_width(area, gutter, self.mode)
         };
         self.height = usize::from(area.height);
+        self.area = area;
         self.lay_out(pane);
         match self.landing.take() {
             Some(Landing::FirstHunk) => {
@@ -123,7 +143,7 @@ impl Viewer {
             Some(Landing::LastHunk) => {
                 self.land(self.hunks.len().checked_sub(1));
             }
-            Some(Landing::Line(line)) => self.go_to(line),
+            Some(Landing::Line(line)) => self.go_to(line, pane),
             None => {}
         }
         self.top = self.top.min(self.screen.len().saturating_sub(1));
@@ -131,10 +151,18 @@ impl Viewer {
         let buffer = frame.buffer_mut();
         buffer.set_style(area, Style::new().bg(color(self.tints.background)));
 
-        let mut screen = Screen { buffer, tints: self.tints, gutter, pane, left: area.x };
+        let mut screen =
+            Screen { buffer, tints: self.tints, gutter, pane, left: area.x, width: area.width };
         let rows = self.rows();
         let rows_on_screen = self.screen.iter().skip(self.top);
-        for (y, painted) in (area.y..area.y + area.height).zip(rows_on_screen) {
+        for (y, line) in (area.y..area.y + area.height).zip(rows_on_screen) {
+            let painted = match line {
+                Line::Text(painted) => painted,
+                Line::Fold { hidden, .. } => {
+                    screen.fold_row(y, *hidden);
+                    continue;
+                }
+            };
             match (self.plain, self.mode) {
                 (true, _) => screen.plain_row(y, painted, &rows[painted.row]),
                 (false, Mode::SideBySide) => screen.split_row(y, painted, &rows[painted.row]),
@@ -202,8 +230,35 @@ impl Viewer {
             Command::PreviousHunk => {
                 self.previous_hunk();
             }
+            Command::ExpandFold => {
+                let bottom = (self.top + self.height).min(self.screen.len());
+                let visible = self.screen.get(self.top..bottom).unwrap_or_default();
+                if let Some(first) = visible.iter().find_map(Line::fold) {
+                    self.open_fold(first);
+                }
+            }
+            Command::ToggleFolds => {
+                self.folding = !self.folding;
+                self.opened.clear();
+                self.laid_out = None;
+            }
             _ => {}
         }
+    }
+
+    pub fn click(&mut self, column: u16, row: u16) {
+        if !self.area.contains(Position::new(column, row)) {
+            return;
+        }
+        let index = self.top + usize::from(row - self.area.y);
+        if let Some(first) = self.screen.get(index).and_then(Line::fold) {
+            self.open_fold(first);
+        }
+    }
+
+    fn open_fold(&mut self, first: usize) {
+        self.opened.insert(first);
+        self.laid_out = None;
     }
 
     pub fn next_hunk(&mut self) -> bool {
@@ -244,14 +299,32 @@ impl Viewer {
             .iter()
             .skip(reading)
             .chain(self.screen.iter().take(reading).rev())
-            .find_map(|painted| rows[painted.row].new.line)
+            .find_map(|line| match line {
+                Line::Text(painted) => rows[painted.row].new.line,
+                Line::Fold { first, .. } => Some(*first),
+            })
             .map(|line| line + 1)
     }
 
-    fn go_to(&mut self, line: usize) {
+    fn go_to(&mut self, line: usize, pane: u16) {
+        let wanted = line.saturating_sub(1);
+        let folded = self.screen.iter().find_map(|line| match line {
+            Line::Fold { first, hidden } if (*first..first + hidden).contains(&wanted) => {
+                Some(*first)
+            }
+            _ => None,
+        });
+        if let Some(first) = folded {
+            self.open_fold(first);
+            self.lay_out(pane);
+        }
+
         let rows = self.rows();
-        let target = self.screen.iter().position(|painted| {
-            !painted.continuation && rows[painted.row].new.line == Some(line.saturating_sub(1))
+        let target = self.screen.iter().position(|line| match line {
+            Line::Text(painted) => {
+                !painted.continuation && rows[painted.row].new.line == Some(wanted)
+            }
+            Line::Fold { .. } => false,
         });
         if let Some(target) = target {
             self.top = target.saturating_sub(CONTEXT);
@@ -301,10 +374,49 @@ impl Viewer {
             old_syntax: &self.old_syntax,
             new_syntax: &self.new_syntax,
         };
-        self.screen = layout.screen_rows(&self.diff, self.rows());
+        let wrapped = layout.screen_rows(&self.diff, self.rows());
+        self.wrapped = wrapped;
+        self.screen = self.fold();
         self.hunks = hunks(&self.screen, self.rows());
         self.focus = None;
         self.laid_out = Some(geometry);
+    }
+
+    fn fold(&self) -> Vec<Line> {
+        let rows = self.rows();
+        let closed: Vec<Range<usize>> = if self.folding {
+            foldable(rows)
+                .into_iter()
+                .filter(|range| !self.opened.contains(&first_line(rows, range)))
+                .collect()
+        } else {
+            Vec::new()
+        };
+
+        let mut screen = Vec::with_capacity(self.wrapped.len());
+        let mut folds = closed.iter().peekable();
+        for painted in &self.wrapped {
+            while folds.next_if(|range| range.end <= painted.row).is_some() {}
+            match folds.peek() {
+                Some(range) if range.start == painted.row && !painted.continuation => {
+                    let first = first_line(rows, range);
+                    screen.push(Line::Fold { first, hidden: range.len() });
+                }
+                Some(range) if range.contains(&painted.row) => {}
+                _ => screen.push(Line::Text(painted.clone())),
+            }
+        }
+
+        screen
+    }
+}
+
+impl Line {
+    fn fold(&self) -> Option<usize> {
+        match self {
+            Self::Fold { first, .. } => Some(*first),
+            Self::Text(_) => None,
+        }
     }
 }
 
@@ -322,9 +434,26 @@ struct Screen<'a> {
     gutter: u16,
     pane: u16,
     left: u16,
+    width: u16,
 }
 
 impl Screen<'_> {
+    fn fold_row(&mut self, y: u16, hidden: usize) {
+        let style = Style::new().fg(color(self.tints.muted)).bg(color(self.tints.filler));
+        self.buffer.set_style(Rect::new(self.left, y, self.width, 1), style);
+        let label = match hidden {
+            1 => "⋯ 1 unchanged line".to_owned(),
+            many => format!("⋯ {many} unchanged lines"),
+        };
+        self.buffer.set_stringn(
+            self.left + self.gutter + 1,
+            y,
+            label,
+            usize::from(self.width.saturating_sub(self.gutter + 1)),
+            style,
+        );
+    }
+
     fn split_row(&mut self, y: u16, painted: &ScreenRow, row: &Row) {
         let (old, new) = self.split_washes(row.kind);
         let (old_number, new_number) = numbers(painted, row);
@@ -418,11 +547,43 @@ impl Screen<'_> {
     }
 }
 
-fn hunks(screen: &[ScreenRow], rows: &[Row]) -> Vec<usize> {
+fn foldable(rows: &[Row]) -> Vec<Range<usize>> {
+    if rows.iter().all(|row| row.kind == RowKind::Equal) {
+        return Vec::new();
+    }
+
+    let mut ranges = Vec::new();
+    let mut start = 0;
+    while start < rows.len() {
+        let length = rows[start..].iter().take_while(|row| row.kind == RowKind::Equal).count();
+        if length == 0 {
+            start += 1;
+            continue;
+        }
+        let end = start + length;
+        let hidden_start = if start == 0 { start } else { start + CONTEXT };
+        let hidden_end = if end == rows.len() { end } else { end.saturating_sub(CONTEXT) };
+        if hidden_end > hidden_start + 1 {
+            ranges.push(hidden_start..hidden_end);
+        }
+        start = end;
+    }
+
+    ranges
+}
+
+fn first_line(rows: &[Row], range: &Range<usize>) -> usize {
+    rows[range.start].new.line.expect("a fold hides only unchanged rows, which have both sides")
+}
+
+fn hunks(screen: &[Line], rows: &[Row]) -> Vec<usize> {
     let mut starts = Vec::new();
     let mut inside = false;
-    for (index, painted) in screen.iter().enumerate() {
-        let changed = rows[painted.row].kind != RowKind::Equal;
+    for (index, line) in screen.iter().enumerate() {
+        let changed = match line {
+            Line::Text(painted) => rows[painted.row].kind != RowKind::Equal,
+            Line::Fold { .. } => false,
+        };
         if changed && !inside {
             starts.push(index);
         }

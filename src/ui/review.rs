@@ -305,6 +305,13 @@ impl Review {
 
         match mouse.kind {
             MouseEventKind::Down(MouseButton::Left) => {
+                let viewer = match &mut self.peek {
+                    Some(peek) => peek.viewer.as_mut(),
+                    None => self.viewer.as_mut(),
+                };
+                if let (None, Some(viewer)) = (listed, viewer) {
+                    viewer.click(mouse.column, mouse.row);
+                }
                 if let Some(area) = listed {
                     self.peek = None;
                     let index = self.first + usize::from(mouse.row - area.y);

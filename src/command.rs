@@ -19,6 +19,8 @@ pub enum Command {
     CopyPath,
     NextHunk,
     PreviousHunk,
+    ExpandFold,
+    ToggleFolds,
     NextLine,
     PreviousLine,
     HalfPageDown,
@@ -171,6 +173,13 @@ impl Default for Catalog {
                 bind(C::CopyPath, "Copy path", &[plain('y')], Files, None),
                 bind(C::NextHunk, "Next hunk", &[plain('n')], Diff, Some("hunk")),
                 bind(C::PreviousHunk, "Previous hunk", &[plain('N'), plain('p')], Diff, None),
+                bind(
+                    C::ExpandFold,
+                    "Expand folded lines",
+                    &[code(KeyCode::Enter), plain('o')],
+                    Diff,
+                    None,
+                ),
                 bind(C::NextLine, "Down a line", &[plain('j'), code(KeyCode::Down)], Diff, None),
                 bind(C::PreviousLine, "Up a line", &[plain('k'), code(KeyCode::Up)], Diff, None),
                 bind(C::HalfPageDown, "Down half a page", &[ctrl('d')], Diff, None),
@@ -201,6 +210,7 @@ impl Default for Catalog {
                 ),
                 bind(C::ToggleLayout, "Split or unified", &[plain('s')], View, Some("layout")),
                 bind(C::ToggleWrapping, "Wrap long lines", &[plain('w')], View, None),
+                bind(C::ToggleFolds, "Fold unchanged lines", &[plain('z')], View, None),
             ],
         }
     }
