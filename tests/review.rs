@@ -360,3 +360,51 @@ fn an_unchanged_file_that_a_rescan_finds_changed_joins_the_review() {
     assert_eq!(review.peeked(), None);
     assert_eq!(review.path(), Some(std::path::Path::new("src/lib.rs")));
 }
+
+fn middling(path: &str) -> FileChange {
+    let mut old = String::new();
+    for line in 1..=30 {
+        writeln!(old, "line {line}").expect("writing to a String cannot fail");
+    }
+    let new = old.replace("line 15\n", "line 15 changed\n");
+
+    modified(path, &old, &new)
+}
+
+#[test]
+fn unchanged_lines_away_from_a_change_fold_down_to_its_context() {
+    insta::assert_snapshot!(shown(vec![middling("src/middle.rs")], 90, 12, &[]));
+}
+
+#[test]
+fn expanding_opens_the_first_fold_on_screen() {
+    insta::assert_snapshot!(shown(vec![middling("src/middle.rs")], 90, 12, &[Command::ExpandFold]));
+}
+
+#[test]
+fn folding_can_be_turned_off_for_the_whole_file() {
+    let middle = || vec![middling("src/middle.rs")];
+
+    assert_eq!(
+        shown(middle(), 90, 40, &[Command::ToggleFolds]),
+        shown(middle(), 90, 40, &[Command::ExpandFold, Command::ExpandFold]),
+    );
+}
+
+#[test]
+fn going_to_a_folded_line_opens_its_fold() {
+    let mut review = Review::new(
+        vec![middling("src/middle.rs"), modified("src/a.rs", "a\n", "b\n")],
+        Mode::SideBySide,
+        false,
+        4,
+    )
+    .expect("the fixtures highlight");
+    let mut terminal = Terminal::new(TestBackend::new(90, 12)).expect("test backend starts");
+    terminal.draw(|frame| review.draw(frame, frame.area())).expect("draw succeeds");
+
+    review.select_path(std::path::Path::new("src/middle.rs"), Some(25)).expect("highlights");
+    terminal.draw(|frame| review.draw(frame, frame.area())).expect("draw succeeds");
+
+    insta::assert_snapshot!(describe(terminal.backend().buffer()));
+}

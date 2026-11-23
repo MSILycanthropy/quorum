@@ -4,26 +4,26 @@ assertion_line: 159
 expression: "screen(&mut surface, 100, 24)"
 ---
  CHANGES                           M src/other.rs                                               1/2
- ▾ src                           │1 one                           │1 one
-   M other.rs
-   M total.rs General                              Diff
-              ?               Show every key       n               Next hunk
-              : C-p           Command palette      N p             Previous hunk
-              r               Reload from git      j ↓             Down a line
-              q C-c           Quit                 k ↑             Up a line
-              Esc             Back, or quit        C-d             Down half a page
-                                                   C-u             Up half a page
-              Files                                PgDn C-f Space  Down a page
-              ] Tab           Next file            PgUp            Up a page
-              [ S-Tab         Previous file        g Home          Top of the file
-              /               Find file            G End           Bottom of the file
-              C-b f           Toggle file list     h ←             Scroll left
-              e               Open in $EDITOR      l →             Scroll right
-              y               Copy path
+ ▾ src
+   M other. General                                Diff
+   M total. ?               Show every key         n               Next hunk
+            : C-p           Command palette        N p             Previous hunk
+            r               Reload from git        Enter o         Expand folded lines
+            q C-c           Quit                   j ↓             Down a line
+            Esc             Back, or quit          k ↑             Up a line
+                                                   C-d             Down half a page
+            Files                                  C-u             Up half a page
+            ] Tab           Next file              PgDn C-f Space  Down a page
+            [ S-Tab         Previous file          PgUp            Up a page
+            /               Find file              g Home          Top of the file
+            C-b f           Toggle file list       G End           Bottom of the file
+            e               Open in $EDITOR        h ←             Scroll left
+            y               Copy path              l →             Scroll right
+
                                                    View
                                                    s               Split or unified
                                                    w               Wrap long lines
+                                                   z               Fold unchanged lines
 
-                                                                       any key closes
-                                 │
+                                                                         any key closes
  ⎇ main · HEAD → worktree · 2 files · hunk 1/1 · side by side     n hunk  ] file  C-b files  ? help
