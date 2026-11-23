@@ -44,4 +44,8 @@ pub enum Control {
         line: Option<usize>,
     },
     Copy(String),
+    Open {
+        path: std::path::PathBuf,
+        line: Option<usize>,
+    },
 }

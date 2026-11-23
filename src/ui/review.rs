@@ -1,5 +1,7 @@
 //! Every changed file at once: a list beside the diff of the selected one.
 
+use std::path::{Path, PathBuf};
+
 use ratatui::Frame;
 use ratatui::buffer::Buffer;
 use ratatui::crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
@@ -23,6 +25,7 @@ pub struct Review {
     opened: usize,
     first: usize,
     viewer: Option<Viewer>,
+    peek: Option<Peek>,
     showing: bool,
     listing: u16,
     listed: Option<Rect>,
@@ -52,6 +55,7 @@ impl Review {
             opened,
             first: 0,
             viewer: None,
+            peek: None,
             showing: true,
             listing: SIDEBAR,
             listed: None,
@@ -69,10 +73,15 @@ impl Review {
         let style = Style::new().bg(color(self.tints.background));
         frame.buffer_mut().set_style(area, style);
 
-        let Some(change) = self.changes.get(self.opened) else {
-            let style = style.fg(color(self.tints.foreground));
-            frame.buffer_mut().set_stringn(area.x, area.y, "no changes", area.width.into(), style);
-            return;
+        let titled = match (&self.peek, self.changes.get(self.opened)) {
+            (Some(peek), _) => format!("  {}", peek.path.display()),
+            (None, Some(change)) => format!("{} {}", change.status.letter(), change.path.display()),
+            (None, None) => {
+                let style = style.fg(color(self.tints.foreground));
+                let buffer = frame.buffer_mut();
+                buffer.set_stringn(area.x, area.y, "no changes", area.width.into(), style);
+                return;
+            }
         };
 
         let header = Rect::new(area.x, area.y, area.width, 1.min(area.height));
@@ -84,7 +93,7 @@ impl Review {
         let buffer = frame.buffer_mut();
         buffer.set_style(header, Style::new().bg(color(self.tints.filler)));
 
-        let titled = match sidebar {
+        let heading = match sidebar {
             Some(sidebar) => {
                 self.title(buffer, Rect::new(header.x, header.y, sidebar.width, 1), "CHANGES");
 
@@ -93,7 +102,6 @@ impl Review {
             None => header,
         };
 
-        let line = format!("{} {}", change.status.letter(), change.path.display());
         let position = self
             .tree
             .rows()
@@ -101,18 +109,22 @@ impl Review {
             .filter_map(|row| row.change)
             .position(|change| change == self.opened)
             .map_or(0, |position| position + 1);
-        let counter = format!("{position}/{} ", self.changes.len());
+        let counter = if self.peek.is_some() {
+            "not changed · Esc back ".to_owned()
+        } else {
+            format!("{position}/{} ", self.changes.len())
+        };
         let room = u16::try_from(counter.len()).unwrap_or(0);
         buffer.set_stringn(
-            titled.x + 1,
-            titled.y,
-            line,
-            titled.width.saturating_sub(room + 2).into(),
+            heading.x + 1,
+            heading.y,
+            titled,
+            heading.width.saturating_sub(room + 2).into(),
             Style::new().fg(color(self.tints.foreground)).bg(color(self.tints.filler)),
         );
         buffer.set_stringn(
-            titled.x + titled.width.saturating_sub(room),
-            titled.y,
+            heading.x + heading.width.saturating_sub(room),
+            heading.y,
             counter,
             room.into(),
             Style::new().fg(color(self.tints.gutter)).bg(color(self.tints.filler)),
@@ -122,7 +134,11 @@ impl Review {
             self.list(frame.buffer_mut(), sidebar);
         }
 
-        if let Some(viewer) = &mut self.viewer {
+        let viewer = match &mut self.peek {
+            Some(peek) => peek.viewer.as_mut(),
+            None => self.viewer.as_mut(),
+        };
+        if let Some(viewer) = viewer {
             viewer.draw(frame, body);
         } else {
             let style = Style::new().fg(color(self.tints.gutter)).bg(color(self.tints.background));
@@ -141,6 +157,22 @@ impl Review {
         reason = "the Error enum names the only failure, highlighting the file moved to"
     )]
     pub fn run(&mut self, command: Command) -> Result<()> {
+        if let Some(peek) = &mut self.peek {
+            match command {
+                Command::NextFile
+                | Command::PreviousFile
+                | Command::NextHunk
+                | Command::PreviousHunk => self.peek = None,
+                Command::ToggleFileList => {}
+                command => {
+                    if let Some(viewer) = &mut peek.viewer {
+                        viewer.run(command);
+                    }
+                    return Ok(());
+                }
+            }
+        }
+
         match command {
             Command::NextFile => {
                 self.step(Step::Forward)?;
@@ -171,16 +203,67 @@ impl Review {
         Ok(())
     }
 
-    pub fn path(&self) -> Option<&std::path::Path> {
-        self.changes.get(self.opened).map(|change| change.path.as_path())
+    pub fn path(&self) -> Option<&Path> {
+        match &self.peek {
+            Some(peek) => Some(&peek.path),
+            None => self.changes.get(self.opened).map(|change| change.path.as_path()),
+        }
     }
 
     pub fn line(&self) -> Option<usize> {
-        self.viewer.as_ref().and_then(Viewer::line)
+        match &self.peek {
+            Some(peek) => peek.viewer.as_ref().and_then(Viewer::line),
+            None => self.viewer.as_ref().and_then(Viewer::line),
+        }
     }
 
     pub fn hunk(&self) -> (Option<usize>, usize) {
+        if self.peek.is_some() {
+            return (None, 0);
+        }
         self.viewer.as_ref().map_or((None, 0), Viewer::hunk)
+    }
+
+    pub fn is_changed(&self, path: &Path) -> bool {
+        self.changes.iter().any(|change| change.path == path)
+    }
+
+    pub fn peeked(&self) -> Option<&Path> {
+        self.peek.as_ref().map(|peek| peek.path.as_path())
+    }
+
+    #[expect(
+        clippy::missing_errors_doc,
+        reason = "the Error enum names the only failure, highlighting the file opened"
+    )]
+    pub fn peek(&mut self, path: PathBuf, content: &Content, line: Option<usize>) -> Result<()> {
+        let place = self
+            .peek
+            .as_ref()
+            .filter(|peek| peek.path == path && line.is_none())
+            .and_then(|peek| peek.viewer.as_ref())
+            .map(Viewer::place);
+        let wrap = self.viewer.as_ref().map_or(self.wrap, Viewer::wrap);
+        let mut viewer = match content {
+            Content::Text(diff) => {
+                Some(Viewer::new(diff.clone(), &path, Mode::Unified, wrap, self.tab_width)?)
+            }
+            Content::Binary => None,
+        };
+        if let Some(viewer) = &mut viewer {
+            match (place, line) {
+                (Some(place), _) => viewer.return_to(place),
+                (None, Some(line)) => viewer.land_on(Landing::Line(line)),
+                (None, None) => {}
+            }
+        }
+        self.peek = Some(Peek { path, viewer });
+
+        Ok(())
+    }
+
+    pub fn close_peek(&mut self) -> bool {
+        self.peek.take().is_some()
     }
 
     fn step(&mut self, step: Step) -> Result<bool> {
@@ -223,6 +306,7 @@ impl Review {
         match mouse.kind {
             MouseEventKind::Down(MouseButton::Left) => {
                 if let Some(area) = listed {
+                    self.peek = None;
                     let index = self.first + usize::from(mouse.row - area.y);
                     if index < self.tree.rows().len() {
                         let already = index == self.selected;
@@ -259,6 +343,12 @@ impl Review {
             self.wrap = viewer.wrap();
         }
 
+        let promoted = self
+            .peek
+            .as_ref()
+            .filter(|peek| changes.iter().any(|change| change.path == peek.path))
+            .map(|peek| peek.path.clone());
+
         self.changes = changes;
         self.tree = Tree::of(&self.changes);
         let kept =
@@ -275,12 +365,19 @@ impl Review {
         if let (Some(_), Some(place), Some(viewer)) = (kept, place, &mut self.viewer) {
             viewer.return_to(place);
         }
+        if let Some(path) = promoted {
+            self.select_path(&path, None)?;
+        }
 
         Ok(())
     }
 
     fn roll(&mut self, rows: isize) {
-        if let Some(viewer) = &mut self.viewer {
+        let viewer = match &mut self.peek {
+            Some(peek) => peek.viewer.as_mut(),
+            None => self.viewer.as_mut(),
+        };
+        if let Some(viewer) = viewer {
             viewer.scroll_by(rows);
         }
     }
@@ -336,6 +433,9 @@ impl Review {
     }
 
     pub fn laid(&self) -> &'static str {
+        if self.peek.is_some() {
+            return "read only";
+        }
         match self.viewer.as_ref().map_or(self.mode, Viewer::mode) {
             Mode::SideBySide => "side by side",
             Mode::Unified => "unified",
@@ -360,7 +460,7 @@ impl Review {
         self.showing.then_some(self.listing)
     }
 
-    pub fn paths(&self) -> Vec<std::path::PathBuf> {
+    pub fn paths(&self) -> Vec<PathBuf> {
         self.changes.iter().map(|change| change.path.clone()).collect()
     }
 
@@ -368,11 +468,17 @@ impl Review {
         clippy::missing_errors_doc,
         reason = "the Error enum names the only failure, selecting a changed file"
     )]
-    pub fn select_path(&mut self, path: &std::path::Path) -> Result<()> {
+    pub fn select_path(&mut self, path: &Path, line: Option<usize>) -> Result<()> {
         let Some(index) = self.tree.row_of(path) else {
             return Ok(());
         };
-        self.select(index)
+        self.peek = None;
+        self.select(index)?;
+        if let (Some(line), Some(viewer)) = (line, &mut self.viewer) {
+            viewer.land_on(Landing::Line(line));
+        }
+
+        Ok(())
     }
 
     pub fn resize(&mut self, listing: u16) {
@@ -461,6 +567,12 @@ impl Review {
             (Status::Modified, true) => self.tints.filler,
         }
     }
+}
+
+/// A file opened over the review without joining it, read as it stands.
+struct Peek {
+    path: PathBuf,
+    viewer: Option<Viewer>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

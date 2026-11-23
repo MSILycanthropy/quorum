@@ -190,3 +190,52 @@ fn control_b_hides_and_shows_the_file_list() {
     assert!(shown.contains("CHANGES") && !hidden.contains("CHANGES"), "{hidden}");
     assert_eq!(screen(&mut surface, 100, 6), shown);
 }
+
+fn typing(surface: &mut Surface, text: &str) -> Vec<Control> {
+    let keys: Vec<KeyEvent> =
+        text.chars().map(|character| press(KeyCode::Char(character))).collect();
+    typed(surface, &keys)
+}
+
+fn knowing(files: &[&str]) -> Surface {
+    let opening =
+        Opening { files: files.iter().map(PathBuf::from).collect(), ..Opening::default() };
+
+    opening
+        .surface(vec![modified("src/total.rs", "let total = 1;\n", "let total = 42;\n")])
+        .expect("the fixtures highlight")
+}
+
+#[test]
+fn finding_an_unchanged_file_asks_for_it_at_the_line_named() {
+    let mut surface = knowing(&["src/git.rs", "src/total.rs"]);
+    typing(&mut surface, "/src/git.rs:142:7");
+
+    let controls = typed(&mut surface, &[press(KeyCode::Enter)]);
+
+    assert_eq!(
+        controls,
+        vec![Control::Open { path: PathBuf::from("src/git.rs"), line: Some(142) }]
+    );
+}
+
+#[test]
+fn finding_lists_changed_files_before_unchanged_ones() {
+    let mut surface = knowing(&["src/a.rs", "src/total.rs"]);
+    typed(&mut surface, &[press(KeyCode::Char('/')), press(KeyCode::Enter)]);
+
+    let controls = typed(&mut surface, &[press(KeyCode::Char('y'))]);
+
+    assert_eq!(controls, vec![Control::Copy("src/total.rs".to_owned())]);
+}
+
+#[test]
+fn escape_closes_an_unchanged_file_before_it_quits() {
+    let mut surface = knowing(&["src/git.rs"]);
+    let content = Content::Text(FileDiff::compute(Source::new("a\n"), Source::new("a\n")));
+    surface.peek(PathBuf::from("src/git.rs"), &content, None).expect("the file highlights");
+
+    let controls = typed(&mut surface, &[press(KeyCode::Esc), press(KeyCode::Esc)]);
+
+    assert_eq!(controls, vec![Control::Continue, Control::Quit]);
+}

@@ -5,13 +5,13 @@ expression: "screen(&mut surface, 70, 40)"
 ---
  M src/other.rs                                                   1/2
 1 one                             │1 one
-2 two                             │2 three
-3
-                  General
+2 two
+3                 General
                   ?               Show every key
                   : C-p           Command palette
                   r               Reload from git
-                  q Esc C-c       Quit
+                  q C-c           Quit
+                  Esc             Back, or quit
 
                   Files
                   ] Tab           Next file

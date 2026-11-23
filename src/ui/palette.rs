@@ -9,7 +9,7 @@ use ratatui::widgets::Clear;
 use unicode_width::UnicodeWidthStr;
 
 use crate::color::Rgb;
-use crate::command::{PaletteEntry, PaletteModel, PaletteTarget};
+use crate::command::{PaletteEntry, PaletteModel, PaletteTarget, located};
 use crate::theme::{Tints, TokyoNight};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -83,7 +83,13 @@ impl Palette {
                 PaletteAction::Close
             }
             KeyCode::Enter => {
-                let target = self.selected().map(|entry| entry.target.clone());
+                let line = located(&self.query).1;
+                let target = self.selected().map(|entry| match &entry.target {
+                    PaletteTarget::File { path, .. } => {
+                        PaletteTarget::File { path: path.clone(), line }
+                    }
+                    target @ PaletteTarget::Command(_) => target.clone(),
+                });
                 self.close();
                 target.map_or(PaletteAction::Close, PaletteAction::Execute)
             }

@@ -356,3 +356,42 @@ fn a_later_commit_shows_only_what_it_changed() {
 
     assert_eq!(seen(&changes), vec![(Status::Added, PathBuf::from("other.rs"))]);
 }
+
+#[test]
+fn every_tracked_file_is_listed_whether_or_not_it_changed() {
+    let root = committed("tracked_files", "file.rs", "first\n");
+    std::fs::create_dir_all(root.join("src")).expect("the fixture directory is writable");
+    write(&root, "src/lib.rs", "lib\n");
+    git(&root, &["add", "--all"]);
+    git(&root, &["commit", "--quiet", "--message", "lib"]);
+
+    let repository = Repository::discover(&root).expect("the fixture is a repository");
+
+    assert_eq!(
+        repository.files(&against("HEAD")).expect("the index is readable"),
+        vec![PathBuf::from("file.rs"), PathBuf::from("src/lib.rs")]
+    );
+    assert_eq!(
+        repository
+            .files(&Comparison {
+                old: "HEAD~1".to_owned(),
+                new: Snapshot::Revision("HEAD~1".to_owned())
+            })
+            .expect("the tree is readable"),
+        vec![PathBuf::from("file.rs")]
+    );
+}
+
+#[test]
+fn an_unchanged_file_reads_as_the_newer_side_has_it() {
+    let root = committed("unchanged_file", "file.rs", "first\n");
+
+    let repository = Repository::discover(&root).expect("the fixture is a repository");
+    let Content::Text(diff) =
+        repository.file(&against("HEAD"), Path::new("file.rs")).expect("the file exists")
+    else {
+        panic!("the fixture is text");
+    };
+
+    assert_eq!((diff.old.text(), diff.new.text()), ("first\n", "first\n"));
+}

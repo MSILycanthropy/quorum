@@ -10,8 +10,8 @@ use ratatui::style::{Color, Style};
 use crate::color::Rgb;
 use crate::command::Command;
 use crate::diff::{
-    Align, Cells, FileDiff, Highlighting, Layout, Painted, Row, RowKind, ScreenRow, Viewport,
-    unified,
+    Align, Cells, ChangeKind, FileDiff, Highlighting, Layout, Painted, Row, RowKind, ScreenRow,
+    Viewport, unified,
 };
 use crate::syntax::Syntax;
 use crate::theme::{Tints, TokyoNight};
@@ -20,11 +20,13 @@ use crate::ui::{Mode, Result};
 /// How many rows of context a hunk jump leaves above the hunk.
 const CONTEXT: usize = 3;
 
-/// Which hunk to land on once the diff has been laid out for the first time.
+/// Where to land once the diff has been laid out for the first time: a hunk,
+/// or a line of the newer side, counted from one.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Landing {
     FirstHunk,
     LastHunk,
+    Line(usize),
 }
 
 /// Where the reader was scrolled to, kept across a reload of the same file.
@@ -40,6 +42,7 @@ pub struct Viewer {
     side_by_side: Vec<Row>,
     unified: Vec<Row>,
     mode: Mode,
+    plain: bool,
     old_syntax: Highlighting,
     new_syntax: Highlighting,
     tints: Tints,
@@ -80,8 +83,10 @@ impl Viewer {
         let new_syntax = syntax.highlight(&diff.new, path)?;
         let side_by_side = Align::default().rows(&diff);
         let unified = unified(&side_by_side);
+        let plain = diff.changes.iter().all(|change| change.kind == ChangeKind::Equal);
 
         Ok(Self {
+            plain,
             diff,
             unified,
             mode,
@@ -104,7 +109,11 @@ impl Viewer {
 
     pub fn draw(&mut self, frame: &mut Frame, area: Rect) {
         let gutter = self.gutter();
-        let pane = pane_width(area, gutter, self.mode);
+        let pane = if self.plain {
+            area.width.saturating_sub(gutter + 1)
+        } else {
+            pane_width(area, gutter, self.mode)
+        };
         self.height = usize::from(area.height);
         self.lay_out(pane);
         match self.landing.take() {
@@ -114,6 +123,7 @@ impl Viewer {
             Some(Landing::LastHunk) => {
                 self.land(self.hunks.len().checked_sub(1));
             }
+            Some(Landing::Line(line)) => self.go_to(line),
             None => {}
         }
         self.top = self.top.min(self.screen.len().saturating_sub(1));
@@ -125,9 +135,10 @@ impl Viewer {
         let rows = self.rows();
         let rows_on_screen = self.screen.iter().skip(self.top);
         for (y, painted) in (area.y..area.y + area.height).zip(rows_on_screen) {
-            match self.mode {
-                Mode::SideBySide => screen.split_row(y, painted, &rows[painted.row]),
-                Mode::Unified => screen.unified_row(y, painted, &rows[painted.row]),
+            match (self.plain, self.mode) {
+                (true, _) => screen.plain_row(y, painted, &rows[painted.row]),
+                (false, Mode::SideBySide) => screen.split_row(y, painted, &rows[painted.row]),
+                (false, Mode::Unified) => screen.unified_row(y, painted, &rows[painted.row]),
             }
         }
     }
@@ -177,6 +188,7 @@ impl Viewer {
                 self.wrap = !self.wrap;
                 self.left = 0;
             }
+            Command::ToggleLayout if self.plain => {}
             Command::ToggleLayout => {
                 self.mode = match self.mode {
                     Mode::SideBySide => Mode::Unified,
@@ -236,6 +248,16 @@ impl Viewer {
             .map(|line| line + 1)
     }
 
+    fn go_to(&mut self, line: usize) {
+        let rows = self.rows();
+        let target = self.screen.iter().position(|painted| {
+            !painted.continuation && rows[painted.row].new.line == Some(line.saturating_sub(1))
+        });
+        if let Some(target) = target {
+            self.top = target.saturating_sub(CONTEXT);
+        }
+    }
+
     fn land(&mut self, hunk: Option<usize>) -> bool {
         let Some(start) = hunk.and_then(|hunk| self.hunks.get(hunk).copied()) else {
             return false;
@@ -246,8 +268,12 @@ impl Viewer {
         true
     }
 
+    fn shown(&self) -> Mode {
+        if self.plain { Mode::Unified } else { self.mode }
+    }
+
     fn rows(&self) -> &[Row] {
-        match self.mode {
+        match self.shown() {
             Mode::SideBySide => &self.side_by_side,
             Mode::Unified => &self.unified,
         }
@@ -259,7 +285,7 @@ impl Viewer {
     }
 
     fn lay_out(&mut self, pane: u16) {
-        let geometry = Geometry { pane, wrap: self.wrap, left: self.left, mode: self.mode };
+        let geometry = Geometry { pane, wrap: self.wrap, left: self.left, mode: self.shown() };
         if self.laid_out == Some(geometry) {
             return;
         }
@@ -327,6 +353,14 @@ impl Screen<'_> {
 
         let side = if row.old.line.is_some() { &painted.old } else { &painted.new };
         self.text(self.left + 2 * (self.gutter + 1), y, side, wash);
+    }
+
+    fn plain_row(&mut self, y: u16, painted: &ScreenRow, row: &Row) {
+        let wash = Wash { tint: self.tints.background, emphasis: self.tints.background };
+        let (_, number) = numbers(painted, row);
+
+        self.number(self.left, y, number, wash.tint);
+        self.text(self.left + self.gutter + 1, y, &painted.new, wash);
     }
 
     fn split_washes(&self, kind: RowKind) -> (Wash, Wash) {

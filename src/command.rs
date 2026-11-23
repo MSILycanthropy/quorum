@@ -10,6 +10,7 @@ pub enum Command {
     Palette,
     FindFile,
     Quit,
+    Back,
     Reload,
     NextFile,
     PreviousFile,
@@ -142,13 +143,8 @@ impl Default for Catalog {
                 bind(C::Help, "Show every key", &[plain('?')], General, Some("help")),
                 bind(C::Palette, "Command palette", &[plain(':'), ctrl('p')], General, None),
                 bind(C::Reload, "Reload from git", &[plain('r')], General, None),
-                bind(
-                    C::Quit,
-                    "Quit",
-                    &[plain('q'), code(KeyCode::Esc), ctrl('c')],
-                    General,
-                    Some("quit"),
-                ),
+                bind(C::Quit, "Quit", &[plain('q'), ctrl('c')], General, Some("quit")),
+                bind(C::Back, "Back, or quit", &[code(KeyCode::Esc)], General, None),
                 bind(
                     C::NextFile,
                     "Next file",
@@ -274,7 +270,7 @@ const fn ctrl(character: char) -> Shortcut {
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum PaletteTarget {
     Command(Command),
-    File(PathBuf),
+    File { path: PathBuf, line: Option<usize> },
 }
 
 /// A palette row: what it does, what it says, and the keys that do it directly.
@@ -289,8 +285,25 @@ impl PaletteEntry {
     pub fn file(path: PathBuf) -> Self {
         let label = path.display().to_string();
 
-        Self { target: PaletteTarget::File(path), label, keys: String::new() }
+        Self { target: PaletteTarget::File { path, line: None }, label, keys: String::new() }
     }
+}
+
+pub fn located(query: &str) -> (&str, Option<usize>) {
+    let query = query.trim().trim_start_matches("./");
+    let Some((rest, last)) = query.rsplit_once(':') else {
+        return (query, None);
+    };
+    let Ok(last) = last.parse::<usize>() else {
+        return (query, None);
+    };
+    if let Some((path, line)) = rest.rsplit_once(':')
+        && let Ok(line) = line.parse::<usize>()
+    {
+        return (path, Some(line));
+    }
+
+    (rest, Some(last))
 }
 
 /// A deterministic, case-insensitive ranker for palette entries.
@@ -303,7 +316,7 @@ impl PaletteModel {
         query: &str,
         entries: &'entry [PaletteEntry],
     ) -> Vec<&'entry PaletteEntry> {
-        let query = lower(query);
+        let query = lower(located(query).0);
         if query.is_empty() {
             return entries.iter().collect();
         }

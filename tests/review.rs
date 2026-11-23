@@ -292,3 +292,71 @@ fn a_rescan_of_the_file_you_were_reading_keeps_your_place_and_layout() {
 
     assert_eq!(describe(terminal.backend().buffer()), before);
 }
+
+fn unchanged(text: &str) -> Content {
+    Content::Text(FileDiff::compute(Source::new(text), Source::new(text)))
+}
+
+fn peeked(line: Option<usize>, commands: &[Command]) -> String {
+    let mut review =
+        Review::new(fixtures(), Mode::SideBySide, false, 4).expect("the fixtures highlight");
+    let mut terminal = Terminal::new(TestBackend::new(90, 8)).expect("test backend starts");
+    let mut text = String::new();
+    for line in 1..=30 {
+        writeln!(text, "line {line}").expect("writing to a String cannot fail");
+    }
+
+    terminal.draw(|frame| review.draw(frame, frame.area())).expect("draw succeeds");
+    review.peek(PathBuf::from("src/lib.rs"), &unchanged(&text), line).expect("the file highlights");
+    for command in commands {
+        review.run(*command).expect("the fixtures highlight");
+    }
+    terminal.draw(|frame| review.draw(frame, frame.area())).expect("draw succeeds");
+
+    describe(terminal.backend().buffer())
+}
+
+#[test]
+fn an_unchanged_file_opens_in_one_column_over_the_review() {
+    insta::assert_snapshot!(peeked(None, &[]));
+}
+
+#[test]
+fn an_unchanged_file_opened_at_a_line_scrolls_to_it() {
+    insta::assert_snapshot!(peeked(Some(20), &[]));
+}
+
+#[test]
+fn moving_to_the_next_file_leaves_the_unchanged_one() {
+    assert_eq!(peeked(None, &[Command::NextFile]), shown(fixtures(), 90, 8, &[Command::NextFile]));
+}
+
+#[test]
+fn closing_an_unchanged_file_returns_to_the_diff_as_it_was() {
+    let mut review =
+        Review::new(fixtures(), Mode::SideBySide, false, 4).expect("the fixtures highlight");
+    review
+        .peek(PathBuf::from("src/lib.rs"), &unchanged("fn lib() {}\n"), None)
+        .expect("highlights");
+
+    assert_eq!(review.path(), Some(std::path::Path::new("src/lib.rs")));
+    assert!(review.close_peek());
+    assert_eq!(review.path(), Some(std::path::Path::new("src/gone.rs")));
+    assert!(!review.close_peek());
+}
+
+#[test]
+fn an_unchanged_file_that_a_rescan_finds_changed_joins_the_review() {
+    let mut review =
+        Review::new(fixtures(), Mode::SideBySide, false, 4).expect("the fixtures highlight");
+    review
+        .peek(PathBuf::from("src/lib.rs"), &unchanged("fn lib() {}\n"), None)
+        .expect("highlights");
+
+    let mut grown = fixtures();
+    grown.push(modified("src/lib.rs", "fn lib() {}\n", "fn lib() { 1 }\n"));
+    review.refresh(grown).expect("the fixtures highlight");
+
+    assert_eq!(review.peeked(), None);
+    assert_eq!(review.path(), Some(std::path::Path::new("src/lib.rs")));
+}
