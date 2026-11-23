@@ -188,6 +188,15 @@ impl Surface {
                     });
                 }
             }
+            Command::CopyLocation => {
+                if let Some(path) = self.review.path() {
+                    let location = match self.review.line() {
+                        Some(line) => format!("{}:{line}", path.display()),
+                        None => path.display().to_string(),
+                    };
+                    return Ok(Control::Copy(location));
+                }
+            }
             Command::CopyPath => {
                 if let Some(path) = self.review.path() {
                     return Ok(Control::Copy(path.display().to_string()));
@@ -247,7 +256,7 @@ impl Surface {
             (Some(current), total) => parts.push(format!("hunk {current}/{total}")),
             (None, total) => parts.push(format!("{total} hunks")),
         }
-        parts.push(self.review.laid().to_owned());
+        parts.push(self.review.laid());
 
         parts.into_iter().filter(|part| !part.is_empty()).collect::<Vec<_>>().join(" · ")
     }

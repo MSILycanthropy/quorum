@@ -12,6 +12,8 @@ fn changed(paths: &[&str]) -> Vec<FileChange> {
         .map(|path| FileChange {
             status: Status::Modified,
             path: PathBuf::from(path),
+            previous: None,
+            generated: false,
             content: Content::Text(FileDiff::compute(Source::new("a\n"), Source::new("b\n"))),
         })
         .collect()

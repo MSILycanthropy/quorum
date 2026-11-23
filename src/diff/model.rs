@@ -1,6 +1,7 @@
 //! What changed between two snapshots, as line ranges.
 
 use similar::{Algorithm, DiffOp, TextDiff};
+use std::borrow::Cow;
 use std::ops::Range;
 
 /// One side of a diff: owned text, indexed by line.
@@ -80,6 +81,30 @@ pub struct Change {
     pub new: Range<usize>,
 }
 
+/// Whether lines that differ only in whitespace count as changed.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum Whitespace {
+    #[default]
+    Compare,
+    Ignore,
+}
+
+impl Whitespace {
+    fn key(self, line: &str) -> Cow<'_, str> {
+        match self {
+            Self::Compare => Cow::Borrowed(line),
+            Self::Ignore => Cow::Owned(line.split_whitespace().collect()),
+        }
+    }
+}
+
+/// How many lines a diff adds and removes.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub struct Counts {
+    pub added: usize,
+    pub removed: usize,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct FileDiff {
     pub old: Source,
@@ -89,8 +114,14 @@ pub struct FileDiff {
 
 impl FileDiff {
     pub fn compute(old: Source, new: Source) -> Self {
-        let old_lines: Vec<&str> = old.lines().collect();
-        let new_lines: Vec<&str> = new.lines().collect();
+        Self::compute_with(old, new, Whitespace::Compare)
+    }
+
+    pub fn compute_with(old: Source, new: Source, whitespace: Whitespace) -> Self {
+        let old_keys: Vec<Cow<str>> = old.lines().map(|line| whitespace.key(line)).collect();
+        let new_keys: Vec<Cow<str>> = new.lines().map(|line| whitespace.key(line)).collect();
+        let old_lines: Vec<&str> = old_keys.iter().map(AsRef::as_ref).collect();
+        let new_lines: Vec<&str> = new_keys.iter().map(AsRef::as_ref).collect();
 
         let changes = TextDiff::configure()
             .algorithm(Algorithm::Histogram)
@@ -101,6 +132,21 @@ impl FileDiff {
             .collect();
 
         Self { old, new, changes }
+    }
+
+    pub fn counts(&self) -> Counts {
+        let written = |source: &Source, range: &Range<usize>| {
+            let trailing = source.final_newline() && range.contains(&(source.len() - 1));
+            range.len() - usize::from(trailing)
+        };
+
+        self.changes.iter().fold(Counts::default(), |counts, change| match change.kind {
+            ChangeKind::Equal => counts,
+            ChangeKind::Delete | ChangeKind::Insert | ChangeKind::Replace => Counts {
+                added: counts.added + written(&self.new, &change.new),
+                removed: counts.removed + written(&self.old, &change.old),
+            },
+        })
     }
 }
 

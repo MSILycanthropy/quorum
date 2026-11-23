@@ -19,6 +19,8 @@ fn modified(path: &str, old: &str, new: &str) -> FileChange {
     FileChange {
         status: Status::Modified,
         path: PathBuf::from(path),
+        previous: None,
+        generated: false,
         content: Content::Text(FileDiff::compute(Source::new(old), Source::new(new))),
     }
 }
@@ -27,6 +29,8 @@ fn added(path: &str, new: &str) -> FileChange {
     FileChange {
         status: Status::Added,
         path: PathBuf::from(path),
+        previous: None,
+        generated: false,
         content: Content::Text(FileDiff::compute(Source::new(""), Source::new(new))),
     }
 }
@@ -35,12 +39,20 @@ fn deleted(path: &str, old: &str) -> FileChange {
     FileChange {
         status: Status::Deleted,
         path: PathBuf::from(path),
+        previous: None,
+        generated: false,
         content: Content::Text(FileDiff::compute(Source::new(old), Source::new(""))),
     }
 }
 
 fn binary(path: &str) -> FileChange {
-    FileChange { status: Status::Modified, path: PathBuf::from(path), content: Content::Binary }
+    FileChange {
+        status: Status::Modified,
+        path: PathBuf::from(path),
+        previous: None,
+        generated: false,
+        content: Content::Binary,
+    }
 }
 
 fn fixtures() -> Vec<FileChange> {
@@ -407,4 +419,108 @@ fn going_to_a_folded_line_opens_its_fold() {
     terminal.draw(|frame| review.draw(frame, frame.area())).expect("draw succeeds");
 
     insta::assert_snapshot!(describe(terminal.backend().buffer()));
+}
+
+fn review(changes: Vec<FileChange>) -> (Review, Terminal<TestBackend>) {
+    let mut review =
+        Review::new(changes, Mode::SideBySide, false, 4).expect("the fixtures highlight");
+    let mut terminal = Terminal::new(TestBackend::new(90, 8)).expect("test backend starts");
+    terminal.draw(|frame| review.draw(frame, frame.area())).expect("draw succeeds");
+
+    (review, terminal)
+}
+
+#[test]
+fn marking_a_file_viewed_moves_to_the_next_unviewed_one() {
+    let (mut review, _) = review(fixtures());
+
+    review.run(Command::ToggleViewed).expect("the fixtures highlight");
+
+    assert!(review.is_viewed(std::path::Path::new("src/gone.rs")));
+    assert_eq!(review.path(), Some(std::path::Path::new("src/new.rs")));
+    assert_eq!(review.counted(), "3 files · 1 viewed");
+}
+
+#[test]
+fn the_next_unviewed_file_wraps_past_the_end_and_skips_viewed_ones() {
+    let (mut review, _) = review(fixtures());
+    review.run(Command::ToggleViewed).expect("the fixtures highlight");
+    review.run(Command::NextFile).expect("the fixtures highlight");
+
+    review.run(Command::NextUnviewed).expect("the fixtures highlight");
+
+    assert_eq!(review.path(), Some(std::path::Path::new("src/new.rs")));
+}
+
+#[test]
+fn a_viewed_file_that_changes_again_is_unviewed() {
+    let (mut review, _) = review(fixtures());
+    review.run(Command::NextFile).expect("the fixtures highlight");
+    review.run(Command::NextFile).expect("the fixtures highlight");
+    review.run(Command::ToggleViewed).expect("the fixtures highlight");
+    review.run(Command::ToggleViewed).expect("the fixtures highlight");
+    assert!(review.is_viewed(std::path::Path::new("src/total.rs")));
+    assert!(review.is_viewed(std::path::Path::new("src/gone.rs")));
+
+    let mut rewritten = fixtures();
+    rewritten[0] = modified("src/total.rs", "let total = 1;\n", "let total = 7;\n");
+    review.refresh(rewritten).expect("the fixtures highlight");
+
+    assert!(!review.is_viewed(std::path::Path::new("src/total.rs")));
+    assert!(review.is_viewed(std::path::Path::new("src/gone.rs")));
+}
+
+#[test]
+fn viewed_files_are_ticked_in_the_list() {
+    insta::assert_snapshot!(shown(fixtures(), 90, 8, &[Command::ToggleViewed]));
+}
+
+#[test]
+fn a_lockfile_is_folded_until_asked_for() {
+    let lock =
+        || vec![FileChange { generated: true, ..modified("Cargo.lock", "a = 1\n", "a = 2\n") }];
+
+    insta::assert_snapshot!(shown(lock(), 90, 4, &[]));
+    assert_eq!(
+        shown(lock(), 90, 4, &[Command::ExpandFold]),
+        shown(vec![modified("Cargo.toml", "a = 1\n", "a = 2\n")], 90, 4, &[])
+            .replace("Cargo.toml", "Cargo.lock"),
+    );
+}
+
+#[test]
+fn ignoring_whitespace_hides_a_reindented_line() {
+    let reindented = || vec![modified("src/a.rs", "fn a() {\n  x\n}\n", "fn a() {\n    x\n}\n")];
+    let (mut review, mut terminal) = review(reindented());
+    assert_eq!(review.hunk().1, 1);
+
+    review.run(Command::ToggleWhitespace).expect("the fixtures highlight");
+    terminal.draw(|frame| review.draw(frame, frame.area())).expect("draw succeeds");
+
+    assert_eq!(review.hunk().1, 0);
+    assert_eq!(review.laid(), "side by side · ignoring whitespace");
+}
+
+#[test]
+fn a_sideways_wheel_scrolls_the_diff_sideways() {
+    let wide = || vec![modified("src/a.rs", "abcdefghijklmnop\n", "abcdefghijklmnoq\n")];
+
+    assert_eq!(
+        moused(wide(), 90, 4, &[at(MouseEventKind::ScrollRight, 60, 2)]),
+        shown(wide(), 90, 4, &[Command::ScrollRight, Command::ScrollRight]),
+    );
+    assert_eq!(
+        moused(
+            wide(),
+            90,
+            4,
+            &[MouseEvent {
+                kind: MouseEventKind::ScrollDown,
+                column: 60,
+                row: 2,
+                modifiers: KeyModifiers::SHIFT,
+            }]
+        ),
+        shown(wide(), 90, 4, &[Command::ScrollRight, Command::ScrollRight]),
+    );
 }

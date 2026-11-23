@@ -1,15 +1,19 @@
 //! Every changed file at once: a list beside the diff of the selected one.
 
+use std::collections::{HashMap, HashSet};
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
 
 use ratatui::Frame;
 use ratatui::buffer::Buffer;
-use ratatui::crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+use ratatui::crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::layout::{Position, Rect};
 use ratatui::style::{Color, Style};
+use unicode_width::UnicodeWidthStr;
 
 use crate::color::Rgb;
 use crate::command::Command;
+use crate::diff::{FileDiff, Whitespace};
 use crate::git::{Content, FileChange, Status};
 use crate::theme::{Tints, TokyoNight};
 use crate::ui::{Landing, Mode, Result, Tree, Viewer};
@@ -31,7 +35,10 @@ pub struct Review {
     listed: Option<Rect>,
     mode: Mode,
     wrap: bool,
+    whitespace: Whitespace,
     tab_width: usize,
+    viewed: HashMap<PathBuf, u64>,
+    revealed: HashSet<PathBuf>,
     tints: Tints,
 }
 
@@ -61,7 +68,10 @@ impl Review {
             listed: None,
             mode,
             wrap,
+            whitespace: Whitespace::Compare,
             tab_width,
+            viewed: HashMap::new(),
+            revealed: HashSet::new(),
             tints: TokyoNight::TINTS,
         };
         review.open()?;
@@ -75,7 +85,15 @@ impl Review {
 
         let titled = match (&self.peek, self.changes.get(self.opened)) {
             (Some(peek), _) => format!("  {}", peek.path.display()),
-            (None, Some(change)) => format!("{} {}", change.status.letter(), change.path.display()),
+            (None, Some(change)) => match &change.previous {
+                Some(previous) => format!(
+                    "{} {} → {}",
+                    change.status.letter(),
+                    previous.display(),
+                    change.path.display()
+                ),
+                None => format!("{} {}", change.status.letter(), change.path.display()),
+            },
             (None, None) => {
                 let style = style.fg(color(self.tints.foreground));
                 let buffer = frame.buffer_mut();
@@ -114,14 +132,25 @@ impl Review {
         } else {
             format!("{position}/{} ", self.changes.len())
         };
-        let room = u16::try_from(counter.len()).unwrap_or(0);
-        buffer.set_stringn(
+        let room = u16::try_from(counter.width()).unwrap_or(0);
+        let end = heading.x + heading.width.saturating_sub(room + 1);
+        let (x, _) = buffer.set_stringn(
             heading.x + 1,
             heading.y,
             titled,
-            heading.width.saturating_sub(room + 2).into(),
+            end.saturating_sub(heading.x + 1).into(),
             Style::new().fg(color(self.tints.foreground)).bg(color(self.tints.filler)),
         );
+        if self.peek.is_none()
+            && let Some(change) = self.changes.get(self.opened)
+            && let Content::Text(diff) = &change.content
+        {
+            let counts = diff.counts();
+            let wanted = format!("+{} −{}", counts.added, counts.removed).width();
+            let wanted = u16::try_from(wanted).unwrap_or(u16::MAX);
+            let area = Rect::new(x + 2, heading.y, wanted.min(end.saturating_sub(x + 2)), 1);
+            self.counts(buffer, area, change, self.tints.filler);
+        }
         buffer.set_stringn(
             heading.x + heading.width.saturating_sub(room),
             heading.y,
@@ -134,22 +163,62 @@ impl Review {
             self.list(frame.buffer_mut(), sidebar);
         }
 
-        let viewer = match &mut self.peek {
-            Some(peek) => peek.viewer.as_mut(),
-            None => self.viewer.as_mut(),
-        };
-        if let Some(viewer) = viewer {
+        let placeholder =
+            if self.collapsed() { "generated file · Enter to show" } else { "binary file" };
+        if let Some(viewer) = self.active() {
             viewer.draw(frame, body);
         } else {
             let style = Style::new().fg(color(self.tints.gutter)).bg(color(self.tints.background));
             frame.buffer_mut().set_stringn(
                 body.x + 1,
                 body.y,
-                "binary file",
+                placeholder,
                 body.width.into(),
                 style,
             );
         }
+    }
+
+    fn active(&mut self) -> Option<&mut Viewer> {
+        match &mut self.peek {
+            Some(peek) => peek.viewer.as_mut(),
+            None => self.viewer.as_mut(),
+        }
+    }
+
+    fn collapsed(&self) -> bool {
+        self.peek.is_none()
+            && self
+                .changes
+                .get(self.opened)
+                .is_some_and(|change| change.generated && !self.revealed.contains(&change.path))
+    }
+
+    fn counts(&self, buffer: &mut Buffer, area: Rect, change: &FileChange, row: Rgb) {
+        let Content::Text(diff) = &change.content else {
+            return;
+        };
+        let counts = diff.counts();
+        let added = format!("+{}", counts.added);
+        let removed = format!("−{}", counts.removed);
+        let wanted = u16::try_from(added.width() + 1 + removed.width()).unwrap_or(u16::MAX);
+        if wanted > area.width {
+            return;
+        }
+        let y = area.y;
+        let (x, _) = buffer.set_stringn(
+            area.x + area.width - wanted,
+            y,
+            added,
+            usize::MAX,
+            Style::new().fg(color(self.tints.added_text)).bg(color(row)),
+        );
+        buffer.set_string(
+            x + 1,
+            y,
+            removed,
+            Style::new().fg(color(self.tints.removed_text)).bg(color(row)),
+        );
     }
 
     #[expect(
@@ -162,7 +231,9 @@ impl Review {
                 Command::NextFile
                 | Command::PreviousFile
                 | Command::NextHunk
-                | Command::PreviousHunk => self.peek = None,
+                | Command::PreviousHunk
+                | Command::ToggleViewed
+                | Command::NextUnviewed => self.peek = None,
                 Command::ToggleFileList => {}
                 command => {
                     if let Some(viewer) = &mut peek.viewer {
@@ -181,6 +252,28 @@ impl Review {
                 self.step(Step::Backward)?;
             }
             Command::ToggleFileList => self.showing = !self.showing,
+            Command::ToggleViewed => self.toggle_viewed()?,
+            Command::NextUnviewed => {
+                self.next_unviewed()?;
+            }
+            Command::ToggleWhitespace => {
+                self.whitespace = match self.whitespace {
+                    Whitespace::Compare => Whitespace::Ignore,
+                    Whitespace::Ignore => Whitespace::Compare,
+                };
+                let place = self.viewer.as_ref().map(Viewer::place);
+                self.remember();
+                self.open()?;
+                if let (Some(place), Some(viewer)) = (place, &mut self.viewer) {
+                    viewer.return_to(place);
+                }
+            }
+            Command::ExpandFold if self.collapsed() => {
+                if let Some(change) = self.changes.get(self.opened) {
+                    self.revealed.insert(change.path.clone());
+                }
+                self.open()?;
+            }
             Command::NextHunk => {
                 let moved = self.viewer.as_mut().is_some_and(Viewer::next_hunk);
                 if !moved && self.step(Step::Forward)? {
@@ -222,6 +315,40 @@ impl Review {
             return (None, 0);
         }
         self.viewer.as_ref().map_or((None, 0), Viewer::hunk)
+    }
+
+    pub fn is_viewed(&self, path: &Path) -> bool {
+        self.viewed.contains_key(path)
+    }
+
+    fn toggle_viewed(&mut self) -> Result<()> {
+        let Some(change) = self.changes.get(self.opened) else {
+            return Ok(());
+        };
+        if self.viewed.remove(&change.path).is_some() {
+            return Ok(());
+        }
+        self.viewed.insert(change.path.clone(), fingerprint(change));
+        self.next_unviewed()?;
+
+        Ok(())
+    }
+
+    fn next_unviewed(&mut self) -> Result<bool> {
+        let rows = self.tree.rows();
+        let unviewed = |index: &usize| {
+            rows[*index]
+                .change
+                .and_then(|change| self.changes.get(change))
+                .is_some_and(|change| !self.viewed.contains_key(&change.path))
+        };
+        let after = (self.selected + 1..rows.len()).find(unviewed);
+        let Some(index) = after.or_else(|| (0..self.selected).find(unviewed)) else {
+            return Ok(false);
+        };
+        self.select(index)?;
+
+        Ok(true)
     }
 
     pub fn is_changed(&self, path: &Path) -> bool {
@@ -305,11 +432,7 @@ impl Review {
 
         match mouse.kind {
             MouseEventKind::Down(MouseButton::Left) => {
-                let viewer = match &mut self.peek {
-                    Some(peek) => peek.viewer.as_mut(),
-                    None => self.viewer.as_mut(),
-                };
-                if let (None, Some(viewer)) = (listed, viewer) {
+                if let (None, Some(viewer)) = (listed, self.active()) {
                     viewer.click(mouse.column, mouse.row);
                 }
                 if let Some(area) = listed {
@@ -324,6 +447,14 @@ impl Review {
                     }
                 }
             }
+            MouseEventKind::ScrollDown if mouse.modifiers.contains(KeyModifiers::SHIFT) => {
+                self.slide(Command::ScrollRight);
+            }
+            MouseEventKind::ScrollUp if mouse.modifiers.contains(KeyModifiers::SHIFT) => {
+                self.slide(Command::ScrollLeft);
+            }
+            MouseEventKind::ScrollRight => self.slide(Command::ScrollRight),
+            MouseEventKind::ScrollLeft => self.slide(Command::ScrollLeft),
             MouseEventKind::ScrollDown if listed.is_some() => {
                 self.select(self.selected.saturating_add(1))?;
             }
@@ -345,10 +476,10 @@ impl Review {
     pub fn refresh(&mut self, changes: Vec<FileChange>) -> Result<()> {
         let reading = self.changes.get(self.opened).map(|change| change.path.clone());
         let place = self.viewer.as_ref().map(Viewer::place);
-        if let Some(viewer) = &self.viewer {
-            self.mode = viewer.mode();
-            self.wrap = viewer.wrap();
-        }
+        self.remember();
+        self.viewed.retain(|path, seen| {
+            changes.iter().any(|change| change.path == *path && fingerprint(change) == *seen)
+        });
 
         let promoted = self
             .peek
@@ -380,12 +511,23 @@ impl Review {
     }
 
     fn roll(&mut self, rows: isize) {
-        let viewer = match &mut self.peek {
-            Some(peek) => peek.viewer.as_mut(),
-            None => self.viewer.as_mut(),
-        };
-        if let Some(viewer) = viewer {
+        if let Some(viewer) = self.active() {
             viewer.scroll_by(rows);
+        }
+    }
+
+    fn slide(&mut self, command: Command) {
+        if let Some(viewer) = self.active() {
+            for _ in 0..2 {
+                viewer.run(command);
+            }
+        }
+    }
+
+    fn remember(&mut self) {
+        if let Some(viewer) = &self.viewer {
+            self.mode = viewer.mode();
+            self.wrap = viewer.wrap();
         }
     }
 
@@ -403,10 +545,7 @@ impl Review {
             return Ok(());
         }
 
-        if let Some(viewer) = &self.viewer {
-            self.mode = viewer.mode();
-            self.wrap = viewer.wrap();
-        }
+        self.remember();
         self.opened = change;
 
         self.open()
@@ -422,9 +561,16 @@ impl Review {
     }
 
     fn open(&mut self) -> Result<()> {
+        let collapsed = self.collapsed();
         self.viewer = match self.changes.get(self.opened) {
-            Some(FileChange { content: Content::Text(diff), path, .. }) => {
-                Some(Viewer::new(diff.clone(), path, self.mode, self.wrap, self.tab_width)?)
+            Some(FileChange { content: Content::Text(diff), path, .. }) if !collapsed => {
+                let diff = match self.whitespace {
+                    Whitespace::Compare => diff.clone(),
+                    Whitespace::Ignore => {
+                        FileDiff::compute_with(diff.old.clone(), diff.new.clone(), self.whitespace)
+                    }
+                };
+                Some(Viewer::new(diff, path, self.mode, self.wrap, self.tab_width)?)
             }
             _ => None,
         };
@@ -433,19 +579,27 @@ impl Review {
     }
 
     pub fn counted(&self) -> String {
-        match self.changes.len() {
+        let files = match self.changes.len() {
             1 => "1 file".to_owned(),
             many => format!("{many} files"),
+        };
+        match self.viewed.len() {
+            0 => files,
+            viewed => format!("{files} · {viewed} viewed"),
         }
     }
 
-    pub fn laid(&self) -> &'static str {
+    pub fn laid(&self) -> String {
         if self.peek.is_some() {
-            return "read only";
+            return "read only".to_owned();
         }
-        match self.viewer.as_ref().map_or(self.mode, Viewer::mode) {
+        let layout = match self.viewer.as_ref().map_or(self.mode, Viewer::mode) {
             Mode::SideBySide => "side by side",
             Mode::Unified => "unified",
+        };
+        match self.whitespace {
+            Whitespace::Compare => layout.to_owned(),
+            Whitespace::Ignore => format!("{layout} · ignoring whitespace"),
         }
     }
 
@@ -545,13 +699,27 @@ impl Review {
                     .fg(color(self.tints.foreground))
                     .bg(color(self.swatch(change.status, selected))),
             );
-            buffer.set_stringn(
+            let viewed = self.viewed.contains_key(&change.path);
+            let label = if viewed { self.tints.muted } else { self.tints.foreground };
+            let end = area.x + area.width - 2;
+            let (x, _) = buffer.set_stringn(
                 area.x + 3 + indent,
                 area.y + y,
                 &listed.label,
-                usize::from(area.width.saturating_sub(4 + indent)),
-                Style::new().fg(color(self.tints.foreground)).bg(color(row)),
+                usize::from(end.saturating_sub(area.x + 3 + indent)),
+                Style::new().fg(color(label)).bg(color(row)),
             );
+            if viewed {
+                buffer.set_string(
+                    end,
+                    area.y + y,
+                    "✓",
+                    Style::new().fg(color(self.tints.muted)).bg(color(row)),
+                );
+            } else {
+                let room = Rect::new(x + 1, area.y + y, end.saturating_sub(x + 1), 1);
+                self.counts(buffer, room, change, row);
+            }
         }
 
         for y in 0..area.height {
@@ -570,8 +738,8 @@ impl Review {
             (Status::Added, true) => self.tints.added_emphasis,
             (Status::Deleted, false) => self.tints.removed,
             (Status::Deleted, true) => self.tints.removed_emphasis,
-            (Status::Modified, false) => self.tints.background,
-            (Status::Modified, true) => self.tints.filler,
+            (Status::Modified | Status::Renamed, false) => self.tints.background,
+            (Status::Modified | Status::Renamed, true) => self.tints.filler,
         }
     }
 }
@@ -586,6 +754,12 @@ struct Peek {
 enum Step {
     Forward,
     Backward,
+}
+
+fn fingerprint(change: &FileChange) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    change.content.hash(&mut hasher);
+    hasher.finish()
 }
 
 fn color(rgb: Rgb) -> Color {

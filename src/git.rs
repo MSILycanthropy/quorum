@@ -46,6 +46,8 @@ pub enum Error {
     #[error(transparent)]
     Traverse(#[from] gix::traverse::tree::breadthfirst::Error),
     #[error(transparent)]
+    Attributes(#[from] gix::config::attribute_stack::Error),
+    #[error(transparent)]
     MergeBase(#[from] gix::repository::merge_base::Error),
     #[error(transparent)]
     Io(#[from] std::io::Error),
@@ -59,6 +61,7 @@ pub enum Status {
     Added,
     Modified,
     Deleted,
+    Renamed,
 }
 
 impl Status {
@@ -67,6 +70,7 @@ impl Status {
             Status::Added => 'A',
             Status::Modified => 'M',
             Status::Deleted => 'D',
+            Status::Renamed => 'R',
         }
     }
 }
@@ -79,12 +83,52 @@ pub enum Content {
     Binary,
 }
 
-/// One file, as a revision has it and as the worktree has it.
+/// One file, as a revision has it and as the worktree has it. A renamed file
+/// keeps the path it was renamed from; a generated one was written by a tool.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct FileChange {
     pub status: Status,
     pub path: PathBuf,
+    pub previous: Option<PathBuf>,
+    pub generated: bool,
     pub content: Content,
+}
+
+/// Files whose diff is written by a tool, by name, when `.gitattributes` says nothing.
+const GENERATED_NAMES: [&str; 12] = [
+    "Cargo.lock",
+    "package-lock.json",
+    "npm-shrinkwrap.json",
+    "yarn.lock",
+    "pnpm-lock.yaml",
+    "bun.lock",
+    "bun.lockb",
+    "Gemfile.lock",
+    "poetry.lock",
+    "composer.lock",
+    "flake.lock",
+    "go.sum",
+];
+const GENERATED_SUFFIXES: [&str; 3] = [".min.js", ".min.css", ".map"];
+const GENERATED_MARKERS: [&str; 2] = ["DO NOT EDIT", "@generated"];
+
+/// How far into a file a generated marker is looked for, in lines.
+const MARKED_WITHIN: usize = 5;
+
+pub fn looks_generated(path: &Path, content: &Content) -> bool {
+    let name = path.file_name().and_then(|name| name.to_str()).unwrap_or_default();
+    if GENERATED_NAMES.contains(&name) || GENERATED_SUFFIXES.iter().any(|end| name.ends_with(end)) {
+        return true;
+    }
+    let Content::Text(diff) = content else {
+        return false;
+    };
+    let source = if diff.new.is_empty() { &diff.old } else { &diff.new };
+
+    source
+        .lines()
+        .take(MARKED_WITHIN)
+        .any(|line| GENERATED_MARKERS.iter().any(|marker| line.contains(marker)))
 }
 
 /// A repository open on a worktree, addressed by paths relative to that worktree.
@@ -164,7 +208,24 @@ impl Repository {
         let mut reader = Reader::new(self, comparison)?;
         let paths = reader.changed_paths()?;
 
-        paths.iter().map(|path| reader.change(path)).collect()
+        let changes = paths.iter().map(|path| reader.change(path)).collect::<Result<_>>()?;
+        let mut changes = renamed(changes);
+
+        let index = self.inner.index_or_empty()?;
+        let mut attributes = self.inner.attributes_only(
+            &index,
+            gix::worktree::stack::state::attributes::Source::WorktreeThenIdMapping,
+        )?;
+        for change in &mut changes {
+            let mut outcome = attributes.selected_attribute_matches(["linguist-generated", "diff"]);
+            attributes.at_path(&change.path, None)?.matching_attributes(&mut outcome);
+            change.generated = match declared(&outcome) {
+                Some(generated) => generated,
+                None => looks_generated(&change.path, &change.content),
+            };
+        }
+
+        Ok(changes)
     }
 
     #[expect(
@@ -254,6 +315,7 @@ impl Repository {
             .inner
             .status(gix::progress::Discard)?
             .untracked_files(untracked)
+            .tree_index_track_renames(gix::status::tree_index::TrackRenames::Disabled)
             .head_tree(tree)
             .into_iter(None)?;
 
@@ -374,7 +436,13 @@ impl<'repository> Reader<'repository> {
             _ => Content::Binary,
         };
 
-        Ok(FileChange { status, path: relative.to_path_buf(), content })
+        Ok(FileChange {
+            status,
+            path: relative.to_path_buf(),
+            previous: None,
+            generated: false,
+            content,
+        })
     }
 
     fn stored(&mut self, relative: &Path) -> Result<Option<Vec<u8>>> {
@@ -426,6 +494,90 @@ impl<'repository> Reader<'repository> {
 
         Ok(checked_out)
     }
+}
+
+fn declared(outcome: &gix::attrs::search::Outcome) -> Option<bool> {
+    use gix::attrs::StateRef;
+
+    let mut declared = None;
+    for matched in outcome.iter_selected() {
+        let assignment = &matched.assignment;
+        match (assignment.name.as_str(), assignment.state) {
+            ("linguist-generated", StateRef::Set) => return Some(true),
+            ("linguist-generated", StateRef::Unset) => return Some(false),
+            ("linguist-generated", StateRef::Value(value)) => {
+                return Some(value.as_bstr() != "false");
+            }
+            ("diff", StateRef::Unset) => declared = Some(true),
+            _ => {}
+        }
+    }
+
+    declared
+}
+
+/// How alike a deleted and an added file must be to count as one renamed file.
+const RENAMED: f32 = 0.5;
+
+/// Past this many deleted-added pairs, only identical files are paired.
+const COMPARED: usize = 10_000;
+
+fn renamed(mut changes: Vec<FileChange>) -> Vec<FileChange> {
+    let deleted: Vec<usize> =
+        (0..changes.len()).filter(|&index| changes[index].status == Status::Deleted).collect();
+    let added: Vec<usize> =
+        (0..changes.len()).filter(|&index| changes[index].status == Status::Added).collect();
+    let thorough = deleted.len() * added.len() <= COMPARED;
+
+    let mut paired = Vec::new();
+    let mut taken = vec![false; changes.len()];
+    for &addition in &added {
+        let Content::Text(new) = &changes[addition].content else {
+            continue;
+        };
+        let best = deleted
+            .iter()
+            .filter(|&&deletion| !taken[deletion])
+            .filter_map(|&deletion| {
+                let Content::Text(old) = &changes[deletion].content else {
+                    return None;
+                };
+                let similarity = if old.old.text() == new.new.text() {
+                    1.0
+                } else if thorough {
+                    similar::TextDiff::from_lines(old.old.text(), new.new.text()).ratio()
+                } else {
+                    0.0
+                };
+                (similarity >= RENAMED).then_some((deletion, similarity))
+            })
+            .max_by(|one, two| one.1.total_cmp(&two.1));
+        if let Some((deletion, _)) = best {
+            taken[deletion] = true;
+            paired.push((deletion, addition));
+        }
+    }
+
+    for &(deletion, addition) in &paired {
+        let (Content::Text(old), Content::Text(new)) =
+            (&changes[deletion].content, &changes[addition].content)
+        else {
+            panic!("only text files are paired");
+        };
+        let diff = FileDiff::compute(Source::new(old.old.text()), Source::new(new.new.text()));
+        let previous = changes[deletion].path.clone();
+        let renamed = &mut changes[addition];
+        renamed.status = Status::Renamed;
+        renamed.previous = Some(previous);
+        renamed.content = Content::Text(diff);
+    }
+
+    changes
+        .into_iter()
+        .enumerate()
+        .filter(|(index, _)| !taken[*index])
+        .map(|(_, change)| change)
+        .collect()
 }
 
 fn text(bytes: Vec<u8>) -> Option<String> {

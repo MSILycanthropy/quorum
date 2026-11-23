@@ -14,7 +14,7 @@ use std::time::Duration;
 
 use clap::Parser;
 use quorum::diff::{FileDiff, Source};
-use quorum::git::{Comparison, Content, FileChange, Repository, Snapshot, Status};
+use quorum::git::{Comparison, Content, FileChange, Repository, Snapshot, Status, looks_generated};
 use quorum::ui::{Control, Mode, Opening, Surface};
 use ratatui::DefaultTerminal;
 use ratatui::crossterm::event::{
@@ -446,10 +446,14 @@ impl Subject {
                     Source::new(std::fs::read_to_string(new)?),
                 );
 
+                let content = Content::Text(diff);
+
                 Ok(vec![FileChange {
                     status: Status::Modified,
                     path: new.clone(),
-                    content: Content::Text(diff),
+                    previous: None,
+                    generated: looks_generated(new, &content),
+                    content,
                 }])
             }
         }

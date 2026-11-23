@@ -1,13 +1,13 @@
 ---
 source: tests/review.rs
-assertion_line: 248
+assertion_line: 283
 expression: describe(terminal.backend().buffer())
 ---
- CHANGES                           M src/total.rs                           1/1 
+ CHANGES                           M src/total.rs  +1 −1                    1/1 
                                                                                 
  ▾ src                           │1 let total = 1;      │1 let total = 42;      
 ..................................--------------=-------.++++++++++++++##++++++.
-   M total.rs                    │2                     │2                      
+   M total.rs              +1 −1 │2                     │2                      
                                  ...............................................
                                  │                                              
 ................................................................................

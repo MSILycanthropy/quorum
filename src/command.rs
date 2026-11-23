@@ -17,6 +17,9 @@ pub enum Command {
     ToggleFileList,
     Edit,
     CopyPath,
+    CopyLocation,
+    ToggleViewed,
+    NextUnviewed,
     NextHunk,
     PreviousHunk,
     ExpandFold,
@@ -33,6 +36,7 @@ pub enum Command {
     ScrollRight,
     ToggleLayout,
     ToggleWrapping,
+    ToggleWhitespace,
 }
 
 /// A key combination. Shift is folded into the character it produces, so `G`
@@ -171,6 +175,15 @@ impl Default for Catalog {
                 ),
                 bind(C::Edit, "Open in $EDITOR", &[plain('e')], Files, Some("edit")),
                 bind(C::CopyPath, "Copy path", &[plain('y')], Files, None),
+                bind(C::CopyLocation, "Copy path:line", &[plain('Y')], Files, None),
+                bind(
+                    C::ToggleViewed,
+                    "Mark viewed, go to next",
+                    &[plain('v')],
+                    Files,
+                    Some("viewed"),
+                ),
+                bind(C::NextUnviewed, "Next unviewed file", &[plain('u')], Files, None),
                 bind(C::NextHunk, "Next hunk", &[plain('n')], Diff, Some("hunk")),
                 bind(C::PreviousHunk, "Previous hunk", &[plain('N'), plain('p')], Diff, None),
                 bind(
@@ -211,6 +224,7 @@ impl Default for Catalog {
                 bind(C::ToggleLayout, "Split or unified", &[plain('s')], View, Some("layout")),
                 bind(C::ToggleWrapping, "Wrap long lines", &[plain('w')], View, None),
                 bind(C::ToggleFolds, "Fold unchanged lines", &[plain('z')], View, None),
+                bind(C::ToggleWhitespace, "Ignore whitespace", &[plain('W')], View, None),
             ],
         }
     }
@@ -253,9 +267,10 @@ impl Catalog {
     }
 }
 
-const HINTED: [Command; 8] = [
+const HINTED: [Command; 9] = [
     Command::NextHunk,
     Command::NextFile,
+    Command::ToggleViewed,
     Command::ToggleFileList,
     Command::FindFile,
     Command::Edit,

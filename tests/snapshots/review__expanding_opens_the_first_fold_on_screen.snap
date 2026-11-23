@@ -1,13 +1,13 @@
 ---
 source: tests/review.rs
-assertion_line: 381
+assertion_line: 389
 expression: "shown(vec![middling(\"src/middle.rs\")], 90, 12, &[Command::ExpandFold])"
 ---
- CHANGES                           M src/middle.rs                                    1/1 
+ CHANGES                           M src/middle.rs  +1 −1                             1/1 
                                                                                           
  ▾ src                           │ 1 line 1                  │ 1 line 1                   
 ..........................................................................................
-   M middle.rs                   │ 2 line 2                  │ 2 line 2                   
+   M middle.rs             +1 −1 │ 2 line 2                  │ 2 line 2                   
                                  .........................................................
                                  │ 3 line 3                  │ 3 line 3                   
 ..........................................................................................

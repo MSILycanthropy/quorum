@@ -16,6 +16,8 @@ fn modified(path: &str, old: &str, new: &str) -> FileChange {
     FileChange {
         status: Status::Modified,
         path: PathBuf::from(path),
+        previous: None,
+        generated: false,
         content: Content::Text(FileDiff::compute(Source::new(old), Source::new(new))),
     }
 }
@@ -238,4 +240,14 @@ fn escape_closes_an_unchanged_file_before_it_quits() {
     let controls = typed(&mut surface, &[press(KeyCode::Esc), press(KeyCode::Esc)]);
 
     assert_eq!(controls, vec![Control::Continue, Control::Quit]);
+}
+
+#[test]
+fn copying_the_location_names_the_line_being_read() {
+    let mut surface = surface();
+    screen(&mut surface, 100, 6);
+
+    let controls = typed(&mut surface, &[press(KeyCode::Char('Y'))]);
+
+    assert_eq!(controls, vec![Control::Copy("src/other.rs:2".to_owned())]);
 }
