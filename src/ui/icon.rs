@@ -14,8 +14,8 @@ pub struct Icon {
 impl Icon {
     pub const BRANCH: char = '\u{e725}';
     const FILE: char = '\u{f016}';
-    const FOLDER: char = '\u{f114}';
-    const FOLDER_OPEN: char = '\u{f115}';
+    const FOLDER: char = '\u{f07b}';
+    const FOLDER_OPEN: char = '\u{f07c}';
     const FOLDER_COLOR: Rgb = Rgb::new(0x7e, 0x8e, 0xa8);
 
     pub fn file(path: &Path) -> Self {

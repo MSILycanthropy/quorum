@@ -3,7 +3,7 @@ source: tests/surface.rs
 expression: "screen(&mut surface(), 140, 5)"
 ---
  CHANGES                           M src/other.rs  +1 −1                                                                                1/2
-  src                           │1 one                                               │1 one
+  src                           │1 one                                               │1 one
     other.rs              +1 −1 │2 two                                               │2 three
     total.rs              +1 −1 │3                                                   │3
   main · HEAD → worktree · 2 files · 1 hunks · side by side  n hunk  ] file  v viewed  C-b files  / find  e edit  s layout  ? help  q quit

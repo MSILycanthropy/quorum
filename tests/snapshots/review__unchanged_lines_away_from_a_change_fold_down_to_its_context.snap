@@ -4,7 +4,7 @@ expression: "shown(vec![middling(\"src/middle.rs\")], 90, 12, &[])"
 ---
  CHANGES                           M src/middle.rs  +1 −1                             1/1 
                                                                                           
-  src                           │   ⋯ 11 unchanged lines                                 
+  src                           │   ⋯ 11 unchanged lines                                 
 ..................................________________________________________________________
     middle.rs             +1 −1 │12 line 12                 │12 line 12                  
                                  .........................................................

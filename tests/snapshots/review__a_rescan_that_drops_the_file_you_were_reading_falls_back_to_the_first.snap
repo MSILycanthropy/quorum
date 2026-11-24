@@ -4,7 +4,7 @@ expression: describe(terminal.backend().buffer())
 ---
  CHANGES                           M src/total.rs  +1 −1                    1/1 
                                                                                 
-  src                           │1 let total = 1;      │1 let total = 42;      
+  src                           │1 let total = 1;      │1 let total = 42;      
 ..................................--------------=-------.**************%%******.
     total.rs              +1 −1 │2                     │2                      
                                  ...............................................

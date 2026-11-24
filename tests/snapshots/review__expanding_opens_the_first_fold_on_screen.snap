@@ -4,7 +4,7 @@ expression: "shown(vec![middling(\"src/middle.rs\")], 90, 12, &[Command::ExpandF
 ---
  CHANGES                           M src/middle.rs  +1 −1                             1/1 
                                                                                           
-  src                           │ 1 line 1                  │ 1 line 1                   
+  src                           │ 1 line 1                  │ 1 line 1                   
 ..............................................................:::::::::::::::::::::::::::.
     middle.rs             +1 −1 │ 2 line 2                  │ 2 line 2                   
                                  .........................................................
