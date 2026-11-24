@@ -1,6 +1,6 @@
-//! That Tokyo Night resolves the tints Quorum expects of it.
+//! That Tokyo Night resolves the tints Sift expects of it.
 
-use quorum::theme::TokyoNight;
+use sift::theme::TokyoNight;
 
 #[test]
 fn emphasis_tints_lean_from_the_line_tint_toward_their_accent() {

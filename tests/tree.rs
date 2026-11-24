@@ -2,9 +2,9 @@
 
 use std::path::PathBuf;
 
-use quorum::diff::{FileDiff, Source};
-use quorum::git::{Content, FileChange, Status};
-use quorum::ui::Tree;
+use sift::diff::{FileDiff, Source};
+use sift::git::{Content, FileChange, Status};
+use sift::ui::Tree;
 
 fn changed(paths: &[&str]) -> Vec<FileChange> {
     paths

@@ -1,4 +1,4 @@
-//! Git plumbing for Quorum: what changed between a revision and another snapshot.
+//! Git plumbing for Sift: what changed between a revision and another snapshot.
 #![expect(
     clippy::result_large_err,
     reason = "gix builds large error types, and every call here is already bound by disk"
@@ -75,7 +75,7 @@ impl Status {
     }
 }
 
-/// Both sides of a file, or the fact that Quorum will not read them as text:
+/// Both sides of a file, or the fact that Sift will not read them as text:
 /// they hold a NUL byte, or they are not UTF-8.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Content {

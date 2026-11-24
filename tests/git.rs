@@ -1,12 +1,12 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use quorum::git::{Comparison, Content, Error, FileChange, Repository, Snapshot, Status};
+use sift::git::{Comparison, Content, Error, FileChange, Repository, Snapshot, Status};
 
 fn git(root: &Path, arguments: &[&str]) {
     let status = Command::new("git")
         .current_dir(root)
-        .args(["-c", "user.email=quorum@example.com", "-c", "user.name=Quorum"])
+        .args(["-c", "user.email=sift@example.com", "-c", "user.name=Sift"])
         .args(arguments)
         .status()
         .expect("git is on PATH");

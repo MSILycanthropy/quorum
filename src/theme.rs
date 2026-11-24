@@ -18,7 +18,7 @@ const REMOVED: Rgb = Rgb::new(0x37, 0x22, 0x2c);
 /// How strongly an emphasis tint leans toward its accent, out of 255.
 const EMPHASIS_MIX: u8 = 0x40;
 
-/// The backgrounds Quorum paints diff rows with, under the syntax foreground.
+/// The backgrounds Sift paints diff rows with, under the syntax foreground.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Tints {
     pub added: Rgb,

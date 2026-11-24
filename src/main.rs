@@ -1,4 +1,4 @@
-//! The Quorum binary.
+//! The Sift binary.
 #![expect(
     clippy::result_large_err,
     reason = "gix builds large error types, and every call here is already bound by disk"
@@ -13,9 +13,9 @@ use std::sync::mpsc::{Sender, channel};
 use std::time::Duration;
 
 use clap::Parser;
-use quorum::diff::{FileDiff, Source};
-use quorum::git::{Comparison, Content, FileChange, Repository, Snapshot, Status, looks_generated};
-use quorum::ui::{Control, Mode, Opening, Surface};
+use sift::diff::{FileDiff, Source};
+use sift::git::{Comparison, Content, FileChange, Repository, Snapshot, Status, looks_generated};
+use sift::ui::{Control, Mode, Opening, Surface};
 use ratatui::DefaultTerminal;
 use ratatui::crossterm::event::{
     self, DisableMouseCapture, EnableMouseCapture, KeyEvent, KeyEventKind,
@@ -30,17 +30,17 @@ use ratatui::crossterm::terminal::{
 #[derive(Debug, thiserror::Error)]
 enum Error {
     #[error(transparent)]
-    Git(Box<quorum::git::Error>),
+    Git(Box<sift::git::Error>),
     #[error(transparent)]
-    Ui(#[from] quorum::ui::Error),
+    Ui(#[from] sift::ui::Error),
     #[error(transparent)]
     Io(#[from] std::io::Error),
     #[error("{0}")]
     Usage(String),
 }
 
-impl From<quorum::git::Error> for Error {
-    fn from(error: quorum::git::Error) -> Self {
+impl From<sift::git::Error> for Error {
+    fn from(error: sift::git::Error) -> Self {
         Self::Git(Box::new(error))
     }
 }
@@ -56,14 +56,14 @@ type Result<T> = std::result::Result<T, Error>;
     version,
     about = "A terminal diff viewer over git.",
     after_help = "Examples:\n  \
-        quorum                  working tree against HEAD\n  \
-        quorum --staged         what is staged, against HEAD\n  \
-        quorum main             working tree against main\n  \
-        quorum main..feature    main against feature\n  \
-        quorum main...feature   what feature did since it left main\n  \
-        quorum --show HEAD~2    one commit against its parent\n  \
-        quorum -- src/          only paths under src/\n  \
-        quorum --watch          follow along while something else edits\n\n\
+        sift                  working tree against HEAD\n  \
+        sift --staged         what is staged, against HEAD\n  \
+        sift main             working tree against main\n  \
+        sift main..feature    main against feature\n  \
+        sift main...feature   what feature did since it left main\n  \
+        sift --show HEAD~2    one commit against its parent\n  \
+        sift -- src/          only paths under src/\n  \
+        sift --watch          follow along while something else edits\n\n\
         Press ? inside for every key."
 )]
 struct Arguments {
@@ -98,7 +98,7 @@ fn main() -> ExitCode {
     match view(&Arguments::parse()) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
-            eprintln!("quorum: {error}");
+            eprintln!("sift: {error}");
             ExitCode::FAILURE
         }
     }
@@ -364,7 +364,7 @@ impl Drop for Reporting {
     }
 }
 
-/// What Quorum was pointed at, kept open so the diff can be read again.
+/// What Sift was pointed at, kept open so the diff can be read again.
 #[expect(clippy::large_enum_variant, reason = "exactly one Subject lives for the whole run")]
 enum Subject {
     Repository {

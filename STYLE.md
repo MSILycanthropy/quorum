@@ -1,6 +1,6 @@
 # Style
 
-Rust, for Quorum. Terseness belongs in prose, not in identifiers.
+Rust, for Sift. Terseness belongs in prose, not in identifiers.
 
 ## Comments
 

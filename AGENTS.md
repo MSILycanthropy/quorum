@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Quorum — a terminal diff viewer over git. One crate: `src/diff` is the diff
+Sift — a terminal diff viewer over git. One crate: `src/diff` is the diff
 model, `src/git.rs` the git plumbing, `src/command.rs` the key catalog every
 surface reads from, `src/ui` the terminal surfaces.
 

@@ -3,11 +3,11 @@
 use std::fmt::Write;
 use std::path::Path;
 
-use quorum::color::Rgb;
-use quorum::command::Command;
-use quorum::diff::{FileDiff, Source};
-use quorum::theme::TokyoNight;
-use quorum::ui::{Mode, Viewer};
+use sift::color::Rgb;
+use sift::command::Command;
+use sift::diff::{FileDiff, Source};
+use sift::theme::TokyoNight;
+use sift::ui::{Mode, Viewer};
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::buffer::Buffer;
