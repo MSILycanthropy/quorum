@@ -1,5 +1,6 @@
 //! That highlighting lands on the right bytes with the right colours.
 
+use std::fmt::Write;
 use std::path::Path;
 
 use sift::diff::Source;
@@ -112,4 +113,63 @@ fn a_gemfile_is_highlighted_as_ruby() {
     let painted = painted("gem \"rails\"\n", "Gemfile");
 
     assert_eq!(color_of(&painted, "\"rails\""), "#9ece6a");
+}
+
+fn locale(groups: usize) -> Source {
+    let mut text = String::from("en:\n");
+    for group in 0..groups {
+        writeln!(text, "  group_{group}:").expect("a string takes writes");
+        for key in 0..8 {
+            writeln!(text, "    key_{key}: \"Message {key} of group {group}\"")
+                .expect("a string takes writes");
+        }
+    }
+
+    Source::new(text)
+}
+
+#[test]
+fn a_large_file_is_highlighted_only_on_the_lines_asked_for() {
+    let source = locale(400);
+    let highlighting = Syntax::default()
+        .highlight_lines(&source, Path::new("en.yml"), std::slice::from_ref(&(1804..1808)))
+        .expect("valid source");
+
+    for line in 0..source.len() {
+        assert_eq!(highlighting.line(line).is_empty(), !(1804..1808).contains(&line));
+    }
+}
+
+#[test]
+fn lines_asked_for_out_of_a_large_file_are_coloured_as_the_whole_file_colours_them() {
+    let source = locale(400);
+    let syntax = Syntax::default();
+    let whole = syntax.highlight(&source, Path::new("en.yml")).expect("valid source");
+    let asked = syntax
+        .highlight_lines(&source, Path::new("en.yml"), &[7..12, 1804..1808])
+        .expect("valid source");
+
+    for line in (7..12).chain(1804..1808) {
+        assert_eq!(asked.line(line), whole.line(line));
+    }
+}
+
+#[test]
+fn a_large_file_asked_for_most_of_its_lines_is_highlighted_whole() {
+    let source = locale(400);
+    let highlighting = Syntax::default()
+        .highlight_lines(&source, Path::new("en.yml"), std::slice::from_ref(&(0..3000)))
+        .expect("valid source");
+
+    assert_ne!(highlighting.line(3500), []);
+}
+
+#[test]
+fn a_small_file_is_highlighted_whole_whichever_lines_are_asked_for() {
+    let source = locale(4);
+    let highlighting = Syntax::default()
+        .highlight_lines(&source, Path::new("en.yml"), std::slice::from_ref(&(2..3)))
+        .expect("valid source");
+
+    assert_ne!(highlighting.line(30), []);
 }

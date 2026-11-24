@@ -51,6 +51,15 @@ impl Source {
         &self.text[self.lines[index].clone()]
     }
 
+    pub fn slice(&self, lines: Range<usize>) -> &str {
+        match lines.end.checked_sub(1) {
+            Some(last) if lines.start <= last => {
+                &self.text[self.lines[lines.start].start..self.lines[last].end]
+            }
+            _ => "",
+        }
+    }
+
     pub fn lines(&self) -> impl ExactSizeIterator<Item = &str> {
         self.lines.iter().map(|range| &self.text[range.clone()])
     }

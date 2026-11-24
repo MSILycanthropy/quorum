@@ -237,7 +237,7 @@ impl Review {
                 Command::ToggleFileList => {}
                 command => {
                     if let Some(viewer) = &mut peek.viewer {
-                        viewer.run(command);
+                        viewer.run(command)?;
                     }
                     return Ok(());
                 }
@@ -277,18 +277,18 @@ impl Review {
             Command::NextHunk => {
                 let moved = self.viewer.as_mut().is_some_and(Viewer::next_hunk);
                 if !moved && self.step(Step::Forward)? {
-                    self.land(Landing::FirstHunk);
+                    self.land(Landing::FirstHunk)?;
                 }
             }
             Command::PreviousHunk => {
                 let moved = self.viewer.as_mut().is_some_and(Viewer::previous_hunk);
                 if !moved && self.step(Step::Backward)? {
-                    self.land(Landing::LastHunk);
+                    self.land(Landing::LastHunk)?;
                 }
             }
             command => {
                 if let Some(viewer) = &mut self.viewer {
-                    viewer.run(command);
+                    viewer.run(command)?;
                 }
             }
         }
@@ -390,7 +390,7 @@ impl Review {
         if let Some(viewer) = &mut viewer {
             match (place, line) {
                 (Some(place), _) => viewer.return_to(place),
-                (None, Some(line)) => viewer.land_on(Landing::Line(line)),
+                (None, Some(line)) => viewer.land_on(Landing::Line(line))?,
                 (None, None) => {}
             }
         }
@@ -426,9 +426,10 @@ impl Review {
         Ok(true)
     }
 
-    fn land(&mut self, landing: Landing) {
-        if let Some(viewer) = &mut self.viewer {
-            viewer.land_on(landing);
+    fn land(&mut self, landing: Landing) -> Result<()> {
+        match &mut self.viewer {
+            Some(viewer) => viewer.land_on(landing),
+            None => Ok(()),
         }
     }
 
@@ -443,7 +444,7 @@ impl Review {
         match mouse.kind {
             MouseEventKind::Down(MouseButton::Left) => {
                 if let (None, Some(viewer)) = (listed, self.active()) {
-                    viewer.click(mouse.column, mouse.row);
+                    viewer.click(mouse.column, mouse.row)?;
                 }
                 if let Some(area) = listed {
                     self.peek = None;
@@ -458,13 +459,13 @@ impl Review {
                 }
             }
             MouseEventKind::ScrollDown if mouse.modifiers.contains(KeyModifiers::SHIFT) => {
-                self.slide(Command::ScrollRight);
+                self.slide(Command::ScrollRight)?;
             }
             MouseEventKind::ScrollUp if mouse.modifiers.contains(KeyModifiers::SHIFT) => {
-                self.slide(Command::ScrollLeft);
+                self.slide(Command::ScrollLeft)?;
             }
-            MouseEventKind::ScrollRight => self.slide(Command::ScrollRight),
-            MouseEventKind::ScrollLeft => self.slide(Command::ScrollLeft),
+            MouseEventKind::ScrollRight => self.slide(Command::ScrollRight)?,
+            MouseEventKind::ScrollLeft => self.slide(Command::ScrollLeft)?,
             MouseEventKind::ScrollDown if listed.is_some() => {
                 self.select(self.selected.saturating_add(1))?;
             }
@@ -526,12 +527,14 @@ impl Review {
         }
     }
 
-    fn slide(&mut self, command: Command) {
+    fn slide(&mut self, command: Command) -> Result<()> {
         if let Some(viewer) = self.active() {
             for _ in 0..2 {
-                viewer.run(command);
+                viewer.run(command)?;
             }
         }
+
+        Ok(())
     }
 
     fn remember(&mut self) {
@@ -646,7 +649,7 @@ impl Review {
         self.peek = None;
         self.select(index)?;
         if let (Some(line), Some(viewer)) = (line, &mut self.viewer) {
-            viewer.land_on(Landing::Line(line));
+            viewer.land_on(Landing::Line(line))?;
         }
 
         Ok(())

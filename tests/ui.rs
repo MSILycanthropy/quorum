@@ -32,7 +32,7 @@ fn shown(mode: Mode, width: u16, height: u16, wrap: bool, commands: &[Command]) 
 
     terminal.draw(|frame| viewer.draw(frame, frame.area())).expect("draw succeeds");
     for command in commands {
-        viewer.run(*command);
+        viewer.run(*command).expect("fixtures highlight");
         terminal.draw(|frame| viewer.draw(frame, frame.area())).expect("draw succeeds");
     }
     describe(terminal.backend().buffer())
@@ -130,7 +130,7 @@ fn hunked(commands: &[Command]) -> (String, (Option<usize>, usize), Option<usize
 
     terminal.draw(|frame| viewer.draw(frame, frame.area())).expect("draw succeeds");
     for command in commands {
-        viewer.run(*command);
+        viewer.run(*command).expect("fixtures highlight");
         terminal.draw(|frame| viewer.draw(frame, frame.area())).expect("draw succeeds");
     }
 
@@ -176,7 +176,7 @@ fn drawn(
 
     terminal.draw(|frame| viewer.draw(frame, frame.area())).expect("draw succeeds");
     for command in commands {
-        viewer.run(*command);
+        viewer.run(*command).expect("fixtures highlight");
         terminal.draw(|frame| viewer.draw(frame, frame.area())).expect("draw succeeds");
     }
 
@@ -379,7 +379,7 @@ fn the_wheel_drags_the_cursor_only_when_it_would_leave_the_screen() {
     assert_eq!(viewer.cursor(), Some((Side::New, 6)));
 
     for _ in 0..5 {
-        viewer.run(Command::NextLine);
+        viewer.run(Command::NextLine).expect("fixtures highlight");
     }
     assert_eq!(viewer.cursor(), Some((Side::New, 11)));
 

@@ -46,30 +46,82 @@ impl Default for Syntax {
     }
 }
 
+/// The largest source, in bytes, that is parsed whole even when only some of
+/// its lines are wanted. A larger one is parsed a stretch at a time, each
+/// stretch on its own, unless most of its lines are wanted.
+const WHOLE: usize = 64 * 1024;
+
 impl Syntax {
     #[expect(
         clippy::missing_errors_doc,
         reason = "the Error enum names the only failure, which is a grammar rejecting the source"
     )]
     pub fn highlight(&self, source: &Source, path: &Path) -> Result<Highlighting> {
-        let runs = match grammar(source, path) {
-            Some(grammar) => self.runs(source, grammar).map_err(|error| Error::Parse {
-                path: path.display().to_string(),
-                source: error,
-            })?,
-            None => vec![(0..source.text().len(), self.foreground)],
-        };
+        self.stretches(source, path, std::slice::from_ref(&(0..source.len())))
+    }
 
-        Ok(Highlighting::new(split_into_lines(source, &runs)))
+    #[expect(
+        clippy::missing_errors_doc,
+        reason = "the Error enum names the only failure, which is a grammar rejecting the source"
+    )]
+    pub fn highlight_lines(
+        &self,
+        source: &Source,
+        path: &Path,
+        lines: &[Range<usize>],
+    ) -> Result<Highlighting> {
+        let wanted: usize = lines.iter().map(Range::len).sum();
+        if source.text().len() <= WHOLE || 2 * wanted > source.len() {
+            self.highlight(source, path)
+        } else {
+            self.stretches(source, path, lines)
+        }
+    }
+
+    fn stretches(
+        &self,
+        source: &Source,
+        path: &Path,
+        stretches: &[Range<usize>],
+    ) -> Result<Highlighting> {
+        let grammar = grammar(source, path);
+        let mut highlighter = Highlighter::new();
+        let mut coloured = vec![Vec::new(); source.len()];
+
+        let enclosing = enclosing(source, stretches);
+        for (stretch, enclosing) in stretches.iter().zip(&enclosing) {
+            if stretch.is_empty() {
+                continue;
+            }
+            let mut text = String::new();
+            for line in enclosing {
+                text.push_str(source.line(*line));
+                text.push('\n');
+            }
+            text.push_str(source.slice(stretch.clone()));
+
+            let runs = match grammar {
+                Some(grammar) => self.runs(&mut highlighter, &text, grammar).map_err(|error| {
+                    Error::Parse { path: path.display().to_string(), source: error }
+                })?,
+                None => vec![(0..text.len(), self.foreground)],
+            };
+            let lines = enclosing.iter().copied().chain(stretch.clone());
+            let split = split_into_lines(&text, lines.map(|line| source.line(line)), &runs);
+            for (line, highlights) in stretch.clone().zip(split.into_iter().skip(enclosing.len())) {
+                coloured[line] = highlights;
+            }
+        }
+
+        Ok(Highlighting::new(coloured))
     }
 
     fn runs(
         &self,
-        source: &Source,
+        highlighter: &mut Highlighter,
+        text: &str,
         grammar: &HighlightConfiguration,
     ) -> std::result::Result<Vec<(Range<usize>, Rgb)>, tree_sitter_highlight::Error> {
-        let text = source.text();
-        let mut highlighter = Highlighter::new();
         let mut stack: Vec<Rgb> = Vec::new();
         let mut runs: Vec<(Range<usize>, Rgb)> = Vec::new();
         let events = highlighter.highlight(grammar, text.as_bytes(), None, |token| {
@@ -151,13 +203,46 @@ fn interpreter(source: &Source) -> Option<&str> {
     Some(program.trim_end_matches(|character: char| character.is_ascii_digit() || character == '.'))
 }
 
-fn split_into_lines(source: &Source, runs: &[(Range<usize>, Rgb)]) -> Vec<Vec<Highlight>> {
-    let text = source.text().as_bytes();
-    let mut lines = Vec::with_capacity(source.len());
+fn enclosing(source: &Source, stretches: &[Range<usize>]) -> Vec<Vec<usize>> {
+    let mut starts: Vec<(usize, usize)> =
+        stretches.iter().enumerate().map(|(index, stretch)| (stretch.start, index)).collect();
+    starts.sort_unstable();
+    let mut starts = starts.into_iter().peekable();
+
+    let mut enclosing = vec![Vec::new(); stretches.len()];
+    let mut open: Vec<(usize, usize)> = Vec::new();
+    for (line, text) in source.lines().enumerate() {
+        if starts.peek().is_none() {
+            break;
+        }
+        let indentation = (!text.trim().is_empty()).then(|| text.len() - text.trim_start().len());
+        if let Some(indentation) = indentation {
+            while open.last().is_some_and(|(depth, _)| *depth >= indentation) {
+                open.pop();
+            }
+        }
+        while let Some((_, stretch)) = starts.next_if(|(start, _)| *start == line) {
+            enclosing[stretch] = open.iter().map(|(_, line)| *line).collect();
+        }
+        if let Some(indentation) = indentation {
+            open.push((indentation, line));
+        }
+    }
+
+    enclosing
+}
+
+fn split_into_lines<'a>(
+    text: &str,
+    lines: impl Iterator<Item = &'a str>,
+    runs: &[(Range<usize>, Rgb)],
+) -> Vec<Vec<Highlight>> {
+    let text = text.as_bytes();
+    let mut split = Vec::new();
     let mut runs = runs.iter().peekable();
     let mut start = 0;
 
-    for line in source.lines() {
+    for line in lines {
         let end = start + line.len();
         let mut highlights: Vec<Highlight> = Vec::new();
         while runs.next_if(|(range, _)| range.end <= start).is_some() {}
@@ -171,7 +256,7 @@ fn split_into_lines(source: &Source, runs: &[(Range<usize>, Rgb)]) -> Vec<Vec<Hi
                 highlights.push(Highlight { span, color: *color });
             }
         }
-        lines.push(highlights);
+        split.push(highlights);
 
         start = end;
         if text.get(start) == Some(&b'\r') {
@@ -180,7 +265,7 @@ fn split_into_lines(source: &Source, runs: &[(Range<usize>, Rgb)]) -> Vec<Vec<Hi
         start += 1;
     }
 
-    lines
+    split
 }
 
 fn rgb(color: inkjet::theme::Color) -> Rgb {

@@ -2,7 +2,7 @@
 
 use std::collections::HashSet;
 use std::ops::Range;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use ratatui::Frame;
 use ratatui::buffer::Buffer;
@@ -57,6 +57,8 @@ pub struct Viewer {
     unified: Vec<Row>,
     mode: Mode,
     plain: bool,
+    path: PathBuf,
+    syntax: Syntax,
     old_syntax: Highlighting,
     new_syntax: Highlighting,
     tints: Tints,
@@ -66,7 +68,6 @@ pub struct Viewer {
     left: usize,
     height: usize,
     area: Rect,
-    wrapped: Vec<ScreenRow>,
     screen: Vec<Line>,
     folding: bool,
     opened: HashSet<usize>,
@@ -106,21 +107,20 @@ impl Viewer {
         wrap: bool,
         tab_width: usize,
     ) -> Result<Self> {
-        let syntax = Syntax::default();
-        let old_syntax = syntax.highlight(&diff.old, path)?;
-        let new_syntax = syntax.highlight(&diff.new, path)?;
         let side_by_side = Align::default().rows(&diff);
         let unified = unified(&side_by_side);
         let plain = diff.changes.iter().all(|change| change.kind == ChangeKind::Equal);
 
-        Ok(Self {
+        let mut viewer = Self {
             plain,
             diff,
             unified,
             mode,
             side_by_side,
-            old_syntax,
-            new_syntax,
+            path: path.to_owned(),
+            syntax: Syntax::default(),
+            old_syntax: Highlighting::EMPTY,
+            new_syntax: Highlighting::EMPTY,
             tints: TokyoNight::TINTS,
             wrap,
             tab_width,
@@ -128,7 +128,6 @@ impl Viewer {
             left: 0,
             height: 0,
             area: Rect::default(),
-            wrapped: Vec::new(),
             screen: Vec::new(),
             folding: true,
             opened: HashSet::new(),
@@ -138,7 +137,10 @@ impl Viewer {
             chosen: Side::New,
             laid_out: None,
             landing: None,
-        })
+        };
+        viewer.highlight()?;
+
+        Ok(viewer)
     }
 
     pub fn draw(&mut self, frame: &mut Frame, area: Rect) {
@@ -218,11 +220,33 @@ impl Viewer {
         self.cursor = self.resolve();
     }
 
-    pub fn land_on(&mut self, landing: Landing) {
+    #[expect(
+        clippy::missing_errors_doc,
+        reason = "the Error enum names the only failure, highlighting the fold landed in"
+    )]
+    pub fn land_on(&mut self, landing: Landing) -> Result<()> {
         self.landing = Some(landing);
+        let Landing::Line(line) = landing else {
+            return Ok(());
+        };
+        let wanted = line.saturating_sub(1);
+        let rows = self.rows();
+        let folded = self
+            .closed()
+            .iter()
+            .map(|range| first_line(rows, range)..first_line(rows, range) + range.len())
+            .find(|lines| lines.contains(&wanted));
+        match folded {
+            Some(lines) => self.open_fold(lines.start),
+            None => Ok(()),
+        }
     }
 
-    pub fn run(&mut self, command: Command) {
+    #[expect(
+        clippy::missing_errors_doc,
+        reason = "the Error enum names the only failure, highlighting the lines unfolded"
+    )]
+    pub fn run(&mut self, command: Command) -> Result<()> {
         let page = self.height.max(2);
         match command {
             Command::NextLine => {
@@ -277,33 +301,40 @@ impl Viewer {
                 let visible = self.screen.get(self.top..bottom).unwrap_or_default();
                 let under = self.screen.get(self.cursor).and_then(Line::fold);
                 if let Some(first) = under.or_else(|| visible.iter().find_map(Line::fold)) {
-                    self.open_fold(first);
+                    self.open_fold(first)?;
                 }
             }
             Command::ToggleFolds => {
                 self.folding = !self.folding;
                 self.opened.clear();
                 self.laid_out = None;
+                self.highlight()?;
             }
             _ => {}
         }
         self.lay_out();
+
+        Ok(())
     }
 
-    pub fn click(&mut self, column: u16, row: u16) {
+    #[expect(
+        clippy::missing_errors_doc,
+        reason = "the Error enum names the only failure, highlighting the fold clicked open"
+    )]
+    pub fn click(&mut self, column: u16, row: u16) -> Result<()> {
         if !self.area.contains(Position::new(column, row)) {
-            return;
+            return Ok(());
         }
         let index = self.top + usize::from(row - self.area.y);
         let clicked = match self.screen.get(index) {
-            None => return,
+            None => return Ok(()),
             Some(Line::Fold { first, .. }) => Err(*first),
             Some(Line::Text(painted)) => Ok(&self.rows()[painted.row]),
         };
         match clicked {
             Err(first) => {
                 self.place_cursor(index);
-                self.open_fold(first);
+                self.open_fold(first)?;
                 self.lay_out();
             }
             Ok(row) => {
@@ -315,11 +346,35 @@ impl Viewer {
                 self.place_cursor(self.entry_containing(index));
             }
         }
+
+        Ok(())
     }
 
-    fn open_fold(&mut self, first: usize) {
+    fn open_fold(&mut self, first: usize) -> Result<()> {
         self.opened.insert(first);
         self.laid_out = None;
+
+        self.highlight()
+    }
+
+    fn highlight(&mut self) -> Result<()> {
+        let rows = self.rows();
+        let closed = self.closed();
+        let old = closed.iter().map(|range| {
+            let first = first_old_line(rows, range);
+            first..first + range.len()
+        });
+        let new = closed.iter().map(|range| {
+            let first = first_line(rows, range);
+            first..first + range.len()
+        });
+        let old = between(old, self.diff.old.len());
+        let new = between(new, self.diff.new.len());
+
+        self.old_syntax = self.syntax.highlight_lines(&self.diff.old, &self.path, &old)?;
+        self.new_syntax = self.syntax.highlight_lines(&self.diff.new, &self.path, &new)?;
+
+        Ok(())
     }
 
     pub fn next_hunk(&mut self) -> bool {
@@ -365,17 +420,6 @@ impl Viewer {
 
     fn go_to(&mut self, line: usize) {
         let wanted = line.saturating_sub(1);
-        let folded = self.screen.iter().find_map(|line| match line {
-            Line::Fold { first, hidden, .. } if (*first..first + hidden).contains(&wanted) => {
-                Some(*first)
-            }
-            _ => None,
-        });
-        if let Some(first) = folded {
-            self.open_fold(first);
-            self.lay_out();
-        }
-
         let rows = self.rows();
         let target = self.screen.iter().position(|line| match line {
             Line::Text(painted) => {
@@ -578,9 +622,8 @@ impl Viewer {
             old_syntax: &self.old_syntax,
             new_syntax: &self.new_syntax,
         };
-        let wrapped = layout.screen_rows(&self.diff, self.rows());
-        self.wrapped = wrapped;
-        self.screen = self.fold();
+        let screen = self.fold(&layout);
+        self.screen = screen;
         self.hunks = hunks(&self.screen, self.rows());
         self.cursor = self.resolve();
         if let Some(offset) = offset {
@@ -589,35 +632,42 @@ impl Viewer {
         self.laid_out = Some(geometry);
     }
 
-    fn fold(&self) -> Vec<Line> {
+    fn fold(&self, layout: &Layout<Cells>) -> Vec<Line> {
         let rows = self.rows();
-        let closed: Vec<Range<usize>> = if self.folding {
-            foldable(rows)
+        let text = |shown: Range<usize>| {
+            let start = shown.start;
+            layout
+                .screen_rows(&self.diff, &rows[shown])
                 .into_iter()
-                .filter(|range| !self.opened.contains(&first_line(rows, range)))
-                .collect()
-        } else {
-            Vec::new()
+                .map(move |painted| Line::Text(ScreenRow { row: start + painted.row, ..painted }))
         };
 
-        let mut screen = Vec::with_capacity(self.wrapped.len());
-        let mut folds = closed.iter().peekable();
-        for painted in &self.wrapped {
-            while folds.next_if(|range| range.end <= painted.row).is_some() {}
-            match folds.peek() {
-                Some(range) if range.start == painted.row && !painted.continuation => {
-                    screen.push(Line::Fold {
-                        first: first_line(rows, range),
-                        first_old: first_old_line(rows, range),
-                        hidden: range.len(),
-                    });
-                }
-                Some(range) if range.contains(&painted.row) => {}
-                _ => screen.push(Line::Text(painted.clone())),
-            }
+        let mut screen = Vec::new();
+        let mut start = 0;
+        for range in self.closed() {
+            screen.extend(text(start..range.start));
+            screen.push(Line::Fold {
+                first: first_line(rows, &range),
+                first_old: first_old_line(rows, &range),
+                hidden: range.len(),
+            });
+            start = range.end;
         }
+        screen.extend(text(start..rows.len()));
 
         screen
+    }
+
+    fn closed(&self) -> Vec<Range<usize>> {
+        if !self.folding {
+            return Vec::new();
+        }
+        let rows = self.rows();
+
+        foldable(rows)
+            .into_iter()
+            .filter(|range| !self.opened.contains(&first_line(rows, range)))
+            .collect()
     }
 }
 
@@ -848,6 +898,18 @@ fn foldable(rows: &[Row]) -> Vec<Range<usize>> {
     }
 
     ranges
+}
+
+fn between(hidden: impl Iterator<Item = Range<usize>>, length: usize) -> Vec<Range<usize>> {
+    let mut shown = Vec::new();
+    let mut start = 0;
+    for range in hidden {
+        shown.push(start..range.start);
+        start = range.end;
+    }
+    shown.push(start..length);
+
+    shown
 }
 
 fn first_line(rows: &[Row], range: &Range<usize>) -> usize {
