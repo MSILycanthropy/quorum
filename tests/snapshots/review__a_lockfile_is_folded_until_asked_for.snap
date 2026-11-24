@@ -1,11 +1,11 @@
 ---
 source: tests/review.rs
-assertion_line: 478
+assertion_line: 483
 expression: "shown(lock(), 90, 4, &[])"
 ---
  CHANGES                           M Cargo.lock  +1 −1                                1/1 
                                                                                           
- M Cargo.lock              +1 −1 │ generated file · Enter to show                         
+  Cargo.lock              +1 −1 │ generated file · Enter to show                         
                                  .........................................................
                                  │                                                        
 ..........................................................................................

@@ -3,6 +3,7 @@
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 
+use super::Icon;
 use crate::git::FileChange;
 
 /// One drawn line: a directory, or a file and the change it stands for.
@@ -13,6 +14,7 @@ pub struct Row {
     pub path: PathBuf,
     pub change: Option<usize>,
     pub open: bool,
+    pub icon: Icon,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -95,7 +97,14 @@ fn spread(node: &Node, at: &Path, depth: usize, shut: &HashSet<PathBuf>, rows: &
     for (name, child) in folders {
         let (label, path, deepest) = compact(name.clone(), at.join(name), child);
         let open = !shut.contains(&path);
-        rows.push(Row { depth, label, path: path.clone(), change: None, open });
+        rows.push(Row {
+            depth,
+            label,
+            path: path.clone(),
+            change: None,
+            open,
+            icon: Icon::folder(open),
+        });
 
         if open {
             spread(deepest, &path, depth + 1, shut, rows);
@@ -103,10 +112,12 @@ fn spread(node: &Node, at: &Path, depth: usize, shut: &HashSet<PathBuf>, rows: &
     }
 
     for (name, child) in files {
+        let path = at.join(name);
         rows.push(Row {
             depth,
             label: name.clone(),
-            path: at.join(name),
+            icon: Icon::file(&path),
+            path,
             change: child.change,
             open: false,
         });

@@ -681,11 +681,17 @@ impl Review {
             );
 
             let Some(change) = listed.change.and_then(|change| self.changes.get(change)) else {
-                buffer.set_stringn(
+                buffer.set_string(
                     area.x + 1 + indent,
                     area.y + y,
-                    format!("{} {}", if listed.open { "▾" } else { "▸" }, listed.label),
-                    usize::from(area.width.saturating_sub(2 + indent)),
+                    listed.icon.glyph.to_string(),
+                    Style::new().fg(color(listed.icon.color)).bg(color(row)),
+                );
+                buffer.set_stringn(
+                    area.x + 3 + indent,
+                    area.y + y,
+                    &listed.label,
+                    usize::from(area.width.saturating_sub(4 + indent)),
                     Style::new().fg(color(self.tints.muted)).bg(color(row)),
                 );
                 continue;
@@ -694,9 +700,9 @@ impl Review {
             buffer.set_string(
                 area.x + 1 + indent,
                 area.y + y,
-                change.status.letter().to_string(),
+                listed.icon.glyph.to_string(),
                 Style::new()
-                    .fg(color(self.tints.foreground))
+                    .fg(color(listed.icon.color))
                     .bg(color(self.swatch(change.status, selected))),
             );
             let viewed = self.viewed.contains_key(&change.path);

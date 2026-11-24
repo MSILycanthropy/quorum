@@ -13,7 +13,7 @@ use crate::color::Rgb;
 use crate::command::{Catalog, Command, PaletteEntry, PaletteTarget};
 use crate::git::{Content, FileChange};
 use crate::theme::{Tints, TokyoNight};
-use crate::ui::{Control, Help, Mode, Palette, PaletteAction, Result, Review};
+use crate::ui::{Control, Help, Icon, Mode, Palette, PaletteAction, Result, Review};
 
 /// What the surface is opened with, beyond its changes.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -250,7 +250,11 @@ impl Surface {
 
     fn summary(&self) -> String {
         let branch = self.branch.clone().unwrap_or_else(|| "detached".to_owned());
-        let mut parts = vec![format!("⎇ {branch}"), self.comparing.clone(), self.review.counted()];
+        let mut parts = vec![
+            format!("{} {branch}", Icon::BRANCH),
+            self.comparing.clone(),
+            self.review.counted(),
+        ];
         match self.review.hunk() {
             (_, 0) => {}
             (Some(current), total) => parts.push(format!("hunk {current}/{total}")),

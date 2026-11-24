@@ -1,6 +1,7 @@
 //! The terminal surfaces: the file list, the diff, and the overlays over them.
 
 mod help;
+mod icon;
 mod palette;
 mod review;
 mod surface;
@@ -8,6 +9,7 @@ mod tree;
 mod viewer;
 
 pub use help::Help;
+pub use icon::Icon;
 pub use palette::{Palette, PaletteAction};
 pub use review::Review;
 pub use surface::{Opening, Surface};

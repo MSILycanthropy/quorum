@@ -1,6 +1,6 @@
 ---
 source: tests/surface.rs
-assertion_line: 97
+assertion_line: 98
 expression: "screen(&mut surface, 70, 40)"
 ---
  M src/other.r                                                    1/2
@@ -42,4 +42,4 @@ expression: "screen(&mut surface, 70, 40)"
                w               Wrap long lines
                z               Fold unchanged lines
                W               Ignore whitespace
- ⎇ main · HEAD                          any key closes y side  ? help
+  main · HEAD                          any key closes y side  ? help

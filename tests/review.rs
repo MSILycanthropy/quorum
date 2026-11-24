@@ -483,8 +483,7 @@ fn a_lockfile_is_folded_until_asked_for() {
     insta::assert_snapshot!(shown(lock(), 90, 4, &[]));
     assert_eq!(
         shown(lock(), 90, 4, &[Command::ExpandFold]),
-        shown(vec![modified("Cargo.toml", "a = 1\n", "a = 2\n")], 90, 4, &[])
-            .replace("Cargo.toml", "Cargo.lock"),
+        shown(vec![modified("Cargo.lock", "a = 1\n", "a = 2\n")], 90, 4, &[]),
     );
 }
 
