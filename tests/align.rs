@@ -2,7 +2,7 @@
 
 use std::fmt::Write;
 
-use quorum::diff::{Align, Cell, FileDiff, Row, RowKind, Source, Strategy, unified};
+use sift::diff::{Align, Cell, FileDiff, Row, RowKind, Source, Strategy, unified};
 
 fn table(old: &str, new: &str) -> String {
     aligned(Align::default(), old, new)

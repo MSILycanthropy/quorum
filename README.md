@@ -1,4 +1,4 @@
-# Quorum
+# Sift
 
 A terminal diff viewer over git. It shows side-by-side or unified diffs with
 syntax highlighting and intraline emphasis, and a file tree next to them.
@@ -8,16 +8,16 @@ syntax highlighting and intraline emphasis, and a file tree next to them.
 Run it inside a repository:
 
 ```bash
-quorum                  # working tree against HEAD
-quorum --staged         # what's staged, against HEAD
-quorum main             # working tree against main
-quorum main..feature    # main against feature
-quorum main...feature   # what feature did since it branched off main
-quorum --show HEAD~2    # one commit against its parent
-quorum -- src/          # only paths under src/
+sift                  # working tree against HEAD
+sift --staged         # what's staged, against HEAD
+sift main             # working tree against main
+sift main..feature    # main against feature
+sift main...feature   # what feature did since it branched off main
+sift --show HEAD~2    # one commit against its parent
+sift -- src/          # only paths under src/
 ```
 
-`quorum --no-index old.rs new.rs` compares two files outside a repository.
+`sift --no-index old.rs new.rs` compares two files outside a repository.
 
 ## Keys
 

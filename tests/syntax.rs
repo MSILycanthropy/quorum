@@ -2,8 +2,8 @@
 
 use std::path::Path;
 
-use quorum::diff::Source;
-use quorum::syntax::Syntax;
+use sift::diff::Source;
+use sift::syntax::Syntax;
 
 fn painted(text: &str, path: &str) -> Vec<(String, String)> {
     let source = Source::new(text);
@@ -35,17 +35,17 @@ fn color_of(painted: &[(String, String)], token: &str) -> String {
 
 #[test]
 fn rust_keywords_strings_and_comments_take_their_theme_colours() {
-    let painted = painted("let name = \"quorum\"; // hi\n", "demo.rs");
+    let painted = painted("let name = \"sift\"; // hi\n", "demo.rs");
 
     assert_eq!(color_of(&painted, "let"), "#9d7cd8");
-    assert_eq!(color_of(&painted, "\"quorum\""), "#9ece6a");
+    assert_eq!(color_of(&painted, "\"sift\""), "#9ece6a");
     assert_eq!(color_of(&painted, "// hi"), "#565f89");
     assert_eq!(color_of(&painted, ";"), "#89ddff");
 }
 
 #[test]
 fn a_comment_marker_is_painted_with_the_comment_it_opens() {
-    let painted = painted("let name = \"quorum\"; // hi\n", "demo.rs");
+    let painted = painted("let name = \"sift\"; // hi\n", "demo.rs");
 
     assert!(painted.iter().any(|(text, _)| text == "// hi"));
 }
@@ -69,7 +69,7 @@ fn spans_of_a_line_are_contiguous_and_cover_it_exactly() {
 
 #[test]
 fn an_unknown_extension_falls_back_to_plain_text_without_failing() {
-    let painted = painted("let name = \"quorum\";\n", "demo.unheardof");
+    let painted = painted("let name = \"sift\";\n", "demo.unheardof");
 
     assert_eq!(painted.len(), 1);
     assert_eq!(painted[0].1, "#c0caf5");
@@ -77,10 +77,10 @@ fn an_unknown_extension_falls_back_to_plain_text_without_failing() {
 
 #[test]
 fn a_file_is_highlighted_by_the_grammar_its_extension_names() {
-    let painted = painted("[package]\nname = \"quorum\"\n", "Cargo.toml");
+    let painted = painted("[package]\nname = \"sift\"\n", "Cargo.toml");
 
     assert_eq!(color_of(&painted, "package"), "#2ac3de");
-    assert_eq!(color_of(&painted, "\"quorum\""), "#9ece6a");
+    assert_eq!(color_of(&painted, "\"sift\""), "#9ece6a");
 }
 
 #[test]
@@ -93,7 +93,7 @@ fn a_file_without_an_extension_is_highlighted_by_its_shebang() {
 
 #[test]
 fn a_yml_file_is_highlighted_as_yaml() {
-    let painted = painted("name: quorum\n", "config.yml");
+    let painted = painted("name: sift\n", "config.yml");
 
     assert_ne!(color_of(&painted, "name"), "#c0caf5");
 }

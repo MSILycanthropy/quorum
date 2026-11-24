@@ -3,10 +3,10 @@
 use std::fmt::Write;
 use std::path::Path;
 
-use quorum::diff::{
+use sift::diff::{
     Align, Cells, FileDiff, Highlighting, Layout, Painted, ScreenRow, Source, Viewport,
 };
-use quorum::syntax::Syntax;
+use sift::syntax::Syntax;
 
 fn screen(old: &str, new: &str, viewport: Viewport) -> String {
     let diff = FileDiff::compute(Source::new(old), Source::new(new));

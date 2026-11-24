@@ -2232,23 +2232,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "quorum"
-version = "0.1.0"
-dependencies = [
- "clap",
- "devicons",
- "gix",
- "inkjet",
- "insta",
- "ratatui",
- "similar 3.2.0",
- "thiserror 2.0.20",
- "tree-sitter-embedded-template",
- "unicode-segmentation",
- "unicode-width",
-]
-
-[[package]]
 name = "quote"
 version = "1.0.47"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2560,6 +2543,23 @@ name = "shlex"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
+
+[[package]]
+name = "sift"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "devicons",
+ "gix",
+ "inkjet",
+ "insta",
+ "ratatui",
+ "similar 3.2.0",
+ "thiserror 2.0.20",
+ "tree-sitter-embedded-template",
+ "unicode-segmentation",
+ "unicode-width",
+]
 
 [[package]]
 name = "signal-hook"

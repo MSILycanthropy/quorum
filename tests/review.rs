@@ -3,12 +3,12 @@
 use std::fmt::Write;
 use std::path::PathBuf;
 
-use quorum::color::Rgb;
-use quorum::command::Command;
-use quorum::diff::{FileDiff, Source};
-use quorum::git::{Content, FileChange, Status};
-use quorum::theme::TokyoNight;
-use quorum::ui::{Mode, Review};
+use sift::color::Rgb;
+use sift::command::Command;
+use sift::diff::{FileDiff, Source};
+use sift::git::{Content, FileChange, Status};
+use sift::theme::TokyoNight;
+use sift::ui::{Mode, Review};
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::buffer::Buffer;

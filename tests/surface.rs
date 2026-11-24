@@ -4,10 +4,10 @@ use std::collections::HashSet;
 use std::fmt::Write;
 use std::path::PathBuf;
 
-use quorum::command::{Catalog, Command};
-use quorum::diff::{FileDiff, Source};
-use quorum::git::{Content, FileChange, Status};
-use quorum::ui::{Control, Opening, Surface};
+use sift::command::{Catalog, Command};
+use sift::diff::{FileDiff, Source};
+use sift::git::{Content, FileChange, Status};
+use sift::ui::{Control, Opening, Surface};
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
