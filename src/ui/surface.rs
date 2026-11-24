@@ -13,7 +13,7 @@ use crate::color::Rgb;
 use crate::command::{Catalog, Command, PaletteEntry, PaletteTarget};
 use crate::git::{Content, FileChange};
 use crate::theme::{Tints, TokyoNight};
-use crate::ui::{Control, Help, Icon, Mode, Palette, PaletteAction, Result, Review};
+use crate::ui::{Anchor, Control, Help, Icon, Mode, Palette, PaletteAction, Result, Review};
 
 /// What the surface is opened with, beyond its changes.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -210,6 +210,10 @@ impl Surface {
 
     pub fn paths(&self) -> Vec<PathBuf> {
         self.review.paths()
+    }
+
+    pub fn cursor(&self) -> Option<Anchor> {
+        self.review.cursor()
     }
 
     fn status(&self, buffer: &mut Buffer, area: Rect) {

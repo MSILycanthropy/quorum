@@ -4,13 +4,13 @@ use std::collections::HashSet;
 use std::fmt::Write;
 use std::path::PathBuf;
 
-use sift::command::{Catalog, Command};
-use sift::diff::{FileDiff, Source};
-use sift::git::{Content, FileChange, Status};
-use sift::ui::{Control, Opening, Surface};
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use sift::command::{Catalog, Command};
+use sift::diff::{FileDiff, Side, Source};
+use sift::git::{Content, FileChange, Status};
+use sift::ui::{Anchor, Control, Opening, Surface};
 
 fn modified(path: &str, old: &str, new: &str) -> FileChange {
     FileChange {
@@ -95,7 +95,7 @@ fn question_mark_lists_every_key() {
     let mut surface = surface();
     typed(&mut surface, &[press(KeyCode::Char('?'))]);
 
-    insta::assert_snapshot!(screen(&mut surface, 70, 40));
+    insta::assert_snapshot!(screen(&mut surface, 70, 44));
 }
 
 #[test]
@@ -141,15 +141,18 @@ fn the_command_palette_runs_what_it_finds() {
 }
 
 #[test]
-fn editing_asks_for_the_file_on_screen_at_the_line_being_read() {
+fn editing_asks_for_the_file_on_screen_at_the_cursors_line() {
     let mut surface = surface();
     screen(&mut surface, 100, 6);
 
-    let controls = typed(&mut surface, &[press(KeyCode::Char('e'))]);
+    let controls = typed(&mut surface, &[press(KeyCode::Char('j')), press(KeyCode::Char('e'))]);
 
     assert_eq!(
         controls,
-        vec![Control::Edit { path: PathBuf::from("src/other.rs"), line: Some(2) }]
+        vec![
+            Control::Continue,
+            Control::Edit { path: PathBuf::from("src/other.rs"), line: Some(2) }
+        ]
     );
 }
 
@@ -243,11 +246,66 @@ fn escape_closes_an_unchanged_file_before_it_quits() {
 }
 
 #[test]
-fn copying_the_location_names_the_line_being_read() {
+fn copying_the_location_names_the_cursors_line() {
     let mut surface = surface();
     screen(&mut surface, 100, 6);
 
-    let controls = typed(&mut surface, &[press(KeyCode::Char('Y'))]);
+    let controls = typed(&mut surface, &[press(KeyCode::Char('j')), press(KeyCode::Char('Y'))]);
 
-    assert_eq!(controls, vec![Control::Copy("src/other.rs:2".to_owned())]);
+    assert_eq!(controls, vec![Control::Continue, Control::Copy("src/other.rs:2".to_owned())]);
+}
+
+#[test]
+fn the_cursor_on_a_fold_has_no_anchor() {
+    let mut text = String::new();
+    for line in 1..=30 {
+        writeln!(text, "line {line}").expect("writing to a String cannot fail");
+    }
+    let changed = text.replace("line 15\n", "line 15 changed\n");
+    let mut surface = Opening::default()
+        .surface(vec![modified("src/middle.rs", &text, &changed)])
+        .expect("the fixtures highlight");
+    screen(&mut surface, 100, 12);
+    assert_eq!(surface.cursor(), None);
+
+    typed(&mut surface, &[press(KeyCode::Char('o'))]);
+    screen(&mut surface, 100, 12);
+
+    assert_eq!(
+        surface.cursor(),
+        Some(Anchor { path: PathBuf::from("src/middle.rs"), side: Side::New, line: 1 })
+    );
+}
+
+#[test]
+fn shifted_h_and_l_switch_the_cursors_side() {
+    let mut surface = surface();
+    screen(&mut surface, 100, 6);
+
+    typed(&mut surface, &[press(KeyCode::Char('j')), press(KeyCode::Char('H'))]);
+    let old = surface.cursor();
+    typed(&mut surface, &[press(KeyCode::Char('L'))]);
+
+    assert_eq!(old, Some(Anchor { path: PathBuf::from("src/other.rs"), side: Side::Old, line: 2 }));
+    assert_eq!(
+        surface.cursor(),
+        Some(Anchor { path: PathBuf::from("src/other.rs"), side: Side::New, line: 2 })
+    );
+}
+
+#[test]
+fn shifted_arrows_switch_the_cursors_side_too() {
+    let mut surface = surface();
+    screen(&mut surface, 100, 6);
+    let shifted = |code| KeyEvent::new(code, KeyModifiers::SHIFT);
+
+    typed(&mut surface, &[press(KeyCode::Char('j')), shifted(KeyCode::Left)]);
+    let old = surface.cursor();
+    typed(&mut surface, &[shifted(KeyCode::Right)]);
+
+    assert_eq!(old, Some(Anchor { path: PathBuf::from("src/other.rs"), side: Side::Old, line: 2 }));
+    assert_eq!(
+        surface.cursor(),
+        Some(Anchor { path: PathBuf::from("src/other.rs"), side: Side::New, line: 2 })
+    );
 }

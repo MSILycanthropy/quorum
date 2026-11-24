@@ -34,6 +34,14 @@ pub enum Mode {
     Unified,
 }
 
+/// One line of one side of a file, counted from one.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+pub struct Anchor {
+    pub path: std::path::PathBuf,
+    pub side: crate::diff::Side,
+    pub line: usize,
+}
+
 /// What the surface asks of the program around it after a key.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub enum Control {

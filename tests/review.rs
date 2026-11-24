@@ -3,17 +3,17 @@
 use std::fmt::Write;
 use std::path::PathBuf;
 
-use sift::color::Rgb;
-use sift::command::Command;
-use sift::diff::{FileDiff, Source};
-use sift::git::{Content, FileChange, Status};
-use sift::theme::TokyoNight;
-use sift::ui::{Mode, Review};
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::buffer::Buffer;
 use ratatui::crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::style::Color;
+use sift::color::Rgb;
+use sift::command::Command;
+use sift::diff::{FileDiff, Side, Source};
+use sift::git::{Content, FileChange, Status};
+use sift::theme::TokyoNight;
+use sift::ui::{Anchor, Mode, Review};
 
 fn modified(path: &str, old: &str, new: &str) -> FileChange {
     FileChange {
@@ -139,6 +139,12 @@ fn tint(color: Color) -> char {
         found if found == tints.removed_emphasis => '=',
         found if found == tints.added => '+',
         found if found == tints.added_emphasis => '#',
+        found if found == tints.under_cursor(tints.background) => ':',
+        found if found == tints.under_cursor(tints.filler) => '_',
+        found if found == tints.under_cursor(tints.removed) => '~',
+        found if found == tints.under_cursor(tints.removed_emphasis) => '!',
+        found if found == tints.under_cursor(tints.added) => '*',
+        found if found == tints.under_cursor(tints.added_emphasis) => '%',
         _ => '?',
     }
 }
@@ -188,6 +194,9 @@ fn hunks_are_counted_for_the_file_on_screen() {
         .expect("the fixtures highlight");
     let mut terminal = Terminal::new(TestBackend::new(90, 8)).expect("test backend starts");
     terminal.draw(|frame| review.draw(frame, frame.area())).expect("draw succeeds");
+    assert_eq!(review.hunk(), (None, 1));
+
+    review.run(Command::NextHunk).expect("the fixtures highlight");
 
     assert_eq!(review.hunk(), (Some(1), 1));
     assert_eq!(review.line(), Some(4));
@@ -253,7 +262,7 @@ fn the_wheel_over_the_list_moves_between_files() {
 fn the_wheel_over_the_diff_scrolls_it_and_leaves_the_file_alone() {
     let rolled = moused(vec![tall("src/tall.rs")], 90, 8, &[at(MouseEventKind::ScrollDown, 60, 4)]);
 
-    assert_eq!(rolled, shown(vec![tall("src/tall.rs")], 90, 8, &[Command::NextLine; 3]));
+    assert_eq!(rolled, shown(vec![tall("src/tall.rs")], 90, 8, &[Command::HalfPageDown]));
 }
 
 #[test]
@@ -522,4 +531,66 @@ fn a_sideways_wheel_scrolls_the_diff_sideways() {
         ),
         shown(wide(), 90, 4, &[Command::ScrollRight, Command::ScrollRight]),
     );
+}
+
+fn anchor(path: &str, side: Side, line: usize) -> Anchor {
+    Anchor { path: PathBuf::from(path), side, line }
+}
+
+#[test]
+fn a_reload_returns_the_cursor_to_its_line() {
+    let (mut review, mut terminal) = review(vec![tall("src/tall.rs")]);
+    for _ in 0..5 {
+        review.run(Command::NextLine).expect("the fixtures highlight");
+    }
+    assert_eq!(review.cursor(), Some(anchor("src/tall.rs", Side::New, 6)));
+
+    review.refresh(vec![tall("src/tall.rs")]).expect("the fixtures highlight");
+    terminal.draw(|frame| review.draw(frame, frame.area())).expect("draw succeeds");
+
+    assert_eq!(review.cursor(), Some(anchor("src/tall.rs", Side::New, 6)));
+}
+
+#[test]
+fn toggling_whitespace_keeps_the_cursor_on_its_line() {
+    let (mut review, mut terminal) = review(vec![tall("src/tall.rs")]);
+    for command in [Command::NextLine, Command::OldSide, Command::ToggleWhitespace] {
+        review.run(command).expect("the fixtures highlight");
+    }
+    terminal.draw(|frame| review.draw(frame, frame.area())).expect("draw succeeds");
+
+    assert_eq!(review.cursor(), Some(anchor("src/tall.rs", Side::Old, 2)));
+}
+
+#[test]
+fn clicking_a_row_moves_the_cursor_to_the_pane_clicked() {
+    let (mut review, mut terminal) = review(vec![tall("src/tall.rs")]);
+
+    review.mouse(click(40, 3)).expect("the fixtures highlight");
+    assert_eq!(review.cursor(), Some(anchor("src/tall.rs", Side::Old, 3)));
+
+    review.mouse(click(70, 4)).expect("the fixtures highlight");
+    terminal.draw(|frame| review.draw(frame, frame.area())).expect("draw succeeds");
+    assert_eq!(review.cursor(), Some(anchor("src/tall.rs", Side::New, 4)));
+}
+
+#[test]
+fn a_binary_file_has_no_cursor() {
+    let (review, _) = review(vec![binary("logo.png")]);
+
+    assert_eq!(review.cursor(), None);
+}
+
+#[test]
+fn an_unchanged_file_always_puts_the_cursor_on_the_new_side() {
+    let mut review =
+        Review::new(fixtures(), Mode::SideBySide, false, 4).expect("the fixtures highlight");
+    let mut terminal = Terminal::new(TestBackend::new(90, 8)).expect("test backend starts");
+    review.peek(PathBuf::from("src/lib.rs"), &unchanged("one\ntwo\n"), None).expect("highlights");
+    terminal.draw(|frame| review.draw(frame, frame.area())).expect("draw succeeds");
+
+    review.run(Command::OldSide).expect("the fixtures highlight");
+    review.run(Command::NextLine).expect("the fixtures highlight");
+
+    assert_eq!(review.cursor(), Some(anchor("src/lib.rs", Side::New, 2)));
 }

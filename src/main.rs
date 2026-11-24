@@ -13,9 +13,6 @@ use std::sync::mpsc::{Sender, channel};
 use std::time::Duration;
 
 use clap::Parser;
-use sift::diff::{FileDiff, Source};
-use sift::git::{Comparison, Content, FileChange, Repository, Snapshot, Status, looks_generated};
-use sift::ui::{Control, Mode, Opening, Surface};
 use ratatui::DefaultTerminal;
 use ratatui::crossterm::event::{
     self, DisableMouseCapture, EnableMouseCapture, KeyEvent, KeyEventKind,
@@ -26,6 +23,9 @@ use ratatui::crossterm::execute;
 use ratatui::crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
+use sift::diff::{FileDiff, Source};
+use sift::git::{Comparison, Content, FileChange, Repository, Snapshot, Status, looks_generated};
+use sift::ui::{Control, Mode, Opening, Surface};
 
 #[derive(Debug, thiserror::Error)]
 enum Error {

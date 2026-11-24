@@ -16,7 +16,7 @@ use crate::command::Command;
 use crate::diff::{FileDiff, Whitespace};
 use crate::git::{Content, FileChange, Status};
 use crate::theme::{Tints, TokyoNight};
-use crate::ui::{Landing, Mode, Result, Tree, Viewer};
+use crate::ui::{Anchor, Landing, Mode, Result, Tree, Viewer};
 
 const SIDEBAR: u16 = 34;
 const NARROWEST: u16 = 40;
@@ -308,6 +308,16 @@ impl Review {
             Some(peek) => peek.viewer.as_ref().and_then(Viewer::line),
             None => self.viewer.as_ref().and_then(Viewer::line),
         }
+    }
+
+    pub fn cursor(&self) -> Option<Anchor> {
+        let viewer = match &self.peek {
+            Some(peek) => peek.viewer.as_ref(),
+            None => self.viewer.as_ref(),
+        };
+        let (side, line) = viewer?.cursor()?;
+
+        Some(Anchor { path: self.path()?.to_path_buf(), side, line })
     }
 
     pub fn hunk(&self) -> (Option<usize>, usize) {

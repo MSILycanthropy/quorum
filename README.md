@@ -29,8 +29,8 @@ n / N       next / previous hunk, carrying on into the next file
 ] / [       next / previous file
 /           find a file by name
 :  ctrl-p   run any command by name
-e           open $EDITOR at the line you're looking at
-y           copy the file's path
+e           open $EDITOR at the cursor's line
+y  Y        copy the file's path, or path:line at the cursor
 s           side by side or unified
 w           wrap long lines
 ctrl-b  f   show or hide the file list
@@ -38,7 +38,10 @@ r           reload from git
 q           quit
 ```
 
-`j`/`k`, `ctrl-d`/`ctrl-u`, `g`/`G` and the arrow keys scroll like you'd expect.
+`j`/`k` move the cursor a line, `ctrl-d`/`ctrl-u` and the page keys move it and
+the view together, and `g`/`G` jump to either end. Side by side, `H`/`L` or
+`shift-←`/`shift-→` put the cursor on the old or new side. `h`/`l` and `←`/`→`
+scroll sideways.
 After `e` the diff reloads, so you see your edit straight away.
 
 ## Layout

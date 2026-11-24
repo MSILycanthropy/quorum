@@ -42,6 +42,14 @@ impl Cell {
     }
 }
 
+/// Which snapshot of a file a line belongs to.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum Side {
+    Old,
+    #[default]
+    New,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum RowKind {
     Equal,

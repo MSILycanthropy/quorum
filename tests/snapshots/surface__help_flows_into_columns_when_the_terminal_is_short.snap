@@ -1,6 +1,5 @@
 ---
 source: tests/surface.rs
-assertion_line: 161
 expression: "screen(&mut surface, 100, 24)"
 ---
  CHANGES                                                                                        1/2
@@ -16,14 +15,14 @@ expression: "screen(&mut surface, 100, 24)"
          [ S-Tab         Previous file             PgUp            Up a page
          /               Find file                 g Home          Top of the file
          C-b f           Toggle file list          G End           Bottom of the file
-         e               Open in $EDITOR           h ←             Scroll left
-         y               Copy path                 l →             Scroll right
-         Y               Copy path:line
-         v               Mark viewed, go to next   View
-         u               Next unviewed file        s               Split or unified
+         e               Open in $EDITOR           H S-←           Cursor to the old side
+         y               Copy path                 L S-→           Cursor to the new side
+         Y               Copy path:line            h ←             Scroll left
+         v               Mark viewed, go to next   l →             Scroll right
+         u               Next unviewed file
+                                                   View
+                                                   s               Split or unified
                                                    w               Wrap long lines
                                                    z               Fold unchanged lines
                                                    W               Ignore whitespace
-
-                                                                            any key closes
-  main · HEAD → worktree · 2 files · hunk 1/1 · side by side      n hunk  ] file  v viewed  ? help
+  main                                                                     any key closes   ? help

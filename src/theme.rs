@@ -18,7 +18,11 @@ const REMOVED: Rgb = Rgb::new(0x37, 0x22, 0x2c);
 /// How strongly an emphasis tint leans toward its accent, out of 255.
 const EMPHASIS_MIX: u8 = 0x40;
 
+/// How strongly a tint under the cursor leans toward the cursor colour, out of 255.
+const CURSOR_MIX: u8 = 0x1c;
+
 /// The backgrounds Sift paints diff rows with, under the syntax foreground.
+/// Under the cursor, each leans toward `cursor`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Tints {
     pub added: Rgb,
@@ -33,6 +37,13 @@ pub struct Tints {
     pub attention: Rgb,
     pub added_text: Rgb,
     pub removed_text: Rgb,
+    pub cursor: Rgb,
+}
+
+impl Tints {
+    pub const fn under_cursor(&self, tint: Rgb) -> Rgb {
+        tint.blend(self.cursor, CURSOR_MIX)
+    }
 }
 
 /// Tokyo Night, Night variant.
@@ -53,5 +64,6 @@ impl TokyoNight {
         attention: ORANGE,
         added_text: GREEN,
         removed_text: RED,
+        cursor: FOREGROUND,
     };
 }

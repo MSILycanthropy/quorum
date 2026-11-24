@@ -32,6 +32,8 @@ pub enum Command {
     PageUp,
     Top,
     Bottom,
+    OldSide,
+    NewSide,
     ScrollLeft,
     ScrollRight,
     ToggleLayout,
@@ -71,7 +73,13 @@ impl Shortcut {
             code => format!("{code:?}"),
         };
 
-        if self.modifiers.contains(KeyModifiers::CONTROL) { format!("C-{key}") } else { key }
+        if self.modifiers.contains(KeyModifiers::CONTROL) {
+            format!("C-{key}")
+        } else if self.modifiers.contains(KeyModifiers::SHIFT) {
+            format!("S-{key}")
+        } else {
+            key
+        }
     }
 }
 
@@ -132,6 +140,10 @@ pub struct Catalog {
 }
 
 impl Default for Catalog {
+    #[expect(
+        clippy::too_many_lines,
+        reason = "one list holds every binding, so it reads as the catalog"
+    )]
     fn default() -> Self {
         use Category::{Diff, Files, General, View};
         use Command as C;
@@ -213,6 +225,20 @@ impl Default for Catalog {
                     Diff,
                     None,
                 ),
+                bind(
+                    C::OldSide,
+                    "Cursor to the old side",
+                    &[plain('H'), shift(KeyCode::Left)],
+                    Diff,
+                    None,
+                ),
+                bind(
+                    C::NewSide,
+                    "Cursor to the new side",
+                    &[plain('L'), shift(KeyCode::Right)],
+                    Diff,
+                    None,
+                ),
                 bind(C::ScrollLeft, "Scroll left", &[plain('h'), code(KeyCode::Left)], Diff, None),
                 bind(
                     C::ScrollRight,
@@ -285,6 +311,10 @@ const fn plain(character: char) -> Shortcut {
 
 const fn code(code: KeyCode) -> Shortcut {
     Shortcut::new(code, KeyModifiers::NONE)
+}
+
+const fn shift(code: KeyCode) -> Shortcut {
+    Shortcut::new(code, KeyModifiers::SHIFT)
 }
 
 const fn ctrl(character: char) -> Shortcut {

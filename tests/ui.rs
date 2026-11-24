@@ -3,15 +3,15 @@
 use std::fmt::Write;
 use std::path::Path;
 
-use sift::color::Rgb;
-use sift::command::Command;
-use sift::diff::{FileDiff, Source};
-use sift::theme::TokyoNight;
-use sift::ui::{Mode, Viewer};
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::buffer::Buffer;
 use ratatui::style::Color;
+use sift::color::Rgb;
+use sift::command::Command;
+use sift::diff::{FileDiff, Side, Source};
+use sift::theme::TokyoNight;
+use sift::ui::{Mode, Viewer};
 
 const OLD: &str = "fn total(cart: &Cart) -> u32 {\n    let total = 1;\n    dead();\n    total\n}\n";
 const NEW: &str = "fn total(cart: &Cart) -> u32 {\n    let total = 42;\n    total\n}\n";
@@ -67,6 +67,12 @@ fn tint(color: Color) -> char {
         found if found == tints.removed_emphasis => '=',
         found if found == tints.added => '+',
         found if found == tints.added_emphasis => '#',
+        found if found == tints.under_cursor(tints.background) => ':',
+        found if found == tints.under_cursor(tints.filler) => '_',
+        found if found == tints.under_cursor(tints.removed) => '~',
+        found if found == tints.under_cursor(tints.removed_emphasis) => '!',
+        found if found == tints.under_cursor(tints.added) => '*',
+        found if found == tints.under_cursor(tints.added_emphasis) => '%',
         _ => '?',
     }
 }
@@ -82,14 +88,14 @@ fn wrapping_repeats_the_tint_but_not_the_line_number() {
 }
 
 #[test]
-fn holding_a_scroll_key_stops_where_jumping_to_the_end_does() {
+fn holding_down_stops_where_jumping_to_the_end_does() {
     let commands = [Command::NextLine; 40];
 
     assert_eq!(scrolled(48, 4, false, &commands), scrolled(48, 4, false, &[Command::Bottom]));
 }
 
 #[test]
-fn scrolling_to_the_end_leaves_the_last_row_at_the_top() {
+fn jumping_to_the_end_puts_the_cursor_on_the_last_row() {
     insta::assert_snapshot!(scrolled(48, 4, false, &[Command::Bottom]));
 }
 
@@ -156,10 +162,261 @@ fn there_is_no_hunk_past_the_last() {
     assert_eq!(hunked(&[Command::NextHunk, Command::NextHunk, Command::NextHunk]), last);
 }
 
-#[test]
-fn half_a_page_is_half_the_rows_on_screen() {
-    let (halved, _, _) = hunked(&[Command::HalfPageDown]);
-    let (stepped, _, _) = hunked(&[Command::NextLine; 3]);
+fn drawn(
+    (old, new): (&str, &str),
+    mode: Mode,
+    (width, height): (u16, u16),
+    wrap: bool,
+    commands: &[Command],
+) -> (Viewer, String) {
+    let diff = FileDiff::compute(Source::new(old), Source::new(new));
+    let mut viewer =
+        Viewer::new(diff, Path::new("demo.rs"), mode, wrap, 4).expect("fixtures highlight");
+    let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("test backend starts");
 
-    assert_eq!(halved, stepped);
+    terminal.draw(|frame| viewer.draw(frame, frame.area())).expect("draw succeeds");
+    for command in commands {
+        viewer.run(*command);
+        terminal.draw(|frame| viewer.draw(frame, frame.area())).expect("draw succeeds");
+    }
+
+    let text = describe(terminal.backend().buffer());
+    (viewer, text)
+}
+
+fn far_apart_unfolded(height: u16, commands: &[Command]) -> (Viewer, String) {
+    let (old, new) = far_apart();
+    let mut unfolded = vec![Command::ToggleFolds];
+    unfolded.extend_from_slice(commands);
+
+    drawn((&old, &new), Mode::SideBySide, (48, height), false, &unfolded)
+}
+
+const EVERY_KIND_OLD: &str = "fn main() {\n    let a = 1;\n    let gone = 0;\n    print(a);\n}\n";
+const EVERY_KIND_NEW: &str = "fn main() {\n    let a = 2;\n    print(a);\n    print(b);\n}\n";
+
+fn every_row(mode: Mode, first: &[Command]) -> String {
+    let mut frames = String::new();
+    for row in 0..6 {
+        let mut commands = first.to_vec();
+        commands.extend(std::iter::repeat_n(Command::NextLine, row));
+        let (_, text) = drawn((EVERY_KIND_OLD, EVERY_KIND_NEW), mode, (56, 7), false, &commands);
+        writeln!(frames, "{text}").expect("writing to a String cannot fail");
+    }
+
+    frames
+}
+
+#[test]
+fn the_cursor_starts_on_the_first_row() {
+    let (viewer, _) = drawn((OLD, NEW), Mode::SideBySide, (64, 6), false, &[]);
+
+    assert_eq!(viewer.cursor(), Some((Side::New, 1)));
+}
+
+#[test]
+fn moving_down_skips_the_continuation_of_a_wrapped_row() {
+    let (viewer, _) = drawn((OLD, NEW), Mode::SideBySide, (34, 8), true, &[Command::NextLine]);
+
+    assert_eq!(viewer.cursor(), Some((Side::New, 2)));
+}
+
+#[test]
+fn the_view_follows_the_cursor_with_three_rows_of_context() {
+    let (_, text) = far_apart_unfolded(10, &[Command::NextLine; 7]);
+
+    insta::assert_snapshot!(text);
+}
+
+#[test]
+fn the_view_stops_at_the_top_rather_than_keep_context_above_the_first_row() {
+    let (_, top) = far_apart_unfolded(10, &[]);
+    let (_, back) = far_apart_unfolded(10, &[Command::NextLine, Command::PreviousLine]);
+
+    assert_eq!(back, top);
+}
+
+#[test]
+fn half_a_page_moves_the_cursor_and_the_view_together() {
+    let (viewer, text) = far_apart_unfolded(6, &[Command::NextLine, Command::HalfPageDown]);
+
+    assert_eq!(viewer.cursor(), Some((Side::New, 5)));
+    insta::assert_snapshot!(text);
+}
+
+#[test]
+fn a_pure_insertion_puts_the_cursor_on_the_new_side_whatever_side_was_chosen() {
+    let commands = [
+        Command::OldSide,
+        Command::NextLine,
+        Command::NextLine,
+        Command::NextLine,
+        Command::NextLine,
+    ];
+    let (viewer, _) =
+        drawn((EVERY_KIND_OLD, EVERY_KIND_NEW), Mode::SideBySide, (56, 7), false, &commands);
+
+    assert_eq!(viewer.cursor(), Some((Side::New, 4)));
+}
+
+#[test]
+fn a_pure_deletion_puts_the_cursor_on_the_old_side_whatever_side_was_chosen() {
+    let commands = [Command::NextLine, Command::NextLine];
+    let (viewer, _) =
+        drawn((EVERY_KIND_OLD, EVERY_KIND_NEW), Mode::SideBySide, (56, 7), false, &commands);
+
+    assert_eq!(viewer.cursor(), Some((Side::Old, 3)));
+}
+
+#[test]
+fn the_chosen_side_comes_back_on_the_next_row_with_both_sides() {
+    let mut commands = vec![Command::OldSide];
+    commands.extend([Command::NextLine; 5]);
+    let (viewer, _) =
+        drawn((EVERY_KIND_OLD, EVERY_KIND_NEW), Mode::SideBySide, (56, 7), false, &commands);
+
+    assert_eq!(viewer.cursor(), Some((Side::Old, 5)));
+}
+
+#[test]
+fn switching_sides_on_a_row_with_one_side_does_nothing() {
+    let commands = [Command::NextLine, Command::NextLine, Command::NewSide];
+    let (viewer, _) =
+        drawn((EVERY_KIND_OLD, EVERY_KIND_NEW), Mode::SideBySide, (56, 7), false, &commands);
+
+    assert_eq!(viewer.cursor(), Some((Side::Old, 3)));
+}
+
+#[test]
+fn switching_sides_in_unified_mode_does_nothing() {
+    let commands = [Command::NextLine, Command::OldSide];
+    let (viewer, _) = drawn((OLD, NEW), Mode::Unified, (44, 7), false, &commands);
+
+    assert_eq!(viewer.cursor(), Some((Side::Old, 2)));
+}
+
+#[test]
+fn toggling_the_layout_keeps_the_cursor_on_the_same_line() {
+    let chosen = [Command::NextLine, Command::OldSide];
+    let (split, _) = drawn((OLD, NEW), Mode::SideBySide, (64, 7), false, &chosen);
+    let (unified, _) = drawn(
+        (OLD, NEW),
+        Mode::SideBySide,
+        (64, 7),
+        false,
+        &[Command::NextLine, Command::OldSide, Command::ToggleLayout],
+    );
+    let (back, _) = drawn(
+        (OLD, NEW),
+        Mode::SideBySide,
+        (64, 7),
+        false,
+        &[Command::NextLine, Command::OldSide, Command::ToggleLayout, Command::ToggleLayout],
+    );
+
+    assert_eq!(split.cursor(), Some((Side::Old, 2)));
+    assert_eq!(unified.cursor(), Some((Side::Old, 2)));
+    assert_eq!(back.cursor(), Some((Side::Old, 2)));
+}
+
+#[test]
+fn toggling_wrap_keeps_the_cursor_on_the_same_line() {
+    let moved = [Command::NextLine, Command::NextLine, Command::NextLine];
+    let (wrapped, _) = drawn((OLD, NEW), Mode::SideBySide, (34, 8), true, &moved);
+    let (unwrapped, _) = drawn(
+        (OLD, NEW),
+        Mode::SideBySide,
+        (34, 8),
+        true,
+        &[Command::NextLine, Command::NextLine, Command::NextLine, Command::ToggleWrapping],
+    );
+
+    assert_eq!(wrapped.cursor(), Some((Side::New, 3)));
+    assert_eq!(unwrapped.cursor(), wrapped.cursor());
+}
+
+#[test]
+fn a_hunk_jump_puts_the_cursor_on_the_first_changed_row() {
+    let (old, new) = far_apart();
+    let (viewer, _) = drawn((&old, &new), Mode::SideBySide, (48, 6), false, &[Command::NextHunk]);
+
+    assert_eq!(viewer.cursor(), Some((Side::New, 5)));
+}
+
+#[test]
+fn enter_opens_the_fold_under_the_cursor() {
+    let (old, new) = far_apart();
+    let (viewer, text) = drawn(
+        (&old, &new),
+        Mode::SideBySide,
+        (48, 30),
+        false,
+        &[Command::Bottom, Command::ExpandFold],
+    );
+
+    assert_eq!(viewer.cursor(), Some((Side::New, 34)));
+    insta::assert_snapshot!(text);
+}
+
+#[test]
+fn a_deleted_line_reports_the_nearest_newer_line_to_edit() {
+    let moved = [Command::NextLine, Command::NextLine, Command::NextLine];
+    let (viewer, _) = drawn((OLD, NEW), Mode::Unified, (44, 7), false, &moved);
+
+    assert_eq!(viewer.cursor(), Some((Side::Old, 3)));
+    assert_eq!(viewer.line(), Some(3));
+}
+
+#[test]
+fn the_wheel_drags_the_cursor_only_when_it_would_leave_the_screen() {
+    let (mut viewer, _) = far_apart_unfolded(6, &[Command::NextLine; 4]);
+    assert_eq!(viewer.cursor(), Some((Side::New, 5)));
+
+    viewer.scroll_by(1);
+    assert_eq!(viewer.cursor(), Some((Side::New, 5)));
+
+    viewer.scroll_by(3);
+    assert_eq!(viewer.cursor(), Some((Side::New, 6)));
+
+    for _ in 0..5 {
+        viewer.run(Command::NextLine);
+    }
+    assert_eq!(viewer.cursor(), Some((Side::New, 11)));
+
+    viewer.scroll_by(-1);
+    assert_eq!(viewer.cursor(), Some((Side::New, 11)));
+
+    viewer.scroll_by(-4);
+    assert_eq!(viewer.cursor(), Some((Side::New, 8)));
+}
+
+#[test]
+fn the_cursors_line_number_is_drawn_in_the_attention_tint() {
+    let diff = FileDiff::compute(Source::new(OLD), Source::new(NEW));
+    let mut viewer = Viewer::new(diff, Path::new("demo.rs"), Mode::SideBySide, false, 4)
+        .expect("fixtures highlight");
+    let mut terminal = Terminal::new(TestBackend::new(64, 6)).expect("test backend starts");
+    terminal.draw(|frame| viewer.draw(frame, frame.area())).expect("draw succeeds");
+    let buffer = terminal.backend().buffer();
+    let attention = TokyoNight::TINTS.attention;
+    let attention = Color::Rgb(attention.red, attention.green, attention.blue);
+
+    assert_ne!(buffer[(0, 0)].fg, attention);
+    assert_eq!(buffer[(32, 0)].fg, attention);
+    assert_ne!(buffer[(32, 1)].fg, attention);
+}
+
+#[test]
+fn the_cursor_lights_each_kind_of_row_on_the_new_side() {
+    insta::assert_snapshot!(every_row(Mode::SideBySide, &[]));
+}
+
+#[test]
+fn the_cursor_lights_each_kind_of_row_on_the_old_side() {
+    insta::assert_snapshot!(every_row(Mode::SideBySide, &[Command::OldSide]));
+}
+
+#[test]
+fn the_cursor_lights_each_kind_of_row_in_unified_mode() {
+    insta::assert_snapshot!(every_row(Mode::Unified, &[]));
 }
