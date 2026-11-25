@@ -1,0 +1,65 @@
+query PullRequests($owner: String!, $name: String!, $search: String!, $first: Int!) {
+  repository(owner: $owner, name: $name) {
+    id
+  }
+  search(query: $search, type: ISSUE, first: $first) {
+    nodes {
+      __typename
+      ... on PullRequest {
+        number
+        title
+        author {
+          login
+        }
+        state
+        isDraft
+        baseRefName
+        baseRefOid
+        headRefName
+        headRefOid
+        createdAt
+        updatedAt
+        reviewDecision
+        mergeable
+        additions
+        deletions
+        changedFiles
+        comments {
+          totalCount
+        }
+        labels(first: 20) {
+          nodes {
+            name
+          }
+        }
+        reviewRequests(first: 20) {
+          nodes {
+            requestedReviewer {
+              ... on User {
+                login
+              }
+              ... on Bot {
+                login
+              }
+              ... on Mannequin {
+                login
+              }
+              ... on Team {
+                login: name
+              }
+            }
+          }
+        }
+        commits(last: 1) {
+          nodes {
+            commit {
+              statusCheckRollup {
+                state
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

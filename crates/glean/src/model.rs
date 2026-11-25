@@ -12,7 +12,7 @@ pub use conversation::{
     Activity, Change, ChangeKind, Comment, Commit, Placement, Review, ReviewState, Thread,
 };
 pub use pull_request::{
-    Branch, Details, MergeMethod, Mergeability, PullRequest, ReviewDecision, State, Verdict,
+    Branch, Details, Filter, MergeMethod, Mergeability, PullRequest, ReviewDecision, State, Verdict,
 };
 pub use repository::Repository;
 
@@ -20,6 +20,8 @@ pub use repository::Repository;
 pub enum Error {
     #[error("not a git repository: {0}")]
     NotARepository(PathBuf),
+    #[error("not a repository name, which looks like owner/name: {0}")]
+    NotARepositoryName(String),
     #[error("no GitHub remote named upstream or origin")]
     NoGitHubRemote,
     #[error(transparent)]

@@ -3,6 +3,7 @@
 use std::fmt;
 use std::path::Path;
 use std::process::Command;
+use std::str::FromStr;
 
 use crate::model::{Error, Result};
 
@@ -23,12 +24,8 @@ impl Repository {
             .find_map(|prefix| url.strip_prefix(prefix))?;
         let path = path.trim_end_matches('/');
         let path = path.strip_suffix(".git").unwrap_or(path);
-        let (owner, name) = path.split_once('/')?;
-        if owner.is_empty() || name.is_empty() || name.contains('/') {
-            return None;
-        }
 
-        Some(Self { owner: owner.to_owned(), name: name.to_owned() })
+        path.parse().ok()
     }
 
     #[expect(
@@ -49,6 +46,25 @@ impl Repository {
         }
 
         Err(Error::NoGitHubRemote)
+    }
+}
+
+impl FromStr for Repository {
+    type Err = Error;
+
+    fn from_str(text: &str) -> Result<Self> {
+        let valid = |part: &str| {
+            !part.is_empty()
+                && part.chars().all(|character| {
+                    character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.')
+                })
+        };
+        match text.split_once('/') {
+            Some((owner, name)) if valid(owner) && valid(name) => {
+                Ok(Self { owner: owner.to_owned(), name: name.to_owned() })
+            }
+            _ => Err(Error::NotARepositoryName(text.to_owned())),
+        }
     }
 }
 

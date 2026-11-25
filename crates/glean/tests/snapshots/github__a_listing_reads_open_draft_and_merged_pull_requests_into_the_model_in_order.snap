@@ -1,0 +1,113 @@
+---
+source: tests/github.rs
+expression: "listed(Filter::Open)"
+---
+[
+    PullRequest {
+        number: 12,
+        title: "feat(ui): annotations under a line of the diff",
+        author: "octocat",
+        state: Open,
+        base: Branch {
+            name: "main",
+            commit: "1111111111111111111111111111111111111111",
+        },
+        head: Branch {
+            name: "annotations",
+            commit: "2222222222222222222222222222222222222222",
+        },
+        created: SystemTime {
+            tv_sec: 1795161600,
+            tv_nsec: 0,
+        },
+        updated: SystemTime {
+            tv_sec: 1795547223,
+            tv_nsec: 0,
+        },
+        review_decision: Some(
+            Approved,
+        ),
+        checks: Some(
+            Passed,
+        ),
+        mergeability: Clean,
+        labels: [
+            "ui",
+            "feature",
+        ],
+        requested_reviewers: [
+            "hubot",
+            "reviewers",
+        ],
+        added: 412,
+        removed: 37,
+        changed_files: 9,
+        comments: 3,
+    },
+    PullRequest {
+        number: 13,
+        title: "wip: range selection",
+        author: "ghost",
+        state: Draft,
+        base: Branch {
+            name: "main",
+            commit: "1111111111111111111111111111111111111111",
+        },
+        head: Branch {
+            name: "range",
+            commit: "3333333333333333333333333333333333333333",
+        },
+        created: SystemTime {
+            tv_sec: 1709251199,
+            tv_nsec: 0,
+        },
+        updated: SystemTime {
+            tv_sec: 1795602600,
+            tv_nsec: 0,
+        },
+        review_decision: None,
+        checks: None,
+        mergeability: Unknown,
+        labels: [],
+        requested_reviewers: [],
+        added: 0,
+        removed: 0,
+        changed_files: 0,
+        comments: 0,
+    },
+    PullRequest {
+        number: 4,
+        title: "refactor!: rename quorum to sift",
+        author: "octocat",
+        state: Merged,
+        base: Branch {
+            name: "main",
+            commit: "4444444444444444444444444444444444444444",
+        },
+        head: Branch {
+            name: "rename-to-sift",
+            commit: "5555555555555555555555555555555555555555",
+        },
+        created: SystemTime {
+            tv_sec: 1795547223,
+            tv_nsec: 0,
+        },
+        updated: SystemTime {
+            tv_sec: 1795547223,
+            tv_nsec: 0,
+        },
+        review_decision: Some(
+            ChangesRequested,
+        ),
+        checks: Some(
+            Failed,
+        ),
+        mergeability: Conflicting,
+        labels: [],
+        requested_reviewers: [],
+        added: 68,
+        removed: 68,
+        changed_files: 17,
+        comments: 1,
+    },
+]

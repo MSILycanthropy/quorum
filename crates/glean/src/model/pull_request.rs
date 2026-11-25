@@ -51,6 +51,17 @@ pub enum Verdict {
     RequestChanges,
 }
 
+/// Which of a repository's pull requests a list shows.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum Filter {
+    #[default]
+    Open,
+    Mine,
+    ReviewRequested,
+    Drafts,
+    Closed,
+}
+
 /// A branch, and the commit it pointed at when it was read.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct Branch {

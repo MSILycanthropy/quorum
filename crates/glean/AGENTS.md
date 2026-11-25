@@ -18,8 +18,12 @@ about GitHub goes into Sift. Glean talks to Sift through `sift::ui::Surface`,
 its annotations and its host bindings. Glean's `ratatui` must be the same
 version as Sift's, or their types will not line up.
 
-GitHub is reached over its GraphQL API directly, not by running `gh`. The one
-thing taken from `gh` is the token, from `gh auth token`.
+`src/github` is the only module that knows about HTTP, GraphQL or GitHub's
+JSON. GitHub is reached over its GraphQL API directly with `ureq`, not by
+running `gh`; the one thing taken from `gh` is the token, from `gh auth token`.
+Calls block, so they run off the thread that draws and hand their results to
+the loop over a channel, the way Sift's watcher does. Each query is a
+`.graphql` file beside the module that reads its answer.
 
 ## Read first
 

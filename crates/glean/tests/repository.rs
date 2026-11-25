@@ -115,3 +115,36 @@ fn a_directory_outside_any_repository_says_so() {
     std::fs::create_dir_all(&directory).expect("a scratch directory can be made");
     assert!(matches!(Repository::of(&directory), Err(Error::NotARepository(_))));
 }
+
+#[test]
+fn an_owner_and_name_name_a_repository() {
+    let named_on_the_command_line = "MSILycanthropy/gamers".parse::<Repository>().ok();
+    assert_eq!(named_on_the_command_line, Some(named("MSILycanthropy", "gamers")));
+}
+
+#[test]
+fn a_repository_name_reads_back_as_written() {
+    let repository: Repository = "rust-lang/rust.vim".parse().expect("the name is well formed");
+    assert_eq!(repository.to_string(), "rust-lang/rust.vim");
+}
+
+#[test]
+fn a_name_without_exactly_one_owner_and_one_name_is_refused() {
+    for text in [
+        "",
+        "gamers",
+        "/gamers",
+        "MSILycanthropy/",
+        "a/b/c",
+        "MSI Lycanthropy/gamers",
+        "MSILycanthropy/gamers\r",
+        "MSILycanthropy/ga\u{1b}mers",
+        "owner:x/gamers",
+    ] {
+        let refused = text.parse::<Repository>();
+        assert!(
+            matches!(refused, Err(Error::NotARepositoryName(ref given)) if given == text),
+            "{text:?}"
+        );
+    }
+}
