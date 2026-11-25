@@ -1,5 +1,6 @@
 //! The terminal surfaces: the file list, the diff, and the overlays over them.
 
+mod annotation;
 mod help;
 mod icon;
 mod palette;
@@ -22,6 +23,8 @@ pub enum Error {
     Io(#[from] std::io::Error),
     #[error(transparent)]
     Syntax(#[from] crate::syntax::Error),
+    #[error("two annotations share the id {0}")]
+    DuplicateAnnotation(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -40,6 +43,18 @@ pub struct Anchor {
     pub path: std::path::PathBuf,
     pub side: crate::diff::Side,
     pub line: usize,
+}
+
+/// Text the host anchors under one line of the diff. Sift draws it and never
+/// reads meaning into it.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+pub struct Annotation {
+    pub id: String,
+    pub anchor: Anchor,
+    pub heading: String,
+    pub body: String,
+    pub faded: bool,
+    pub collapsed: bool,
 }
 
 /// What the surface asks of the program around it after a key.

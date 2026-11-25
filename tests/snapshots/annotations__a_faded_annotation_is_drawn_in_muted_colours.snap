@@ -1,0 +1,24 @@
+---
+source: tests/annotations.rs
+expression: "Shown::demo(Mode::Unified, (44, 10), annotations).ink()"
+---
+1 1 fn total(cart: &Cart) -> u32 {          
+g a ?? ??????????? ?????? ff ??? ?          
+2       let total = 1;                      
+g       ??? fffff f ??                      
+  2     let total = 42;                     
+  g     ??? fffff f ???                     
+    ▾ alice · 1 comment                     
+    g mmmmm m m mmmmmmm                     
+    ▎ Why 42?                               
+    g mmm mmm                               
+3       dead();                             
+g       ???????                             
+4 3     total                               
+g g     fffff                               
+    ▾ bob                                   
+    a fff                                   
+    ▎ Live.                                 
+    a fffff                                 
+5 4 }                                       
+g g ?

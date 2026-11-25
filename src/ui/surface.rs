@@ -10,10 +10,12 @@ use ratatui::style::{Color, Style};
 use unicode_width::UnicodeWidthStr;
 
 use crate::color::Rgb;
-use crate::command::{Catalog, Command, PaletteEntry, PaletteTarget};
+use crate::command::{Catalog, Category, Command, PaletteEntry, PaletteTarget};
 use crate::git::{Content, FileChange};
 use crate::theme::{Tints, TokyoNight};
-use crate::ui::{Anchor, Control, Help, Icon, Mode, Palette, PaletteAction, Result, Review};
+use crate::ui::{
+    Anchor, Annotation, Control, Help, Icon, Mode, Palette, PaletteAction, Result, Review,
+};
 
 /// What the surface is opened with, beyond its changes.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -54,6 +56,7 @@ impl Opening {
             comparing: self.comparing,
             files: self.files,
             notice: None,
+            annotating: false,
             tints: TokyoNight::TINTS,
         })
     }
@@ -69,6 +72,7 @@ pub struct Surface {
     comparing: String,
     files: Vec<PathBuf>,
     notice: Option<String>,
+    annotating: bool,
     tints: Tints,
 }
 
@@ -83,7 +87,7 @@ impl Surface {
 
         self.review.draw(frame, area);
         self.status(frame.buffer_mut(), status);
-        self.help.draw(frame, &self.catalog);
+        self.help.draw(frame, &self.shown_catalog());
         self.palette.draw(frame);
     }
 
@@ -172,7 +176,9 @@ impl Surface {
                 }
             }
             Command::Help => self.help.toggle(),
-            Command::Palette => self.palette.open("command", self.catalog.palette_entries()),
+            Command::Palette => {
+                self.palette.open("command", self.shown_catalog().palette_entries());
+            }
             Command::FindFile => {
                 let changed = self.review.paths();
                 let unchanged = self.files.iter().filter(|path| !changed.contains(path)).cloned();
@@ -214,6 +220,41 @@ impl Surface {
 
     pub fn cursor(&self) -> Option<Anchor> {
         self.review.cursor()
+    }
+
+    #[expect(
+        clippy::missing_errors_doc,
+        reason = "the Error enum names the failures, a repeated id and highlighting the file on screen"
+    )]
+    pub fn annotate(&mut self, annotations: Vec<Annotation>) -> Result<()> {
+        self.review.annotate(annotations)?;
+        self.annotating = true;
+
+        Ok(())
+    }
+
+    pub fn annotation(&self) -> Option<&Annotation> {
+        self.review.annotation()
+    }
+
+    pub fn unplaced(&self) -> Vec<&Annotation> {
+        self.review.unplaced()
+    }
+
+    #[expect(
+        clippy::missing_errors_doc,
+        reason = "the Error enum names the only failure, highlighting the file moved to"
+    )]
+    pub fn go_to_annotation(&mut self, id: &str) -> Result<bool> {
+        self.review.go_to_annotation(id)
+    }
+
+    fn shown_catalog(&self) -> Catalog {
+        if self.annotating {
+            self.catalog.clone()
+        } else {
+            self.catalog.without(Category::Annotations)
+        }
     }
 
     fn status(&self, buffer: &mut Buffer, area: Rect) {
@@ -263,6 +304,12 @@ impl Surface {
             (_, 0) => {}
             (Some(current), total) => parts.push(format!("hunk {current}/{total}")),
             (None, total) => parts.push(format!("{total} hunks")),
+        }
+        match self.review.annotated() {
+            (_, 0) => {}
+            (Some(current), total) => parts.push(format!("annotation {current}/{total}")),
+            (None, 1) => parts.push("1 annotation".to_owned()),
+            (None, total) => parts.push(format!("{total} annotations")),
         }
         parts.push(self.review.laid());
 

@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use ratatui::Frame;
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Position, Rect};
-use ratatui::style::{Color, Style};
+use ratatui::style::{Color, Modifier, Style};
 
 use crate::color::Rgb;
 use crate::command::Command;
@@ -17,24 +17,28 @@ use crate::diff::{
 };
 use crate::syntax::Syntax;
 use crate::theme::{Tints, TokyoNight};
-use crate::ui::{Mode, Result};
+use crate::ui::annotation::{clean, cut, has_body, heading, wrap};
+use crate::ui::{Annotation, Mode, Result};
 
 /// How many rows of context a hunk jump leaves above the hunk, folding leaves
 /// around it, and the cursor keeps from the edges of the screen.
 const CONTEXT: usize = 3;
 
 /// Where to land once the diff has been laid out for the first time: a hunk,
-/// or a line of the newer side, counted from one.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+/// a line of the newer side counted from one, or an annotation.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Landing {
     FirstHunk,
     LastHunk,
     Line(usize),
+    FirstAnnotation,
+    LastAnnotation,
+    Annotation(String),
 }
 
 /// Where the reader was scrolled to and where the cursor was, kept across a
 /// reload of the same file.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct Place {
     top: usize,
     left: usize,
@@ -43,11 +47,28 @@ pub struct Place {
 }
 
 /// The line under the cursor, named by side and line so that it outlives any
-/// one layout. A fold is marked by the first newer-side line it hides.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+/// one layout. A fold is marked by the first newer-side line it hides, and an
+/// annotation row by the line it is anchored to as well as by its own name.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 struct Mark {
     side: Side,
     line: usize,
+    within: Option<Within>,
+}
+
+/// A row of an annotation, counted from its heading, named by the annotation's
+/// id so that it outlives any one set of annotations.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+struct Within {
+    id: String,
+    row: usize,
+}
+
+/// An annotation and the diff row it hangs under.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+struct Placement {
+    row: usize,
+    annotation: usize,
 }
 
 /// A view of one diff, and where the reader is looking at it.
@@ -77,14 +98,21 @@ pub struct Viewer {
     chosen: Side,
     laid_out: Option<Geometry>,
     landing: Option<Landing>,
+    annotations: Vec<Annotation>,
+    bodies: Vec<Vec<String>>,
+    bodies_width: Option<usize>,
+    headings: Vec<usize>,
 }
 
-/// One screen row: a wrapped piece of a diff row, or a run of unchanged lines
-/// folded away. A fold is named by the first newer-side line it hides.
+/// One screen row: a wrapped piece of a diff row, a run of unchanged lines
+/// folded away, or a row of an annotation. A fold is named by the first
+/// newer-side line it hides. An annotation row names the annotation, its row
+/// counted from the heading, and the diff row it hangs under.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 enum Line {
     Text(ScreenRow),
     Fold { first: usize, first_old: usize, hidden: usize },
+    Annotation { index: usize, row: usize, anchored: usize },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -137,6 +165,10 @@ impl Viewer {
             chosen: Side::New,
             laid_out: None,
             landing: None,
+            annotations: Vec::new(),
+            bodies: Vec::new(),
+            bodies_width: None,
+            headings: Vec::new(),
         };
         viewer.highlight()?;
 
@@ -149,12 +181,21 @@ impl Viewer {
         self.lay_out();
         match self.landing.take() {
             Some(Landing::FirstHunk) => {
-                self.land((!self.hunks.is_empty()).then_some(0));
+                self.land(self.hunks.first().copied());
             }
             Some(Landing::LastHunk) => {
-                self.land(self.hunks.len().checked_sub(1));
+                self.land(self.hunks.last().copied());
             }
             Some(Landing::Line(line)) => self.go_to(line),
+            Some(Landing::FirstAnnotation) => {
+                self.land(self.headings.first().copied());
+            }
+            Some(Landing::LastAnnotation) => {
+                self.land(self.headings.last().copied());
+            }
+            Some(Landing::Annotation(id)) => {
+                self.land(self.heading_of(&id));
+            }
             None => {}
         }
         self.top = self.top.min(self.screen.len().saturating_sub(1));
@@ -184,6 +225,12 @@ impl Viewer {
                     screen.fold_row(y, *hidden, cursor);
                     continue;
                 }
+                Line::Annotation { index, row, .. } => {
+                    if let Some(boxed) = self.boxed(*index, *row, cursor) {
+                        screen.annotation_row(y, &boxed);
+                    }
+                    continue;
+                }
             };
             let row = &rows[painted.row];
             let side = cursor.then(|| self.side_of(row));
@@ -209,7 +256,7 @@ impl Viewer {
     }
 
     pub fn place(&self) -> Place {
-        Place { top: self.top, left: self.left, mark: self.mark, chosen: self.chosen }
+        Place { top: self.top, left: self.left, mark: self.mark.clone(), chosen: self.chosen }
     }
 
     pub fn return_to(&mut self, place: Place) {
@@ -225,8 +272,12 @@ impl Viewer {
         reason = "the Error enum names the only failure, highlighting the fold landed in"
     )]
     pub fn land_on(&mut self, landing: Landing) -> Result<()> {
+        let wanted = match &landing {
+            Landing::Line(line) => Some(*line),
+            _ => None,
+        };
         self.landing = Some(landing);
-        let Landing::Line(line) = landing else {
+        let Some(line) = wanted else {
             return Ok(());
         };
         let wanted = line.saturating_sub(1);
@@ -296,6 +347,18 @@ impl Viewer {
             Command::PreviousHunk => {
                 self.previous_hunk();
             }
+            Command::ExpandFold if self.annotation().is_some() => {
+                if let Some(Line::Annotation { index, .. }) = self.screen.get(self.cursor) {
+                    self.toggle(*index);
+                }
+            }
+            Command::ToggleAnnotations => self.toggle_every(),
+            Command::NextAnnotation => {
+                self.next_annotation();
+            }
+            Command::PreviousAnnotation => {
+                self.previous_annotation();
+            }
             Command::ExpandFold => {
                 let bottom = (self.top + self.height).min(self.screen.len());
                 let visible = self.screen.get(self.top..bottom).unwrap_or_default();
@@ -328,6 +391,10 @@ impl Viewer {
         let index = self.top + usize::from(row - self.area.y);
         let clicked = match self.screen.get(index) {
             None => return Ok(()),
+            Some(Line::Annotation { .. }) => {
+                self.place_cursor(index);
+                return Ok(());
+            }
             Some(Line::Fold { first, .. }) => Err(*first),
             Some(Line::Text(painted)) => Ok(&self.rows()[painted.row]),
         };
@@ -378,13 +445,179 @@ impl Viewer {
     }
 
     pub fn next_hunk(&mut self) -> bool {
-        let next = self.hunks.iter().position(|&start| start > self.cursor);
+        let next = self.hunks.iter().copied().find(|&start| start > self.cursor);
         self.land(next)
     }
 
     pub fn previous_hunk(&mut self) -> bool {
-        let previous = self.hunks.iter().rposition(|&start| start < self.cursor);
+        let previous = self.hunks.iter().copied().rfind(|&start| start < self.cursor);
         self.land(previous)
+    }
+
+    pub fn next_annotation(&mut self) -> bool {
+        let next = self.headings.iter().copied().find(|&start| start > self.cursor);
+        self.land(next)
+    }
+
+    pub fn previous_annotation(&mut self) -> bool {
+        let above = match self.screen.get(self.cursor) {
+            Some(Line::Annotation { row, .. }) => self.cursor - row,
+            _ => self.cursor,
+        };
+        let previous = self.headings.iter().copied().rfind(|&start| start < above);
+        self.land(previous)
+    }
+
+    pub fn annotated(&self) -> (Option<usize>, usize) {
+        let current = self.headings.iter().rposition(|&start| start <= self.cursor);
+
+        (current.map(|index| index + 1), self.headings.len())
+    }
+
+    #[expect(
+        clippy::missing_errors_doc,
+        reason = "the Error enum names the only failure, highlighting lines a fold gives up"
+    )]
+    pub fn annotate(&mut self, annotations: Vec<Annotation>) -> Result<()> {
+        let annotations: Vec<Annotation> = annotations
+            .into_iter()
+            .filter(|annotation| annotation.anchor.path == self.path)
+            .collect();
+        if annotations == self.annotations {
+            return Ok(());
+        }
+        let shape = |annotation: &Annotation| {
+            (
+                annotation.id.clone(),
+                annotation.anchor.clone(),
+                annotation.body.clone(),
+                annotation.collapsed,
+            )
+        };
+        let same_shape = annotations.len() == self.annotations.len()
+            && annotations.iter().zip(&self.annotations).all(|(new, old)| shape(new) == shape(old));
+        if same_shape {
+            self.annotations = annotations;
+            return Ok(());
+        }
+
+        let closed = self.closed();
+        self.annotations = annotations;
+        self.bodies_width = None;
+        self.laid_out = None;
+        if self.closed() != closed {
+            self.highlight()?;
+        }
+        if self.area.is_empty() {
+            self.screen.clear();
+        }
+        self.lay_out();
+
+        Ok(())
+    }
+
+    pub fn annotation(&self) -> Option<&Annotation> {
+        match self.screen.get(self.cursor)? {
+            Line::Annotation { index, .. } => self.annotations.get(*index),
+            Line::Text(_) | Line::Fold { .. } => None,
+        }
+    }
+
+    fn toggle(&mut self, index: usize) {
+        let Some(annotation) = self.annotations.get_mut(index) else {
+            return;
+        };
+        if !has_body(&annotation.body) {
+            return;
+        }
+        annotation.collapsed = !annotation.collapsed;
+        self.rest_on_heading();
+        self.laid_out = None;
+    }
+
+    fn toggle_every(&mut self) {
+        let collapse = self
+            .annotations
+            .iter()
+            .any(|annotation| !annotation.collapsed && has_body(&annotation.body));
+        for annotation in &mut self.annotations {
+            annotation.collapsed = collapse;
+        }
+        self.rest_on_heading();
+        self.laid_out = None;
+    }
+
+    fn rest_on_heading(&mut self) {
+        if let Some(within) = self.mark.as_mut().and_then(|mark| mark.within.as_mut()) {
+            within.row = 0;
+        }
+    }
+
+    fn height_of(&self, heading: usize) -> usize {
+        let Some(Line::Annotation { index: wanted, .. }) = self.screen.get(heading) else {
+            return 0;
+        };
+
+        self.screen[heading..]
+            .iter()
+            .take_while(|line| matches!(line, Line::Annotation { index, .. } if index == wanted))
+            .count()
+    }
+
+    fn heading_of(&self, id: &str) -> Option<usize> {
+        self.headings.iter().copied().find(|&start| match &self.screen[start] {
+            Line::Annotation { index, .. } => {
+                self.annotations.get(*index).is_some_and(|annotation| annotation.id == id)
+            }
+            Line::Text(_) | Line::Fold { .. } => false,
+        })
+    }
+
+    fn boxed(&self, index: usize, row: usize, cursor: bool) -> Option<Boxed> {
+        let annotation = self.annotations.get(index)?;
+        let body = self.bodies.get(index)?;
+        let width = usize::from(self.pane()).saturating_sub(2);
+        let (marker, text) = if row == 0 {
+            let marker = match (body.is_empty(), annotation.collapsed) {
+                (true, _) => "▎",
+                (false, true) => "▸",
+                (false, false) => "▾",
+            };
+            (marker, cut(&heading(&annotation.heading, self.tab_width), width))
+        } else {
+            ("▎", body.get(row - 1)?.clone())
+        };
+
+        let background =
+            if cursor { self.tints.under_cursor(self.tints.filler) } else { self.tints.filler };
+        let base = Style::new().bg(color(background));
+        let (marker_color, text_color) = if annotation.faded {
+            (self.tints.gutter, self.tints.muted)
+        } else {
+            (self.tints.attention, self.tints.foreground)
+        };
+        let text_style = base.fg(color(text_color));
+
+        Some(Boxed {
+            at: self.annotation_at(annotation.anchor.side),
+            divider: (!self.plain && self.mode == Mode::SideBySide)
+                .then(|| self.area.x + self.gutter() + 1 + self.pane()),
+            marker,
+            text,
+            base,
+            marker_style: base.fg(color(marker_color)),
+            text_style: if row == 0 { text_style.add_modifier(Modifier::BOLD) } else { text_style },
+        })
+    }
+
+    fn annotation_at(&self, side: Side) -> u16 {
+        let gutter = self.gutter();
+        let left = self.area.x;
+        match (self.plain, self.mode, side) {
+            (true, _, _) | (false, Mode::SideBySide, Side::Old) => left + gutter + 1,
+            (false, Mode::SideBySide, Side::New) => left + 2 * gutter + 3 + self.pane(),
+            (false, Mode::Unified, _) => left + 2 * (gutter + 1),
+        }
     }
 
     pub fn hunk(&self) -> (Option<usize>, usize) {
@@ -404,13 +637,19 @@ impl Viewer {
             .find_map(|line| match line {
                 Line::Text(painted) => rows[painted.row].new.line,
                 Line::Fold { first, .. } => Some(*first),
+                Line::Annotation { anchored, .. } => rows[*anchored].new.line,
             })
             .map(|line| line + 1)
     }
 
     pub fn cursor(&self) -> Option<(Side, usize)> {
-        let Line::Text(painted) = self.screen.get(self.cursor)? else {
-            return None;
+        let painted = match self.screen.get(self.cursor)? {
+            Line::Text(painted) => painted,
+            Line::Fold { .. } => return None,
+            Line::Annotation { index, .. } => {
+                let annotation = self.annotations.get(*index)?;
+                return Some((annotation.anchor.side, annotation.anchor.line));
+            }
         };
         let row = &self.rows()[painted.row];
         let side = self.side_of(row);
@@ -425,7 +664,7 @@ impl Viewer {
             Line::Text(painted) => {
                 !painted.continuation && rows[painted.row].new.line == Some(wanted)
             }
-            Line::Fold { .. } => false,
+            Line::Fold { .. } | Line::Annotation { .. } => false,
         });
         if let Some(target) = target {
             self.chosen = Side::New;
@@ -434,8 +673,8 @@ impl Viewer {
         }
     }
 
-    fn land(&mut self, hunk: Option<usize>) -> bool {
-        let Some(start) = hunk.and_then(|hunk| self.hunks.get(hunk).copied()) else {
+    fn land(&mut self, start: Option<usize>) -> bool {
+        let Some(start) = start else {
             return false;
         };
         self.place_cursor(start);
@@ -492,16 +731,29 @@ impl Viewer {
             Line::Text(painted) => {
                 let row = &self.rows()[painted.row];
                 let side = self.side_of(row);
-                cell(row, side).line.map(|line| Mark { side, line })
+                cell(row, side).line.map(|line| Mark { side, line, within: None })
             }
-            Line::Fold { first, .. } => Some(Mark { side: Side::New, line: *first }),
+            Line::Fold { first, .. } => Some(Mark { side: Side::New, line: *first, within: None }),
+            Line::Annotation { index, row, .. } => {
+                let annotation = self.annotations.get(*index)?;
+                Some(Mark {
+                    side: annotation.anchor.side,
+                    line: annotation.anchor.line.saturating_sub(1),
+                    within: Some(Within { id: annotation.id.clone(), row: *row }),
+                })
+            }
         }
     }
 
     fn resolve(&self) -> usize {
-        let Some(mark) = self.mark else {
+        let Some(mark) = &self.mark else {
             return 0;
         };
+        if let Some(within) = &mark.within
+            && let Some(heading) = self.heading_of(&within.id)
+        {
+            return heading + within.row.min(self.height_of(heading).saturating_sub(1));
+        }
         let rows = self.rows();
 
         self.screen
@@ -610,6 +862,15 @@ impl Viewer {
             return;
         }
         let offset = if self.screen.is_empty() { None } else { self.cursor.checked_sub(self.top) };
+        let text_width = usize::from(pane).saturating_sub(2);
+        if self.bodies_width != Some(text_width) {
+            self.bodies = self
+                .annotations
+                .iter()
+                .map(|annotation| wrap(&clean(&annotation.body, self.tab_width), text_width))
+                .collect();
+            self.bodies_width = Some(text_width);
+        }
 
         let layout = Layout {
             viewport: Viewport {
@@ -623,8 +884,9 @@ impl Viewer {
             new_syntax: &self.new_syntax,
         };
         let screen = self.fold(&layout);
-        self.screen = screen;
+        self.screen = self.interleave(screen);
         self.hunks = hunks(&self.screen, self.rows());
+        self.headings = headings(&self.screen);
         self.cursor = self.resolve();
         if let Some(offset) = offset {
             self.top = self.cursor.saturating_sub(offset);
@@ -658,14 +920,94 @@ impl Viewer {
         screen
     }
 
+    fn interleave(&self, screen: Vec<Line>) -> Vec<Line> {
+        let placed = self.placed();
+        if placed.is_empty() {
+            return screen;
+        }
+
+        let mut interleaved = Vec::with_capacity(screen.len() + placed.len());
+        let mut next = 0;
+        let mut lines = screen.into_iter().peekable();
+        while let Some(line) = lines.next() {
+            let anchored = match &line {
+                Line::Text(painted) => Some(painted.row),
+                Line::Fold { .. } | Line::Annotation { .. } => None,
+            };
+            interleaved.push(line);
+            let Some(anchored) = anchored else {
+                continue;
+            };
+            if matches!(lines.peek(), Some(Line::Text(painted)) if painted.continuation) {
+                continue;
+            }
+            while placed.get(next).is_some_and(|placement| placement.row < anchored) {
+                next += 1;
+            }
+            while let Some(placement) =
+                placed.get(next).filter(|placement| placement.row == anchored)
+            {
+                let index = placement.annotation;
+                let body = if self.annotations[index].collapsed {
+                    0
+                } else {
+                    self.bodies.get(index).map_or(0, Vec::len)
+                };
+                interleaved.extend((0..=body).map(|row| Line::Annotation { index, row, anchored }));
+                next += 1;
+            }
+        }
+
+        interleaved
+    }
+
+    fn placed(&self) -> Vec<Placement> {
+        if self.annotations.is_empty() {
+            return Vec::new();
+        }
+        let rows = self.rows();
+        let mut old = vec![None; self.diff.old.len()];
+        let mut new = vec![None; self.diff.new.len()];
+        for (index, row) in rows.iter().enumerate() {
+            if let Some(slot) = row.old.line.and_then(|line| old.get_mut(line)) {
+                slot.get_or_insert(index);
+            }
+            if let Some(slot) = row.new.line.and_then(|line| new.get_mut(line)) {
+                slot.get_or_insert(index);
+            }
+        }
+
+        let mut placed: Vec<Placement> = self
+            .annotations
+            .iter()
+            .enumerate()
+            .filter_map(|(annotation, placing)| {
+                let lines = match placing.anchor.side {
+                    Side::Old => &old,
+                    Side::New => &new,
+                };
+                let row = lines.get(placing.anchor.line.checked_sub(1)?).copied().flatten()?;
+                Some(Placement { row, annotation })
+            })
+            .collect();
+        placed.sort_by_key(|placement| {
+            let side = self.annotations[placement.annotation].anchor.side;
+            (placement.row, side == Side::New, placement.annotation)
+        });
+
+        placed
+    }
+
     fn closed(&self) -> Vec<Range<usize>> {
         if !self.folding {
             return Vec::new();
         }
         let rows = self.rows();
+        let annotated: Vec<usize> = self.placed().iter().map(|placement| placement.row).collect();
 
         foldable(rows)
             .into_iter()
+            .flat_map(|range| around(range, &annotated))
             .filter(|range| !self.opened.contains(&first_line(rows, range)))
             .collect()
     }
@@ -675,9 +1017,21 @@ impl Line {
     fn fold(&self) -> Option<usize> {
         match self {
             Self::Fold { first, .. } => Some(*first),
-            Self::Text(_) => None,
+            Self::Text(_) | Self::Annotation { .. } => None,
         }
     }
+}
+
+/// One row of an annotation, ready to paint: where its box starts, what it
+/// says, and how it is lit.
+struct Boxed {
+    at: u16,
+    divider: Option<u16>,
+    marker: &'static str,
+    text: String,
+    base: Style,
+    marker_style: Style,
+    text_style: Style,
 }
 
 /// The two backgrounds a row is painted in: its tint, and the stronger tint
@@ -716,6 +1070,28 @@ impl Screen<'_> {
             label,
             usize::from(self.width.saturating_sub(self.gutter + 1)),
             style,
+        );
+    }
+
+    fn annotation_row(&mut self, y: u16, boxed: &Boxed) {
+        if let Some(divider) = boxed.divider {
+            self.buffer.set_string(
+                divider,
+                y,
+                "│",
+                Style::new().fg(color(self.tints.gutter)).bg(color(self.tints.background)),
+            );
+        }
+        let pane = usize::from(self.pane);
+
+        self.buffer.set_style(Rect::new(boxed.at, y, self.pane, 1), boxed.base);
+        self.buffer.set_stringn(boxed.at, y, boxed.marker, pane, boxed.marker_style);
+        self.buffer.set_stringn(
+            boxed.at + 2,
+            y,
+            &boxed.text,
+            pane.saturating_sub(2),
+            boxed.text_style,
         );
     }
 
@@ -854,6 +1230,7 @@ fn opposite(side: Side) -> Side {
 fn covered(line: &Line, rows: &[Row], side: Side) -> Option<Range<usize>> {
     match line {
         Line::Text(painted) if painted.continuation => None,
+        Line::Annotation { .. } => None,
         Line::Text(painted) => cell(&rows[painted.row], side).line.map(|line| line..line + 1),
         Line::Fold { first, first_old, hidden } => {
             let start = match side {
@@ -900,6 +1277,19 @@ fn foldable(rows: &[Row]) -> Vec<Range<usize>> {
     ranges
 }
 
+fn around(range: Range<usize>, annotated: &[usize]) -> Vec<Range<usize>> {
+    let mut pieces = Vec::new();
+    let mut start = range.start;
+    for &row in annotated.iter().filter(|row| range.contains(row)) {
+        pieces.push(start..row);
+        start = row + 1;
+    }
+    pieces.push(start..range.end);
+    pieces.retain(|piece| piece.len() > 1);
+
+    pieces
+}
+
 fn between(hidden: impl Iterator<Item = Range<usize>>, length: usize) -> Vec<Range<usize>> {
     let mut shown = Vec::new();
     let mut start = 0;
@@ -927,6 +1317,7 @@ fn hunks(screen: &[Line], rows: &[Row]) -> Vec<usize> {
         let changed = match line {
             Line::Text(painted) => rows[painted.row].kind != RowKind::Equal,
             Line::Fold { .. } => false,
+            Line::Annotation { .. } => continue,
         };
         if changed && !inside {
             starts.push(index);
@@ -935,6 +1326,16 @@ fn hunks(screen: &[Line], rows: &[Row]) -> Vec<usize> {
     }
 
     starts
+}
+
+fn headings(screen: &[Line]) -> Vec<usize> {
+    screen
+        .iter()
+        .enumerate()
+        .filter_map(|(index, line)| {
+            matches!(line, Line::Annotation { row: 0, .. }).then_some(index)
+        })
+        .collect()
 }
 
 fn numbers(painted: &ScreenRow, row: &Row) -> (Option<usize>, Option<usize>) {

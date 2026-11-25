@@ -13,10 +13,11 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::color::Rgb;
 use crate::command::Command;
-use crate::diff::{FileDiff, Whitespace};
+use crate::diff::{FileDiff, Side, Whitespace};
 use crate::git::{Content, FileChange, Status};
 use crate::theme::{Tints, TokyoNight};
-use crate::ui::{Anchor, Landing, Mode, Result, Tree, Viewer};
+use crate::ui::annotation::has_body;
+use crate::ui::{Anchor, Annotation, Error, Landing, Mode, Result, Row, Tree, Viewer};
 
 const SIDEBAR: u16 = 34;
 const NARROWEST: u16 = 40;
@@ -39,6 +40,8 @@ pub struct Review {
     tab_width: usize,
     viewed: HashMap<PathBuf, u64>,
     revealed: HashSet<PathBuf>,
+    annotations: Vec<Annotation>,
+    overrides: HashMap<String, bool>,
     tints: Tints,
 }
 
@@ -72,6 +75,8 @@ impl Review {
             tab_width,
             viewed: HashMap::new(),
             revealed: HashSet::new(),
+            annotations: Vec::new(),
+            overrides: HashMap::new(),
             tints: TokyoNight::TINTS,
         };
         review.open()?;
@@ -188,10 +193,11 @@ impl Review {
 
     fn collapsed(&self) -> bool {
         self.peek.is_none()
-            && self
-                .changes
-                .get(self.opened)
-                .is_some_and(|change| change.generated && !self.revealed.contains(&change.path))
+            && self.changes.get(self.opened).is_some_and(|change| {
+                change.generated
+                    && !self.revealed.contains(&change.path)
+                    && !self.annotations.iter().any(|annotation| lands(change, annotation))
+            })
     }
 
     fn counts(&self, buffer: &mut Buffer, area: Rect, change: &FileChange, row: Rgb) {
@@ -233,7 +239,9 @@ impl Review {
                 | Command::NextHunk
                 | Command::PreviousHunk
                 | Command::ToggleViewed
-                | Command::NextUnviewed => self.peek = None,
+                | Command::NextUnviewed
+                | Command::NextAnnotation
+                | Command::PreviousAnnotation => self.peek = None,
                 Command::ToggleFileList => {}
                 command => {
                     if let Some(viewer) = &mut peek.viewer {
@@ -273,6 +281,20 @@ impl Review {
                     self.revealed.insert(change.path.clone());
                 }
                 self.open()?;
+            }
+            Command::ExpandFold => self.expand()?,
+            Command::ToggleAnnotations => self.collapse_every()?,
+            Command::NextAnnotation => {
+                let moved = self.viewer.as_mut().is_some_and(Viewer::next_annotation);
+                if !moved && self.step_where(Step::Forward, Self::annotated_change)? {
+                    self.land(Landing::FirstAnnotation)?;
+                }
+            }
+            Command::PreviousAnnotation => {
+                let moved = self.viewer.as_mut().is_some_and(Viewer::previous_annotation);
+                if !moved && self.step_where(Step::Backward, Self::annotated_change)? {
+                    self.land(Landing::LastAnnotation)?;
+                }
             }
             Command::NextHunk => {
                 let moved = self.viewer.as_mut().is_some_and(Viewer::next_hunk);
@@ -318,6 +340,140 @@ impl Review {
         let (side, line) = viewer?.cursor()?;
 
         Some(Anchor { path: self.path()?.to_path_buf(), side, line })
+    }
+
+    #[expect(
+        clippy::missing_errors_doc,
+        reason = "the Error enum names the failures, a repeated id and highlighting the file on screen"
+    )]
+    pub fn annotate(&mut self, annotations: Vec<Annotation>) -> Result<()> {
+        let mut seen = HashSet::new();
+        if let Some(repeated) = annotations.iter().find(|annotation| !seen.insert(&annotation.id)) {
+            return Err(Error::DuplicateAnnotation(repeated.id.clone()));
+        }
+        self.annotations = annotations;
+
+        let showable = self.peek.is_none()
+            && self
+                .changes
+                .get(self.opened)
+                .is_some_and(|change| matches!(change.content, Content::Text(_)));
+        if showable && self.collapsed() == self.viewer.is_some() {
+            let place = self.viewer.as_ref().map(Viewer::place);
+            self.open()?;
+            if let (Some(place), Some(viewer)) = (place, &mut self.viewer) {
+                viewer.return_to(place);
+            }
+            return Ok(());
+        }
+        let group = self.group();
+        match &mut self.viewer {
+            Some(viewer) => viewer.annotate(group),
+            None => Ok(()),
+        }
+    }
+
+    pub fn annotation(&self) -> Option<&Annotation> {
+        if self.peek.is_some() {
+            return None;
+        }
+        self.viewer.as_ref()?.annotation()
+    }
+
+    pub fn unplaced(&self) -> Vec<&Annotation> {
+        let changes: HashMap<&Path, &FileChange> =
+            self.changes.iter().map(|change| (change.path.as_path(), change)).collect();
+
+        self.annotations
+            .iter()
+            .filter(|annotation| {
+                !changes
+                    .get(annotation.anchor.path.as_path())
+                    .is_some_and(|change| lands(change, annotation))
+            })
+            .collect()
+    }
+
+    #[expect(
+        clippy::missing_errors_doc,
+        reason = "the Error enum names the only failure, highlighting the file moved to"
+    )]
+    pub fn go_to_annotation(&mut self, id: &str) -> Result<bool> {
+        let Some(annotation) = self.annotations.iter().find(|annotation| annotation.id == id)
+        else {
+            return Ok(false);
+        };
+        if !self.changes.iter().any(|change| lands(change, annotation)) {
+            return Ok(false);
+        }
+        let path = annotation.anchor.path.clone();
+        self.select_path(&path, None)?;
+        self.land(Landing::Annotation(id.to_owned()))?;
+
+        Ok(true)
+    }
+
+    pub fn annotated(&self) -> (Option<usize>, usize) {
+        if self.peek.is_some() {
+            return (None, 0);
+        }
+        self.viewer.as_ref().map_or((None, 0), Viewer::annotated)
+    }
+
+    fn expand(&mut self) -> Result<()> {
+        let Some(viewer) = &mut self.viewer else {
+            return Ok(());
+        };
+        let before =
+            viewer.annotation().map(|annotation| (annotation.id.clone(), annotation.collapsed));
+        viewer.run(Command::ExpandFold)?;
+        if let Some((id, was)) = before
+            && let Some(now) = viewer.annotation().filter(|annotation| annotation.id == id)
+            && now.collapsed != was
+        {
+            self.overrides.insert(id, now.collapsed);
+        }
+
+        Ok(())
+    }
+
+    fn collapse_every(&mut self) -> Result<()> {
+        let collapse = self
+            .group()
+            .iter()
+            .any(|annotation| !annotation.collapsed && has_body(&annotation.body));
+        for annotation in &self.annotations {
+            self.overrides.insert(annotation.id.clone(), collapse);
+        }
+        match &mut self.viewer {
+            Some(viewer) => viewer.run(Command::ToggleAnnotations),
+            None => Ok(()),
+        }
+    }
+
+    fn group(&self) -> Vec<Annotation> {
+        let Some(change) = self.changes.get(self.opened) else {
+            return Vec::new();
+        };
+
+        self.annotations
+            .iter()
+            .filter(|annotation| annotation.anchor.path == change.path)
+            .map(|annotation| Annotation {
+                collapsed: self
+                    .overrides
+                    .get(&annotation.id)
+                    .copied()
+                    .unwrap_or(annotation.collapsed),
+                ..annotation.clone()
+            })
+            .collect()
+    }
+
+    fn annotated_change(&self, change: usize) -> bool {
+        self.changes.get(change).is_some_and(|change| {
+            self.annotations.iter().any(|annotation| lands(change, annotation))
+        })
     }
 
     pub fn hunk(&self) -> (Option<usize>, usize) {
@@ -404,19 +560,16 @@ impl Review {
     }
 
     fn step(&mut self, step: Step) -> Result<bool> {
+        self.step_where(step, |_, _| true)
+    }
+
+    fn step_where(&mut self, step: Step, wanted: impl Fn(&Self, usize) -> bool) -> Result<bool> {
         let rows = self.tree.rows();
+        let wanted =
+            |(_, row): &(usize, &Row)| row.change.is_some_and(|change| wanted(self, change));
         let target = match step {
-            Step::Forward => rows
-                .iter()
-                .enumerate()
-                .skip(self.selected + 1)
-                .find(|(_, row)| row.change.is_some()),
-            Step::Backward => rows
-                .iter()
-                .enumerate()
-                .take(self.selected)
-                .rev()
-                .find(|(_, row)| row.change.is_some()),
+            Step::Forward => rows.iter().enumerate().skip(self.selected + 1).find(wanted),
+            Step::Backward => rows.iter().enumerate().take(self.selected).rev().find(wanted),
         };
         let Some((index, _)) = target else {
             return Ok(false);
@@ -587,8 +740,11 @@ impl Review {
             }
             _ => None,
         };
-
-        Ok(())
+        let group = self.group();
+        match &mut self.viewer {
+            Some(viewer) => viewer.annotate(group),
+            None => Ok(()),
+        }
     }
 
     pub fn counted(&self) -> String {
@@ -773,6 +929,18 @@ struct Peek {
 enum Step {
     Forward,
     Backward,
+}
+
+fn lands(change: &FileChange, annotation: &Annotation) -> bool {
+    let Content::Text(diff) = &change.content else {
+        return false;
+    };
+    let length = match annotation.anchor.side {
+        Side::Old => diff.old.len(),
+        Side::New => diff.new.len(),
+    };
+
+    annotation.anchor.path == change.path && (1..=length).contains(&annotation.anchor.line)
 }
 
 fn fingerprint(change: &FileChange) -> u64 {

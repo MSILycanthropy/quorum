@@ -1,0 +1,65 @@
+---
+source: tests/annotations.rs
+expression: "format!(\"{}\\n{}\", words(&mut bare, 120, 30), words(&mut annotated, 120, 30))"
+---
+ CHANGES                           M src/a.rs  +1 −1                                                                1/5
+  src                           │1 one                                     │1 one
+    a.rs
+    b.rs     General                                        Diff
+    c.rs     ?               Show every key                 n               Next hunk
+    d.rs     : C-p           Command palette                N p             Previous hunk
+    e.png    r               Reload from git                Enter o         Unfold, or toggle annotation
+              q C-c           Quit                           j ↓             Down a line
+              Esc             Back, or quit                  k ↑             Up a line
+                                                             C-d             Down half a page
+              Files                                          C-u             Up half a page
+              ] Tab           Next file                      PgDn C-f Space  Down a page
+              [ S-Tab         Previous file                  PgUp            Up a page
+              /               Find file                      g Home          Top of the file
+              C-b f           Toggle file list               G End           Bottom of the file
+              e               Open in $EDITOR                H S-←           Cursor to the old side
+              y               Copy path                      L S-→           Cursor to the new side
+              Y               Copy path:line                 h ←             Scroll left
+              v               Mark viewed, go to next        l →             Scroll right
+              u               Next unviewed file
+                                                             View
+                                                             s               Split or unified
+                                                             w               Wrap long lines
+                                                             z               Fold unchanged lines
+                                                             W               Ignore whitespace
+
+                                                                                           any key closes
+                                 │
+                                 │
+  main · main → feature · 5 files · 1 hunks · side by side         n hunk  ] file  v viewed  C-b files  / find  ? help
+
+ CHANGES                                                                                                            1/5
+  src        General                                        Diff
+    a.rs     ?               Show every key                 n               Next hunk
+    b.rs     : C-p           Command palette                N p             Previous hunk
+    c.rs     r               Reload from git                Enter o         Unfold, or toggle annotation
+    d.rs     q C-c           Quit                           j ↓             Down a line
+    e.png    Esc             Back, or quit                  k ↑             Up a line
+                                                             C-d             Down half a page
+              Files                                          C-u             Up half a page
+              ] Tab           Next file                      PgDn C-f Space  Down a page
+              [ S-Tab         Previous file                  PgUp            Up a page
+              /               Find file                      g Home          Top of the file
+              C-b f           Toggle file list               G End           Bottom of the file
+              e               Open in $EDITOR                H S-←           Cursor to the old side
+              y               Copy path                      L S-→           Cursor to the new side
+              Y               Copy path:line                 h ←             Scroll left
+              v               Mark viewed, go to next        l →             Scroll right
+              u               Next unviewed file
+                                                             View
+                                                             s               Split or unified
+                                                             w               Wrap long lines
+                                                             z               Fold unchanged lines
+                                                             W               Ignore whitespace
+
+                                                             Annotations
+                                                             }               Next annotation
+                                                             {               Previous annotation
+                                                             Z               Collapse every annotation
+
+  main · mai                                                                              any key closes  find  ? help

@@ -2,27 +2,27 @@
 source: tests/surface.rs
 expression: "screen(&mut surface, 100, 24)"
 ---
- CHANGES                                                                                        1/2
-  src   General                                   Diff
-    oth ?               Show every key            n               Next hunk
-    tot : C-p           Command palette           N p             Previous hunk
-         r               Reload from git           Enter o         Expand folded lines
-         q C-c           Quit                      j ↓             Down a line
-         Esc             Back, or quit             k ↑             Up a line
+ CH                                                                                             1/2
+   General                                        Diff
+    ?               Show every key                 n               Next hunk
+    : C-p           Command palette                N p             Previous hunk
+    r               Reload from git                Enter o         Unfold, or toggle annotation
+    q C-c           Quit                           j ↓             Down a line
+    Esc             Back, or quit                  k ↑             Up a line
                                                    C-d             Down half a page
-         Files                                     C-u             Up half a page
-         ] Tab           Next file                 PgDn C-f Space  Down a page
-         [ S-Tab         Previous file             PgUp            Up a page
-         /               Find file                 g Home          Top of the file
-         C-b f           Toggle file list          G End           Bottom of the file
-         e               Open in $EDITOR           H S-←           Cursor to the old side
-         y               Copy path                 L S-→           Cursor to the new side
-         Y               Copy path:line            h ←             Scroll left
-         v               Mark viewed, go to next   l →             Scroll right
-         u               Next unviewed file
+    Files                                          C-u             Up half a page
+    ] Tab           Next file                      PgDn C-f Space  Down a page
+    [ S-Tab         Previous file                  PgUp            Up a page
+    /               Find file                      g Home          Top of the file
+    C-b f           Toggle file list               G End           Bottom of the file
+    e               Open in $EDITOR                H S-←           Cursor to the old side
+    y               Copy path                      L S-→           Cursor to the new side
+    Y               Copy path:line                 h ←             Scroll left
+    v               Mark viewed, go to next        l →             Scroll right
+    u               Next unviewed file
                                                    View
                                                    s               Split or unified
                                                    w               Wrap long lines
                                                    z               Fold unchanged lines
                                                    W               Ignore whitespace
-  main                                                                     any key closes   ? help
+                                                                                any key closes elp

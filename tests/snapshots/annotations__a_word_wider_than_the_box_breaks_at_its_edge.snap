@@ -1,0 +1,24 @@
+---
+source: tests/annotations.rs
+expression: "Shown::demo(Mode::Unified, (36, 10),\nvec![note(\"link\", Side::New, 2, \"alice\", body)]).text()"
+---
+1 1 fn total(cart: &Cart) -> u32 {  
+::::::::::::::::::::::::::::::::::::
+2       let total = 1;              
+--------------------=---------------
+  2     let total = 42;             
+++++++++++++++++++++##++++++++++++++
+    ▾ alice                         
+....                                
+    ▎ see                           
+....                                
+    ▎ https://example.com/a/very/lon
+....                                
+    ▎ g/path/that/does/not/fit      
+....                                
+3       dead();                     
+------------------------------------
+4 3     total                       
+....................................
+5 4 }                               
+....................................

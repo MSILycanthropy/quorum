@@ -67,6 +67,7 @@ impl Help {
                     .filter(|binding| binding.category == category)
                     .collect(),
             })
+            .filter(|section| !section.bindings.is_empty())
             .collect();
         let keys_width =
             catalog.bindings().iter().map(|binding| binding.keys().width()).max().unwrap_or(0);

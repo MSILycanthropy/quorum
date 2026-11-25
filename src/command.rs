@@ -39,6 +39,9 @@ pub enum Command {
     ToggleLayout,
     ToggleWrapping,
     ToggleWhitespace,
+    NextAnnotation,
+    PreviousAnnotation,
+    ToggleAnnotations,
 }
 
 /// A key combination. Shift is folded into the character it produces, so `G`
@@ -101,10 +104,12 @@ pub enum Category {
     Files,
     Diff,
     View,
+    Annotations,
 }
 
 impl Category {
-    pub const ALL: [Self; 4] = [Self::General, Self::Files, Self::Diff, Self::View];
+    pub const ALL: [Self; 5] =
+        [Self::General, Self::Files, Self::Diff, Self::View, Self::Annotations];
 
     pub fn title(self) -> &'static str {
         match self {
@@ -112,6 +117,7 @@ impl Category {
             Self::Files => "Files",
             Self::Diff => "Diff",
             Self::View => "View",
+            Self::Annotations => "Annotations",
         }
     }
 }
@@ -145,7 +151,7 @@ impl Default for Catalog {
         reason = "one list holds every binding, so it reads as the catalog"
     )]
     fn default() -> Self {
-        use Category::{Diff, Files, General, View};
+        use Category::{Annotations, Diff, Files, General, View};
         use Command as C;
 
         let bind = |command, label, shortcuts: &[Shortcut], category, hint| Binding {
@@ -200,7 +206,7 @@ impl Default for Catalog {
                 bind(C::PreviousHunk, "Previous hunk", &[plain('N'), plain('p')], Diff, None),
                 bind(
                     C::ExpandFold,
-                    "Expand folded lines",
+                    "Unfold, or toggle annotation",
                     &[code(KeyCode::Enter), plain('o')],
                     Diff,
                     None,
@@ -251,6 +257,21 @@ impl Default for Catalog {
                 bind(C::ToggleWrapping, "Wrap long lines", &[plain('w')], View, None),
                 bind(C::ToggleFolds, "Fold unchanged lines", &[plain('z')], View, None),
                 bind(C::ToggleWhitespace, "Ignore whitespace", &[plain('W')], View, None),
+                bind(C::NextAnnotation, "Next annotation", &[plain('}')], Annotations, None),
+                bind(
+                    C::PreviousAnnotation,
+                    "Previous annotation",
+                    &[plain('{')],
+                    Annotations,
+                    None,
+                ),
+                bind(
+                    C::ToggleAnnotations,
+                    "Collapse every annotation",
+                    &[plain('Z')],
+                    Annotations,
+                    None,
+                ),
             ],
         }
     }
@@ -259,6 +280,14 @@ impl Default for Catalog {
 impl Catalog {
     pub fn bindings(&self) -> &[Binding] {
         &self.bindings
+    }
+
+    #[must_use]
+    pub fn without(&self, category: Category) -> Self {
+        let bindings =
+            self.bindings.iter().filter(|binding| binding.category != category).cloned().collect();
+
+        Self { bindings }
     }
 
     pub fn command(&self, key: KeyEvent) -> Option<Command> {
