@@ -76,4 +76,6 @@ pub enum Control {
         line: Option<usize>,
     },
     Host(&'static str),
+    Viewed(std::path::PathBuf),
+    Unviewed(std::path::PathBuf),
 }

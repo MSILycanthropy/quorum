@@ -309,3 +309,53 @@ fn shifted_arrows_switch_the_cursors_side_too() {
         Some(Anchor { path: PathBuf::from("src/other.rs"), side: Side::New, line: 2 })
     );
 }
+
+#[test]
+fn marking_a_file_viewed_reports_it_to_the_host() {
+    let mut surface = surface();
+
+    let controls = typing(&mut surface, "vv");
+
+    assert_eq!(
+        controls,
+        vec![
+            Control::Viewed(PathBuf::from("src/other.rs")),
+            Control::Viewed(PathBuf::from("src/total.rs")),
+        ]
+    );
+}
+
+#[test]
+fn unmarking_a_file_the_host_marked_viewed_reports_it_to_the_host() {
+    let mut surface = surface();
+    surface.replace_viewed(vec![PathBuf::from("src/other.rs")]);
+
+    let controls = typing(&mut surface, "v");
+
+    assert_eq!(controls, vec![Control::Unviewed(PathBuf::from("src/other.rs"))]);
+}
+
+#[test]
+fn the_host_replaces_every_viewed_mark_and_names_only_changed_files() {
+    let mut surface = surface();
+    typing(&mut surface, "v");
+
+    surface.replace_viewed(vec![PathBuf::from("src/total.rs"), PathBuf::from("src/gone.rs")]);
+
+    insta::assert_snapshot!(screen(&mut surface, 100, 6));
+}
+
+#[test]
+fn a_mark_the_host_set_lapses_when_the_file_changes() {
+    let mut surface = surface();
+    surface.replace_viewed(vec![PathBuf::from("src/total.rs"), PathBuf::from("src/other.rs")]);
+
+    surface
+        .refresh(vec![
+            modified("src/total.rs", "let total = 1;\n", "let total = 42;\n"),
+            modified("src/other.rs", "one\ntwo\n", "one\nfour\n"),
+        ])
+        .expect("the fixtures highlight");
+
+    insta::assert_snapshot!(screen(&mut surface, 100, 6));
+}

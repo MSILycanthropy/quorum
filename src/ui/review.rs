@@ -17,7 +17,7 @@ use crate::diff::{FileDiff, Side, Whitespace};
 use crate::git::{Content, FileChange, Status};
 use crate::theme::{Tints, TokyoNight};
 use crate::ui::annotation::has_body;
-use crate::ui::{Anchor, Annotation, Error, Landing, Mode, Result, Row, Tree, Viewer};
+use crate::ui::{Anchor, Annotation, Control, Error, Landing, Mode, Result, Row, Tree, Viewer};
 
 const SIDEBAR: u16 = 34;
 const NARROWEST: u16 = 40;
@@ -260,7 +260,9 @@ impl Review {
                 self.step(Step::Backward)?;
             }
             Command::ToggleFileList => self.showing = !self.showing,
-            Command::ToggleViewed => self.toggle_viewed()?,
+            Command::ToggleViewed => {
+                self.toggle_viewed()?;
+            }
             Command::NextUnviewed => {
                 self.next_unviewed()?;
             }
@@ -487,17 +489,33 @@ impl Review {
         self.viewed.contains_key(path)
     }
 
-    fn toggle_viewed(&mut self) -> Result<()> {
+    #[expect(
+        clippy::missing_errors_doc,
+        reason = "the Error enum names the only failure, highlighting the file moved to"
+    )]
+    pub fn toggle_viewed(&mut self) -> Result<Control> {
+        self.peek = None;
         let Some(change) = self.changes.get(self.opened) else {
-            return Ok(());
+            return Ok(Control::Continue);
         };
-        if self.viewed.remove(&change.path).is_some() {
-            return Ok(());
+        let path = change.path.clone();
+        if self.viewed.remove(&path).is_some() {
+            return Ok(Control::Unviewed(path));
         }
-        self.viewed.insert(change.path.clone(), fingerprint(change));
+        self.viewed.insert(path.clone(), fingerprint(change));
         self.next_unviewed()?;
 
-        Ok(())
+        Ok(Control::Viewed(path))
+    }
+
+    pub fn replace_viewed(&mut self, paths: Vec<PathBuf>) {
+        let paths: HashSet<PathBuf> = paths.into_iter().collect();
+        self.viewed = self
+            .changes
+            .iter()
+            .filter(|change| paths.contains(&change.path))
+            .map(|change| (change.path.clone(), fingerprint(change)))
+            .collect();
     }
 
     fn next_unviewed(&mut self) -> Result<bool> {

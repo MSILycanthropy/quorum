@@ -140,7 +140,10 @@ fn view(arguments: &Arguments) -> Result<()> {
         while let Ok(event) = events.recv() {
             match event {
                 Event::Key(key) => match surface.key(key)? {
-                    Control::Continue | Control::Host(_) => {}
+                    Control::Continue
+                    | Control::Host(_)
+                    | Control::Viewed(_)
+                    | Control::Unviewed(_) => {}
                     Control::Quit => return Ok(()),
                     Control::Reload => {
                         reload(&mut surface, &subject, &mut shown)?;

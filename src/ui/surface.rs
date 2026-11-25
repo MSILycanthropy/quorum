@@ -149,6 +149,10 @@ impl Surface {
         self.files = files;
     }
 
+    pub fn replace_viewed(&mut self, paths: Vec<PathBuf>) {
+        self.review.replace_viewed(paths);
+    }
+
     #[expect(
         clippy::missing_errors_doc,
         reason = "the Error enum names the only failure, highlighting the file opened"
@@ -189,6 +193,7 @@ impl Surface {
                 self.palette.open("file", files.collect());
             }
             Command::Reload => return Ok(Control::Reload),
+            Command::ToggleViewed => return self.review.toggle_viewed(),
             Command::Edit => {
                 if let Some(path) = self.review.path() {
                     return Ok(Control::Edit {
