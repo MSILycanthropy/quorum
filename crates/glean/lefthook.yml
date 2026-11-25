@@ -1,0 +1,20 @@
+# The AGENTS.md gate. `piped` stops at the first failure so its output is the
+# only output, and rustfmt runs first because it rewrites the files the other
+# two read.
+
+pre-commit:
+  piped: true
+  commands:
+    fmt:
+      priority: 1
+      glob: "*.rs"
+      stage_fixed: true
+      run: rustfmt --edition 2024 {staged_files}
+    clippy:
+      priority: 2
+      glob: "*.{rs,toml}"
+      run: cargo clippy --all-targets -- -D warnings
+    test:
+      priority: 3
+      glob: "*.{rs,toml}"
+      run: cargo test

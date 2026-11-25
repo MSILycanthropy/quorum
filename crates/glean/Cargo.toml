@@ -1,0 +1,37 @@
+[package]
+name = "glean"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+license = "MIT OR Apache-2.0"
+description = "A terminal client for GitHub pull requests, built on sift."
+
+[dependencies]
+clap = { version = "4.6.6", features = ["derive"] }
+sift = { path = "../sift" }
+thiserror = "2"
+
+# Shared profile tuning. Split debuginfo keeps incremental link times down,
+# which matters most in the terminal frontend where the edit-run loop is tightest.
+[profile.dev]
+debug = "line-tables-only"
+split-debuginfo = "unpacked"
+
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.release]
+strip = true
+lto = "thin"
+codegen-units = 1
+
+[dev-dependencies]
+insta = "1.48.0"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+must_use_candidate = "allow"
