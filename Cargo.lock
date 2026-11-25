@@ -2554,6 +2554,7 @@ dependencies = [
  "inkjet",
  "insta",
  "ratatui",
+ "rustix",
  "similar 3.2.0",
  "thiserror 2.0.20",
  "tree-sitter-embedded-template",

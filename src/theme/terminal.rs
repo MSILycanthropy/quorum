@@ -1,11 +1,12 @@
 //! Asking the terminal for the colours of its own theme.
 
-use std::fs::{File, OpenOptions};
+use std::fs::OpenOptions;
 use std::io::{Read, Write};
-use std::sync::mpsc::channel;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use ratatui::crossterm::terminal::{disable_raw_mode, enable_raw_mode, is_raw_mode_enabled};
+use rustix::event::{PollFd, PollFlags, Timespec, poll};
+use rustix::io::Errno;
 
 use crate::color::Rgb;
 use crate::theme::TerminalColors;
@@ -72,28 +73,24 @@ fn exchange(timeout: Duration) -> Option<Vec<u8>> {
     terminal.write_all(TerminalColors::QUERY.as_bytes()).ok()?;
     terminal.flush().ok()?;
 
-    let (sender, receiver) = channel();
-    std::thread::Builder::new()
-        .name("colours".to_owned())
-        .spawn(move || {
-            let _ = sender.send(read_until_answered(&mut terminal));
-        })
-        .ok()?;
-
-    receiver.recv_timeout(timeout).ok()
-}
-
-fn read_until_answered(terminal: &mut File) -> Vec<u8> {
+    let deadline = Instant::now() + timeout;
     let mut replies = Vec::new();
     let mut chunk = [0; 256];
     while !answered(&replies) {
+        let left = Timespec::try_from(deadline.checked_duration_since(Instant::now())?).ok()?;
+        let mut waiting = [PollFd::new(&terminal, PollFlags::IN)];
+        match poll(&mut waiting, Some(&left)) {
+            Ok(_) if waiting[0].revents().contains(PollFlags::IN) => {}
+            Err(Errno::INTR) => continue,
+            Ok(_) | Err(_) => return None,
+        }
         match terminal.read(&mut chunk) {
             Ok(0) | Err(_) => break,
             Ok(read) => replies.extend_from_slice(&chunk[..read]),
         }
     }
 
-    replies
+    Some(replies)
 }
 
 fn answered(replies: &[u8]) -> bool {
