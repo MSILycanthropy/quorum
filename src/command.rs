@@ -152,6 +152,10 @@ pub enum Error {
     NotHost(&'static str),
     #[error("{} on {label} can never be pressed: write the character Shift produces", .shortcut.display())]
     Unreachable { shortcut: Shortcut, label: &'static str },
+    #[error("{0} is a host command: leave it out of the host bindings instead")]
+    NotSift(&'static str),
+    #[error("{0} cannot be unbound")]
+    Required(&'static str),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -301,6 +305,26 @@ impl Catalog {
 
     #[expect(
         clippy::missing_errors_doc,
+        reason = "the Error enum names each way an unbinding is refused"
+    )]
+    pub fn unbind(mut self, commands: &[Command]) -> Result<Self> {
+        for command in commands {
+            if let Command::Host(name) = command {
+                return Err(Error::NotSift(name));
+            }
+            if let Some(binding) = self.bindings.iter().find(|binding| binding.command == *command)
+                && REQUIRED.contains(command)
+            {
+                return Err(Error::Required(binding.label));
+            }
+        }
+        self.bindings.retain(|binding| !commands.contains(&binding.command));
+
+        Ok(self)
+    }
+
+    #[expect(
+        clippy::missing_errors_doc,
         reason = "the Error enum names each way a host binding is refused"
     )]
     pub fn with(mut self, bindings: Vec<Binding>) -> Result<Self> {
@@ -387,6 +411,8 @@ impl Catalog {
             .collect()
     }
 }
+
+const REQUIRED: [Command; 2] = [Command::Quit, Command::Help];
 
 const HINTED: [Command; 9] = [
     Command::NextHunk,

@@ -122,6 +122,7 @@ fn view(arguments: &Arguments) -> Result<()> {
         comparing: subject.describe(),
         files: subject.files()?,
         bindings: Vec::new(),
+        unbound: Vec::new(),
     };
     let mut shown = subject.changes()?;
     let mut surface = opening.surface(shown.clone())?;

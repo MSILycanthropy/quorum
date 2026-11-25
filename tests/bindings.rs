@@ -56,14 +56,31 @@ fn changes() -> Vec<FileChange> {
 }
 
 fn opened(bindings: Vec<Binding>) -> sift::ui::Result<Surface> {
+    unbinding(Vec::new(), bindings)
+}
+
+fn unbinding(unbound: Vec<Command>, bindings: Vec<Binding>) -> sift::ui::Result<Surface> {
     let opening = Opening {
         branch: Some("main".to_owned()),
         comparing: "HEAD → worktree".to_owned(),
         bindings,
+        unbound,
         ..Opening::default()
     };
 
     opening.surface(changes())
+}
+
+fn without_edit() -> Surface {
+    unbinding(vec![Command::Edit], glean()).expect("edit can be unbound")
+}
+
+fn refused_unbinding(unbound: Vec<Command>) -> command::Error {
+    match unbinding(unbound, glean()) {
+        Err(Error::Binding(error)) => error,
+        Err(error) => panic!("refused for the wrong reason: {error}"),
+        Ok(_) => panic!("the unbinding was accepted"),
+    }
 }
 
 fn surface() -> Surface {
@@ -318,4 +335,86 @@ fn host_hints_come_first_in_the_status_line_and_help_is_never_dropped() {
         screen(&mut surface, 200, 2),
         screen(&mut surface, 80, 2)
     ));
+}
+
+#[test]
+fn an_unbound_key_does_nothing() {
+    let mut surface = without_edit();
+
+    let controls = typed(&mut surface, &[press(KeyCode::Char('e'))]);
+
+    assert_eq!(controls, vec![Control::Continue]);
+}
+
+#[test]
+fn an_unbound_command_leaves_the_status_line() {
+    let mut surface = without_edit();
+
+    insta::assert_snapshot!(screen(&mut surface, 200, 2));
+}
+
+#[test]
+fn an_unbound_command_leaves_help() {
+    let mut surface = without_edit();
+    typed(&mut surface, &[press(KeyCode::Char('?'))]);
+
+    insta::assert_snapshot!(screen(&mut surface, 70, 52));
+}
+
+#[test]
+fn an_unbound_command_leaves_the_palette() {
+    let mut surface = without_edit();
+    typed(&mut surface, &[press(KeyCode::Char(':'))]);
+    for character in "editor".chars() {
+        typed(&mut surface, &[press(KeyCode::Char(character))]);
+    }
+
+    insta::assert_snapshot!(screen(&mut surface, 100, 8));
+}
+
+#[test]
+fn a_host_can_bind_a_key_once_its_command_is_unbound() {
+    let mut bindings = glean();
+    bindings.push(host("browse", "Open in the browser", 'e', PULL_REQUEST, None));
+    let mut surface = unbinding(vec![Command::Edit], bindings).expect("e is free");
+
+    let controls = typed(&mut surface, &[press(KeyCode::Char('e'))]);
+
+    assert_eq!(controls, vec![Control::Host("browse")]);
+}
+
+#[test]
+fn a_host_key_held_by_a_command_still_bound_is_refused() {
+    let error = refused(vec![host("browse", "Open in the browser", 'e', PULL_REQUEST, None)]);
+
+    assert!(matches!(
+        error,
+        command::Error::SharedShortcut {
+            first: "Open in $EDITOR",
+            second: "Open in the browser",
+            ..
+        }
+    ));
+}
+
+#[test]
+fn unbinding_quit_is_refused() {
+    let error = refused_unbinding(vec![Command::Quit]);
+
+    assert!(matches!(error, command::Error::Required("Quit")));
+    assert_eq!(error.to_string(), "Quit cannot be unbound");
+}
+
+#[test]
+fn unbinding_help_is_refused() {
+    let error = refused_unbinding(vec![Command::Edit, Command::Help]);
+
+    assert!(matches!(error, command::Error::Required("Show every key")));
+}
+
+#[test]
+fn unbinding_a_host_command_is_refused() {
+    let error = refused_unbinding(vec![Command::Host("comment")]);
+
+    assert!(matches!(error, command::Error::NotSift("comment")));
 }

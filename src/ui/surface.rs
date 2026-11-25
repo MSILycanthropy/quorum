@@ -27,6 +27,7 @@ pub struct Opening {
     pub comparing: String,
     pub files: Vec<PathBuf>,
     pub bindings: Vec<Binding>,
+    pub unbound: Vec<Command>,
 }
 
 impl Default for Opening {
@@ -39,6 +40,7 @@ impl Default for Opening {
             comparing: String::new(),
             files: Vec::new(),
             bindings: Vec::new(),
+            unbound: Vec::new(),
         }
     }
 }
@@ -46,11 +48,11 @@ impl Default for Opening {
 impl Opening {
     #[expect(
         clippy::missing_errors_doc,
-        reason = "the Error enum names the failures, a refused host binding and highlighting the selected file"
+        reason = "the Error enum names the failures, a refused unbinding or host binding and highlighting the selected file"
     )]
     pub fn surface(self, changes: Vec<FileChange>) -> Result<Surface> {
         Ok(Surface {
-            catalog: Catalog::default().with(self.bindings)?,
+            catalog: Catalog::default().unbind(&self.unbound)?.with(self.bindings)?,
             review: Review::new(changes, self.mode, self.wrap, self.tab_width)?,
             palette: Palette::default(),
             help: Help::default(),

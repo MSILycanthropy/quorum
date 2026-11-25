@@ -1,0 +1,56 @@
+---
+source: tests/bindings.rs
+expression: "screen(&mut surface, 70, 52)"
+---
+ M src/other                                                      1/2
+1 one        General
+2 two        ?               Show every key
+3            : C-p           Command palette
+             r               Reload from git
+             q C-c           Quit
+             Esc             Back, or quit
+
+             Files
+             ] Tab           Next file
+             [ S-Tab         Previous file
+             /               Find file
+             C-b f           Toggle file list
+             y               Copy path
+             Y               Copy path:line
+             v               Mark viewed, go to next
+             u               Next unviewed file
+
+             Diff
+             n               Next hunk
+             N p             Previous hunk
+             Enter o         Unfold, or toggle annotation
+             j ↓             Down a line
+             k ↑             Up a line
+             C-d             Down half a page
+             C-u             Up half a page
+             PgDn C-f Space  Down a page
+             PgUp            Up a page
+             g Home          Top of the file
+             G End           Bottom of the file
+             H S-←           Cursor to the old side
+             L S-→           Cursor to the new side
+             h ←             Scroll left
+             l →             Scroll right
+
+             View
+             s               Split or unified
+             w               Wrap long lines
+             z               Fold unchanged lines
+             W               Ignore whitespace
+
+             Review
+             c               Comment on this line
+             R               Reply to this thread
+             x               Resolve or unresolve
+
+             Pull request
+             A               Approve
+             M               Merge
+
+                                           any key closes
+  main · HEAD → worktree · 2 files · 1 hunks · side by side   ? help
