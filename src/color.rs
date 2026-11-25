@@ -15,6 +15,11 @@ impl Rgb {
         Self { red, green, blue }
     }
 
+    pub const fn is_light(self) -> bool {
+        let (red, green, blue) = (self.red as u32, self.green as u32, self.blue as u32);
+        299 * red + 587 * green + 114 * blue > 128 * 1000
+    }
+
     #[must_use]
     pub const fn blend(self, other: Self, amount: u8) -> Self {
         Self::new(

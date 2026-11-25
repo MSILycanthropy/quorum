@@ -8,7 +8,7 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::color::Rgb;
 use crate::command::{Binding, Catalog, Category};
-use crate::theme::{Tints, TokyoNight};
+use crate::theme::Tints;
 
 const GAP: usize = 3;
 const CLOSING: &str = "any key closes";
@@ -22,7 +22,13 @@ pub struct Help {
 
 impl Default for Help {
     fn default() -> Self {
-        Self { open: false, tints: TokyoNight::TINTS }
+        Self::new(Tints::default())
+    }
+}
+
+impl Help {
+    pub const fn new(tints: Tints) -> Self {
+        Self { open: false, tints }
     }
 }
 

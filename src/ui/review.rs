@@ -15,7 +15,7 @@ use crate::color::Rgb;
 use crate::command::Command;
 use crate::diff::{FileDiff, Side, Whitespace};
 use crate::git::{Content, FileChange, Status};
-use crate::theme::{Tints, TokyoNight};
+use crate::theme::Theme;
 use crate::ui::annotation::has_body;
 use crate::ui::{Anchor, Annotation, Control, Error, Landing, Mode, Result, Row, Tree, Viewer};
 
@@ -42,7 +42,7 @@ pub struct Review {
     revealed: HashSet<PathBuf>,
     annotations: Vec<Annotation>,
     overrides: HashMap<String, bool>,
-    tints: Tints,
+    theme: Theme,
 }
 
 impl Review {
@@ -50,7 +50,13 @@ impl Review {
         clippy::missing_errors_doc,
         reason = "the Error enum names the only failure, highlighting the selected file"
     )]
-    pub fn new(changes: Vec<FileChange>, mode: Mode, wrap: bool, tab_width: usize) -> Result<Self> {
+    pub fn new(
+        changes: Vec<FileChange>,
+        mode: Mode,
+        wrap: bool,
+        tab_width: usize,
+        theme: Theme,
+    ) -> Result<Self> {
         let tree = Tree::of(&changes);
         let (selected, opened) = tree
             .rows()
@@ -77,7 +83,7 @@ impl Review {
             revealed: HashSet::new(),
             annotations: Vec::new(),
             overrides: HashMap::new(),
-            tints: TokyoNight::TINTS,
+            theme,
         };
         review.open()?;
 
@@ -117,13 +123,13 @@ impl Review {
             y,
             added,
             usize::MAX,
-            Style::new().fg(color(self.tints.added_text)).bg(color(row)),
+            Style::new().fg(color(self.theme.tints.added_text)).bg(color(row)),
         );
         buffer.set_string(
             x + 1,
             y,
             removed,
-            Style::new().fg(color(self.tints.removed_text)).bg(color(row)),
+            Style::new().fg(color(self.theme.tints.removed_text)).bg(color(row)),
         );
     }
 
@@ -456,9 +462,14 @@ impl Review {
             .map(Viewer::place);
         let wrap = self.viewer.as_ref().map_or(self.wrap, Viewer::wrap);
         let mut viewer = match content {
-            Content::Text(diff) => {
-                Some(Viewer::new(diff.clone(), &path, Mode::Unified, wrap, self.tab_width)?)
-            }
+            Content::Text(diff) => Some(Viewer::new(
+                diff.clone(),
+                &path,
+                Mode::Unified,
+                wrap,
+                self.tab_width,
+                &self.theme,
+            )?),
             Content::Binary => None,
         };
         if let Some(viewer) = &mut viewer {
@@ -654,7 +665,7 @@ impl Review {
                         FileDiff::compute_with(diff.old.clone(), diff.new.clone(), self.whitespace)
                     }
                 };
-                Some(Viewer::new(diff, path, self.mode, self.wrap, self.tab_width)?)
+                Some(Viewer::new(diff, path, self.mode, self.wrap, self.tab_width, &self.theme)?)
             }
             _ => None,
         };
@@ -700,7 +711,7 @@ impl Review {
             area.y,
             name,
             usize::from(area.width.saturating_sub(2)),
-            Style::new().fg(color(self.tints.muted)).bg(color(self.tints.filler)),
+            Style::new().fg(color(self.theme.tints.muted)).bg(color(self.theme.tints.filler)),
         );
     }
 
@@ -759,7 +770,7 @@ impl Review {
         for (y, index) in (0..area.height).zip(self.first..self.tree.rows().len()) {
             let listed = &self.tree.rows()[index];
             let selected = index == self.selected;
-            let row = if selected { self.tints.filler } else { self.tints.background };
+            let row = if selected { self.theme.tints.filler } else { self.theme.tints.background };
             let indent = u16::try_from(listed.depth * 2).unwrap_or(0);
 
             buffer.set_style(
@@ -779,7 +790,7 @@ impl Review {
                     area.y + y,
                     &listed.label,
                     usize::from(area.width.saturating_sub(4 + indent)),
-                    Style::new().fg(color(self.tints.muted)).bg(color(row)),
+                    Style::new().fg(color(self.theme.tints.muted)).bg(color(row)),
                 );
                 continue;
             };
@@ -793,7 +804,7 @@ impl Review {
                     .bg(color(self.swatch(change.status, selected))),
             );
             let viewed = self.viewed.contains_key(&change.path);
-            let label = if viewed { self.tints.muted } else { self.tints.foreground };
+            let label = if viewed { self.theme.tints.muted } else { self.theme.tints.foreground };
             let end = area.x + area.width - 2;
             let (x, _) = buffer.set_stringn(
                 area.x + 3 + indent,
@@ -807,7 +818,7 @@ impl Review {
                     end,
                     area.y + y,
                     "✓",
-                    Style::new().fg(color(self.tints.muted)).bg(color(row)),
+                    Style::new().fg(color(self.theme.tints.muted)).bg(color(row)),
                 );
             } else {
                 let room = Rect::new(x + 1, area.y + y, end.saturating_sub(x + 1), 1);
@@ -820,19 +831,21 @@ impl Review {
                 area.x + area.width - 1,
                 area.y + y,
                 "│",
-                Style::new().fg(color(self.tints.gutter)).bg(color(self.tints.background)),
+                Style::new()
+                    .fg(color(self.theme.tints.gutter))
+                    .bg(color(self.theme.tints.background)),
             );
         }
     }
 
     fn swatch(&self, status: Status, selected: bool) -> Rgb {
         match (status, selected) {
-            (Status::Added, false) => self.tints.added,
-            (Status::Added, true) => self.tints.added_emphasis,
-            (Status::Deleted, false) => self.tints.removed,
-            (Status::Deleted, true) => self.tints.removed_emphasis,
-            (Status::Modified | Status::Renamed, false) => self.tints.background,
-            (Status::Modified | Status::Renamed, true) => self.tints.filler,
+            (Status::Added, false) => self.theme.tints.added,
+            (Status::Added, true) => self.theme.tints.added_emphasis,
+            (Status::Deleted, false) => self.theme.tints.removed,
+            (Status::Deleted, true) => self.theme.tints.removed_emphasis,
+            (Status::Modified | Status::Renamed, false) => self.theme.tints.background,
+            (Status::Modified | Status::Renamed, true) => self.theme.tints.filler,
         }
     }
 }
@@ -846,7 +859,7 @@ impl Widget for &mut Review {
             }
             return;
         }
-        let style = Style::new().bg(color(self.tints.background));
+        let style = Style::new().bg(color(self.theme.tints.background));
         buffer.set_style(area, style);
 
         let titled = match (&self.peek, self.changes.get(self.opened)) {
@@ -861,7 +874,7 @@ impl Widget for &mut Review {
                 None => format!("{} {}", change.status.letter(), change.path.display()),
             },
             (None, None) => {
-                let style = style.fg(color(self.tints.foreground));
+                let style = style.fg(color(self.theme.tints.foreground));
                 buffer.set_stringn(area.x, area.y, "no changes", area.width.into(), style);
                 return;
             }
@@ -873,7 +886,7 @@ impl Widget for &mut Review {
         let (sidebar, body) = self.panes(rest);
         self.listed = sidebar;
 
-        buffer.set_style(header, Style::new().bg(color(self.tints.filler)));
+        buffer.set_style(header, Style::new().bg(color(self.theme.tints.filler)));
 
         let heading = match sidebar {
             Some(sidebar) => {
@@ -903,7 +916,7 @@ impl Widget for &mut Review {
             heading.y,
             titled,
             end.saturating_sub(heading.x + 1).into(),
-            Style::new().fg(color(self.tints.foreground)).bg(color(self.tints.filler)),
+            Style::new().fg(color(self.theme.tints.foreground)).bg(color(self.theme.tints.filler)),
         );
         if self.peek.is_none()
             && let Some(change) = self.changes.get(self.opened)
@@ -913,14 +926,14 @@ impl Widget for &mut Review {
             let wanted = format!("+{} −{}", counts.added, counts.removed).width();
             let wanted = u16::try_from(wanted).unwrap_or(u16::MAX);
             let area = Rect::new(x + 2, heading.y, wanted.min(end.saturating_sub(x + 2)), 1);
-            self.counts(buffer, area, change, self.tints.filler);
+            self.counts(buffer, area, change, self.theme.tints.filler);
         }
         buffer.set_stringn(
             heading.x + heading.width.saturating_sub(room),
             heading.y,
             counter,
             room.min(heading.width).into(),
-            Style::new().fg(color(self.tints.gutter)).bg(color(self.tints.filler)),
+            Style::new().fg(color(self.theme.tints.gutter)).bg(color(self.theme.tints.filler)),
         );
 
         if let Some(sidebar) = sidebar {
@@ -932,7 +945,9 @@ impl Widget for &mut Review {
         if let Some(viewer) = self.active() {
             viewer.render(body, buffer);
         } else {
-            let style = Style::new().fg(color(self.tints.gutter)).bg(color(self.tints.background));
+            let style = Style::new()
+                .fg(color(self.theme.tints.gutter))
+                .bg(color(self.theme.tints.background));
             buffer.set_stringn(body.x + 1, body.y, placeholder, body.width.into(), style);
         }
     }

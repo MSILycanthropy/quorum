@@ -16,7 +16,7 @@ use crate::diff::{
     ScreenRow, Side, Viewport, unified,
 };
 use crate::syntax::Syntax;
-use crate::theme::{Tints, TokyoNight};
+use crate::theme::{Theme, Tints};
 use crate::ui::annotation::{clean, cut, has_body, heading, wrap};
 use crate::ui::{Annotation, Mode, Result};
 
@@ -134,6 +134,7 @@ impl Viewer {
         mode: Mode,
         wrap: bool,
         tab_width: usize,
+        theme: &Theme,
     ) -> Result<Self> {
         let side_by_side = Align::default().rows(&diff);
         let unified = unified(&side_by_side);
@@ -146,10 +147,10 @@ impl Viewer {
             mode,
             side_by_side,
             path: path.to_owned(),
-            syntax: Syntax::default(),
+            syntax: theme.syntax.clone(),
             old_syntax: Highlighting::EMPTY,
             new_syntax: Highlighting::EMPTY,
-            tints: TokyoNight::TINTS,
+            tints: theme.tints,
             wrap,
             tab_width,
             top: 0,

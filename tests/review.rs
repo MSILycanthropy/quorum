@@ -12,7 +12,7 @@ use sift::color::Rgb;
 use sift::command::Command;
 use sift::diff::{FileDiff, Side, Source};
 use sift::git::{Content, FileChange, Status};
-use sift::theme::TokyoNight;
+use sift::theme::{Theme, TokyoNight};
 use sift::ui::{Anchor, Mode, Review};
 
 fn modified(path: &str, old: &str, new: &str) -> FileChange {
@@ -82,8 +82,8 @@ fn click(column: u16, row: u16) -> MouseEvent {
 }
 
 fn moused(changes: Vec<FileChange>, width: u16, height: u16, mouse: &[MouseEvent]) -> String {
-    let mut review =
-        Review::new(changes, Mode::SideBySide, false, 4).expect("the fixtures highlight");
+    let mut review = Review::new(changes, Mode::SideBySide, false, 4, Theme::default())
+        .expect("the fixtures highlight");
     let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("test backend starts");
 
     terminal.draw(|frame| frame.render_widget(&mut review, frame.area())).expect("draw succeeds");
@@ -98,8 +98,8 @@ fn moused(changes: Vec<FileChange>, width: u16, height: u16, mouse: &[MouseEvent
 }
 
 fn shown(changes: Vec<FileChange>, width: u16, height: u16, commands: &[Command]) -> String {
-    let mut review =
-        Review::new(changes, Mode::SideBySide, false, 4).expect("the fixtures highlight");
+    let mut review = Review::new(changes, Mode::SideBySide, false, 4, Theme::default())
+        .expect("the fixtures highlight");
     let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("test backend starts");
 
     terminal.draw(|frame| frame.render_widget(&mut review, frame.area())).expect("draw succeeds");
@@ -194,8 +194,9 @@ fn the_previous_hunk_before_the_first_one_is_the_last_one_in_the_previous_file()
 
 #[test]
 fn hunks_are_counted_for_the_file_on_screen() {
-    let mut review = Review::new(vec![tall("src/tall.rs")], Mode::SideBySide, false, 4)
-        .expect("the fixtures highlight");
+    let mut review =
+        Review::new(vec![tall("src/tall.rs")], Mode::SideBySide, false, 4, Theme::default())
+            .expect("the fixtures highlight");
     let mut terminal = Terminal::new(TestBackend::new(90, 8)).expect("test backend starts");
     terminal.draw(|frame| frame.render_widget(&mut review, frame.area())).expect("draw succeeds");
     assert_eq!(review.hunk(), (None, 1));
@@ -271,8 +272,8 @@ fn the_wheel_over_the_diff_scrolls_it_and_leaves_the_file_alone() {
 
 #[test]
 fn a_rescan_that_adds_a_file_above_the_selection_keeps_the_file_you_were_reading() {
-    let mut review =
-        Review::new(fixtures(), Mode::SideBySide, false, 4).expect("the fixtures highlight");
+    let mut review = Review::new(fixtures(), Mode::SideBySide, false, 4, Theme::default())
+        .expect("the fixtures highlight");
     review.run(Command::NextFile).expect("moving succeeds");
 
     let mut grown = fixtures();
@@ -287,8 +288,8 @@ fn a_rescan_that_adds_a_file_above_the_selection_keeps_the_file_you_were_reading
 
 #[test]
 fn a_rescan_that_drops_the_file_you_were_reading_falls_back_to_the_first() {
-    let mut review =
-        Review::new(fixtures(), Mode::SideBySide, false, 4).expect("the fixtures highlight");
+    let mut review = Review::new(fixtures(), Mode::SideBySide, false, 4, Theme::default())
+        .expect("the fixtures highlight");
     review.run(Command::NextFile).expect("moving succeeds");
     review
         .refresh(vec![modified("src/total.rs", "let total = 1;\n", "let total = 42;\n")])
@@ -302,8 +303,9 @@ fn a_rescan_that_drops_the_file_you_were_reading_falls_back_to_the_first() {
 
 #[test]
 fn a_rescan_of_the_file_you_were_reading_keeps_your_place_and_layout() {
-    let mut review = Review::new(vec![tall("src/tall.rs")], Mode::SideBySide, false, 4)
-        .expect("the fixtures highlight");
+    let mut review =
+        Review::new(vec![tall("src/tall.rs")], Mode::SideBySide, false, 4, Theme::default())
+            .expect("the fixtures highlight");
     let mut terminal = Terminal::new(TestBackend::new(90, 8)).expect("test backend starts");
     terminal.draw(|frame| frame.render_widget(&mut review, frame.area())).expect("draw succeeds");
     for command in [Command::ToggleLayout, Command::NextLine, Command::NextLine] {
@@ -323,8 +325,8 @@ fn unchanged(text: &str) -> Content {
 }
 
 fn peeked(line: Option<usize>, commands: &[Command]) -> String {
-    let mut review =
-        Review::new(fixtures(), Mode::SideBySide, false, 4).expect("the fixtures highlight");
+    let mut review = Review::new(fixtures(), Mode::SideBySide, false, 4, Theme::default())
+        .expect("the fixtures highlight");
     let mut terminal = Terminal::new(TestBackend::new(90, 8)).expect("test backend starts");
     let mut text = String::new();
     for line in 1..=30 {
@@ -358,8 +360,8 @@ fn moving_to_the_next_file_leaves_the_unchanged_one() {
 
 #[test]
 fn closing_an_unchanged_file_returns_to_the_diff_as_it_was() {
-    let mut review =
-        Review::new(fixtures(), Mode::SideBySide, false, 4).expect("the fixtures highlight");
+    let mut review = Review::new(fixtures(), Mode::SideBySide, false, 4, Theme::default())
+        .expect("the fixtures highlight");
     review
         .peek(PathBuf::from("src/lib.rs"), &unchanged("fn lib() {}\n"), None)
         .expect("highlights");
@@ -372,8 +374,8 @@ fn closing_an_unchanged_file_returns_to_the_diff_as_it_was() {
 
 #[test]
 fn an_unchanged_file_that_a_rescan_finds_changed_joins_the_review() {
-    let mut review =
-        Review::new(fixtures(), Mode::SideBySide, false, 4).expect("the fixtures highlight");
+    let mut review = Review::new(fixtures(), Mode::SideBySide, false, 4, Theme::default())
+        .expect("the fixtures highlight");
     review
         .peek(PathBuf::from("src/lib.rs"), &unchanged("fn lib() {}\n"), None)
         .expect("highlights");
@@ -423,6 +425,7 @@ fn going_to_a_folded_line_opens_its_fold() {
         Mode::SideBySide,
         false,
         4,
+        Theme::default(),
     )
     .expect("the fixtures highlight");
     let mut terminal = Terminal::new(TestBackend::new(90, 12)).expect("test backend starts");
@@ -435,8 +438,8 @@ fn going_to_a_folded_line_opens_its_fold() {
 }
 
 fn review(changes: Vec<FileChange>) -> (Review, Terminal<TestBackend>) {
-    let mut review =
-        Review::new(changes, Mode::SideBySide, false, 4).expect("the fixtures highlight");
+    let mut review = Review::new(changes, Mode::SideBySide, false, 4, Theme::default())
+        .expect("the fixtures highlight");
     let mut terminal = Terminal::new(TestBackend::new(90, 8)).expect("test backend starts");
     terminal.draw(|frame| frame.render_widget(&mut review, frame.area())).expect("draw succeeds");
 
@@ -587,8 +590,8 @@ fn a_binary_file_has_no_cursor() {
 
 #[test]
 fn an_unchanged_file_always_puts_the_cursor_on_the_new_side() {
-    let mut review =
-        Review::new(fixtures(), Mode::SideBySide, false, 4).expect("the fixtures highlight");
+    let mut review = Review::new(fixtures(), Mode::SideBySide, false, 4, Theme::default())
+        .expect("the fixtures highlight");
     let mut terminal = Terminal::new(TestBackend::new(90, 8)).expect("test backend starts");
     review.peek(PathBuf::from("src/lib.rs"), &unchanged("one\ntwo\n"), None).expect("highlights");
     terminal.draw(|frame| frame.render_widget(&mut review, frame.area())).expect("draw succeeds");

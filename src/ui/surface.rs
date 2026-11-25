@@ -12,7 +12,7 @@ use unicode_width::UnicodeWidthStr;
 use crate::color::Rgb;
 use crate::command::{Binding, Catalog, Category, Command, PaletteEntry, PaletteTarget};
 use crate::git::{Content, FileChange};
-use crate::theme::{Tints, TokyoNight};
+use crate::theme::{Theme, Tints};
 use crate::ui::{
     Anchor, Annotation, Control, Help, Icon, Mode, Palette, PaletteAction, Result, Review,
 };
@@ -28,6 +28,7 @@ pub struct Opening {
     pub files: Vec<PathBuf>,
     pub bindings: Vec<Binding>,
     pub unbound: Vec<Command>,
+    pub theme: Theme,
 }
 
 impl Default for Opening {
@@ -41,6 +42,7 @@ impl Default for Opening {
             files: Vec::new(),
             bindings: Vec::new(),
             unbound: Vec::new(),
+            theme: Theme::default(),
         }
     }
 }
@@ -53,15 +55,15 @@ impl Opening {
     pub fn surface(self, changes: Vec<FileChange>) -> Result<Surface> {
         Ok(Surface {
             catalog: Catalog::default().unbind(&self.unbound)?.with(self.bindings)?,
-            review: Review::new(changes, self.mode, self.wrap, self.tab_width)?,
-            palette: Palette::default(),
-            help: Help::default(),
+            review: Review::new(changes, self.mode, self.wrap, self.tab_width, self.theme.clone())?,
+            palette: Palette::new(self.theme.tints),
+            help: Help::new(self.theme.tints),
             branch: self.branch,
             comparing: self.comparing,
             files: self.files,
             notice: None,
             annotating: false,
-            tints: TokyoNight::TINTS,
+            tints: self.theme.tints,
             area: Rect::default(),
         })
     }

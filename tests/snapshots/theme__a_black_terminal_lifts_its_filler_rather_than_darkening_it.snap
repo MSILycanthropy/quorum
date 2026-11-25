@@ -1,0 +1,18 @@
+---
+source: tests/theme.rs
+assertion_line: 107
+expression: listed(BLACK.tints())
+---
+      background  #000000
+      foreground  #ffffff
+          gutter  #333333
+          filler  #101010
+           muted  #666666
+       attention  #ffff00
+           added  #002600
+  added emphasis  #005c00
+      added text  #00ff00
+         removed  #260000
+removed emphasis  #5c0000
+    removed text  #ff0000
+          cursor  #ffffff

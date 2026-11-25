@@ -10,7 +10,7 @@ use ratatui::style::Color;
 use sift::color::Rgb;
 use sift::command::Command;
 use sift::diff::{FileDiff, Side, Source};
-use sift::theme::TokyoNight;
+use sift::theme::{Theme, TokyoNight};
 use sift::ui::{Mode, Viewer};
 
 const OLD: &str = "fn total(cart: &Cart) -> u32 {\n    let total = 1;\n    dead();\n    total\n}\n";
@@ -26,8 +26,8 @@ fn scrolled(width: u16, height: u16, wrap: bool, commands: &[Command]) -> String
 
 fn shown(mode: Mode, width: u16, height: u16, wrap: bool, commands: &[Command]) -> String {
     let diff = FileDiff::compute(Source::new(OLD), Source::new(NEW));
-    let mut viewer =
-        Viewer::new(diff, Path::new("demo.rs"), mode, wrap, 4).expect("fixtures highlight");
+    let mut viewer = Viewer::new(diff, Path::new("demo.rs"), mode, wrap, 4, &Theme::default())
+        .expect("fixtures highlight");
     let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("test backend starts");
 
     terminal.draw(|frame| frame.render_widget(&mut viewer, frame.area())).expect("draw succeeds");
@@ -126,8 +126,9 @@ fn far_apart() -> (String, String) {
 fn hunked(commands: &[Command]) -> (String, (Option<usize>, usize), Option<usize>) {
     let (old, new) = far_apart();
     let diff = FileDiff::compute(Source::new(old), Source::new(new));
-    let mut viewer = Viewer::new(diff, Path::new("demo.txt"), Mode::SideBySide, false, 4)
-        .expect("fixtures highlight");
+    let mut viewer =
+        Viewer::new(diff, Path::new("demo.txt"), Mode::SideBySide, false, 4, &Theme::default())
+            .expect("fixtures highlight");
     let mut terminal = Terminal::new(TestBackend::new(48, 6)).expect("test backend starts");
 
     terminal.draw(|frame| frame.render_widget(&mut viewer, frame.area())).expect("draw succeeds");
@@ -174,8 +175,8 @@ fn drawn(
     commands: &[Command],
 ) -> (Viewer, String) {
     let diff = FileDiff::compute(Source::new(old), Source::new(new));
-    let mut viewer =
-        Viewer::new(diff, Path::new("demo.rs"), mode, wrap, 4).expect("fixtures highlight");
+    let mut viewer = Viewer::new(diff, Path::new("demo.rs"), mode, wrap, 4, &Theme::default())
+        .expect("fixtures highlight");
     let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("test backend starts");
 
     terminal.draw(|frame| frame.render_widget(&mut viewer, frame.area())).expect("draw succeeds");
@@ -399,8 +400,9 @@ fn the_wheel_drags_the_cursor_only_when_it_would_leave_the_screen() {
 #[test]
 fn the_cursors_line_number_is_drawn_in_the_attention_tint() {
     let diff = FileDiff::compute(Source::new(OLD), Source::new(NEW));
-    let mut viewer = Viewer::new(diff, Path::new("demo.rs"), Mode::SideBySide, false, 4)
-        .expect("fixtures highlight");
+    let mut viewer =
+        Viewer::new(diff, Path::new("demo.rs"), Mode::SideBySide, false, 4, &Theme::default())
+            .expect("fixtures highlight");
     let mut terminal = Terminal::new(TestBackend::new(64, 6)).expect("test backend starts");
     terminal.draw(|frame| frame.render_widget(&mut viewer, frame.area())).expect("draw succeeds");
     let buffer = terminal.backend().buffer();

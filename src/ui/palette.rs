@@ -9,7 +9,7 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::color::Rgb;
 use crate::command::{PaletteEntry, PaletteModel, PaletteTarget, located};
-use crate::theme::{Tints, TokyoNight};
+use crate::theme::Tints;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PaletteAction {
@@ -30,13 +30,19 @@ pub struct Palette {
 
 impl Default for Palette {
     fn default() -> Self {
+        Self::new(Tints::default())
+    }
+}
+
+impl Palette {
+    pub fn new(tints: Tints) -> Self {
         Self {
             entries: Vec::new(),
             title: "",
             query: String::new(),
             selected: 0,
             model: PaletteModel,
-            tints: TokyoNight::TINTS,
+            tints,
         }
     }
 }

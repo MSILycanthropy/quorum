@@ -1,0 +1,18 @@
+---
+source: tests/theme.rs
+assertion_line: 102
+expression: listed(LIGHT.tints())
+---
+      background  #fdf6e3
+      foreground  #657b83
+          gutter  #deddcf
+          filler  #e9e2d1
+           muted  #9da8a6
+       attention  #b58900
+           added  #ebe8c1
+  added emphasis  #d1d490
+      added text  #859900
+         removed  #f8d8c8
+removed emphasis  #f0aea1
+    removed text  #dc322f
+          cursor  #657b83

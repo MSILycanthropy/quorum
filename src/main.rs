@@ -25,6 +25,8 @@ use ratatui::crossterm::terminal::{
 };
 use sift::diff::{FileDiff, Source};
 use sift::git::{Comparison, Content, FileChange, Repository, Snapshot, Status, looks_generated};
+use sift::syntax::Syntax;
+use sift::theme::{TerminalColors, Theme};
 use sift::ui::{Control, Mode, Opening, Surface};
 
 #[derive(Debug, thiserror::Error)]
@@ -33,6 +35,8 @@ enum Error {
     Git(Box<sift::git::Error>),
     #[error(transparent)]
     Ui(#[from] sift::ui::Error),
+    #[error(transparent)]
+    Syntax(#[from] sift::syntax::Error),
     #[error(transparent)]
     Io(#[from] std::io::Error),
     #[error("{0}")]
@@ -92,6 +96,27 @@ struct Arguments {
     interval: u64,
     #[arg(long, default_value_t = 4, help = "Columns a tab expands to")]
     tab_width: usize,
+    #[arg(
+        long,
+        value_enum,
+        default_value_t = Tints::Terminal,
+        help = "Where the background and diff colours come from"
+    )]
+    theme: Tints,
+    #[arg(
+        long,
+        value_name = "NAME|FILE",
+        help = "A Helix theme for the code: a name from ~/.config/helix/themes or bundled, or a file"
+    )]
+    syntax_theme: Option<String>,
+}
+
+/// Where the background and diff colours come from.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, clap::ValueEnum)]
+enum Tints {
+    #[default]
+    Terminal,
+    TokyoNight,
 }
 
 fn main() -> ExitCode {
@@ -113,6 +138,7 @@ enum Event {
 }
 
 fn view(arguments: &Arguments) -> Result<()> {
+    let theme = theme(arguments)?;
     let subject = Subject::open(arguments)?;
     let opening = Opening {
         mode: if arguments.unified { Mode::Unified } else { Mode::SideBySide },
@@ -123,6 +149,7 @@ fn view(arguments: &Arguments) -> Result<()> {
         files: subject.files()?,
         bindings: Vec::new(),
         unbound: Vec::new(),
+        theme,
     };
     let mut shown = subject.changes()?;
     let mut surface = opening.surface(shown.clone())?;
@@ -183,6 +210,38 @@ fn view(arguments: &Arguments) -> Result<()> {
 
         Ok(())
     })
+}
+
+fn theme(arguments: &Arguments) -> Result<Theme> {
+    let mut theme = match arguments.theme {
+        Tints::Terminal => TerminalColors::query(Duration::from_millis(500))
+            .map_or_else(Theme::default, |colors| colors.theme()),
+        Tints::TokyoNight => Theme::default(),
+    };
+    if let Some(syntax) = &arguments.syntax_theme {
+        theme.syntax = syntax_theme(syntax)?;
+    }
+
+    Ok(theme)
+}
+
+fn syntax_theme(name: &str) -> Result<Syntax> {
+    let path = Path::new(name);
+    if path.extension().is_some_and(|extension| extension == "toml")
+        || path.components().count() > 1
+    {
+        return Ok(Syntax::from_helix(&std::fs::read_to_string(path)?)?);
+    }
+
+    let configuration = std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".config")));
+    let installed =
+        configuration.map(|directory| directory.join("helix/themes").join(format!("{name}.toml")));
+    match installed.and_then(|path| std::fs::read_to_string(path).ok()) {
+        Some(theme) => Ok(Syntax::from_helix(&theme)?),
+        None => Ok(Syntax::named(name)?),
+    }
 }
 
 fn reload(surface: &mut Surface, subject: &Subject, shown: &mut Vec<FileChange>) -> Result<bool> {

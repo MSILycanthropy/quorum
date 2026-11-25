@@ -15,6 +15,10 @@ use crate::diff::{Highlight, Highlighting, Source, Span};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error("no syntax theme is named {0}; the bundled ones are {names}", names = Syntax::names().collect::<Vec<_>>().join(", "))]
+    UnknownTheme(String),
+    #[error("could not read the syntax theme: {0}")]
+    Theme(#[from] inkjet::ThemeError),
     #[error("could not highlight {path}: {source}")]
     Parse {
         path: String,
@@ -25,8 +29,9 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// Tokyo Night's colour for every highlight name a grammar can report, by
-/// the index tree-sitter reports it under.
+/// A theme's colour for every highlight name a grammar can report, by the
+/// index tree-sitter reports it under.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Syntax {
     colors: Vec<Rgb>,
     foreground: Rgb,
@@ -34,17 +39,103 @@ pub struct Syntax {
 
 impl Default for Syntax {
     fn default() -> Self {
-        let theme =
-            Theme::from_helix(vendored::TOKYONIGHT).expect("the vendored Tokyo Night theme parses");
-        let foreground = rgb(theme.fg);
-        let colors = HIGHLIGHT_NAMES
-            .iter()
-            .map(|name| theme.get_style(name).and_then(|style| style.fg).map_or(foreground, rgb))
-            .collect();
-
-        Self { colors, foreground }
+        Self::named("tokyonight").expect("the vendored Tokyo Night theme parses")
     }
 }
+
+const THEMES: &[(&str, &str)] = &[
+    ("acme", vendored::ACME),
+    ("adwaita-dark", vendored::ADWAITA_DARK),
+    ("amberwood", vendored::AMBERWOOD),
+    ("ao", vendored::AO),
+    ("ayu_dark", vendored::AYU_DARK),
+    ("ayu_light", vendored::AYU_LIGHT),
+    ("ayu_mirage", vendored::AYU_MIRAGE),
+    ("base16_default_dark", vendored::BASE16_DEFAULT_DARK),
+    ("base16_default_light", vendored::BASE16_DEFAULT_LIGHT),
+    ("base16_terminal", vendored::BASE16_TERMINAL),
+    ("base16_transparent", vendored::BASE16_TRANSPARENT),
+    ("bogster_light", vendored::BOGSTER_LIGHT),
+    ("bogster", vendored::BOGSTER),
+    ("boo_berry", vendored::BOO_BERRY),
+    ("catppuccin_mocha", vendored::CATPPUCCIN_MOCHA),
+    ("curzon", vendored::CURZON),
+    ("cyan_light", vendored::CYAN_LIGHT),
+    ("darcula", vendored::DARCULA),
+    ("dark_high_contrast", vendored::DARK_HIGH_CONTRAST),
+    ("dark_plus", vendored::DARK_PLUS),
+    ("doom_acario_dark", vendored::DOOM_ACARIO_DARK),
+    ("dracula_at_night", vendored::DRACULA_AT_NIGHT),
+    ("dracula", vendored::DRACULA),
+    ("emacs", vendored::EMACS),
+    ("everblush", vendored::EVERBLUSH),
+    ("everforest_dark", vendored::EVERFOREST_DARK),
+    ("everforest_light", vendored::EVERFOREST_LIGHT),
+    ("ferra", vendored::FERRA),
+    ("flatwhite", vendored::FLATWHITE),
+    ("fleet_dark", vendored::FLEET_DARK),
+    ("flexoki_light", vendored::FLEXOKI_LIGHT),
+    ("github_dark", vendored::GITHUB_DARK),
+    ("github_light", vendored::GITHUB_LIGHT),
+    ("gruber-darker", vendored::GRUBER_DARKER),
+    ("gruvbox", vendored::GRUVBOX),
+    ("heisenberg", vendored::HEISENBERG),
+    ("hex_steel", vendored::HEX_STEEL),
+    ("horizon-dark", vendored::HORIZON_DARK),
+    ("iceberg-dark", vendored::ICEBERG_DARK),
+    ("ingrid", vendored::INGRID),
+    ("iroaseta", vendored::IROASETA),
+    ("jellybeans", vendored::JELLYBEANS),
+    ("jetbrains_dark", vendored::JETBRAINS_DARK),
+    ("kanagawa", vendored::KANAGAWA),
+    ("kaolin-dark", vendored::KAOLIN_DARK),
+    ("material_deep_ocean", vendored::MATERIAL_DEEP_OCEAN),
+    ("meliora", vendored::MELIORA),
+    ("mellow", vendored::MELLOW),
+    ("merionette", vendored::MERIONETTE),
+    ("modus_operandi", vendored::MODUS_OPERANDI),
+    ("monokai_pro_machine", vendored::MONOKAI_PRO_MACHINE),
+    ("monokai_pro_octagon", vendored::MONOKAI_PRO_OCTAGON),
+    ("monokai_pro_ristretto", vendored::MONOKAI_PRO_RISTRETTO),
+    ("monokai_pro_spectrum", vendored::MONOKAI_PRO_SPECTRUM),
+    ("monokai_pro", vendored::MONOKAI_PRO),
+    ("monokai_soda", vendored::MONOKAI_SODA),
+    ("monokai", vendored::MONOKAI),
+    ("naysayer", vendored::NAYSAYER),
+    ("new_moon", vendored::NEW_MOON),
+    ("nightfox", vendored::NIGHTFOX),
+    ("night_owl", vendored::NIGHT_OWL),
+    ("noctis_bordo", vendored::NOCTIS_BORDO),
+    ("noctis", vendored::NOCTIS),
+    ("nord_light", vendored::NORD_LIGHT),
+    ("nord", vendored::NORD),
+    ("onedarker", vendored::ONEDARKER),
+    ("onedark", vendored::ONEDARK),
+    ("onelight", vendored::ONELIGHT),
+    ("papercolor-light", vendored::PAPERCOLOR_LIGHT),
+    ("penumbra-plus", vendored::PENUMBRA_PLUS),
+    ("poimandres", vendored::POIMANDRES),
+    ("pop-dark", vendored::POP_DARK),
+    ("rasmus", vendored::RASMUS),
+    ("rose_pine", vendored::ROSE_PINE),
+    ("serika-dark", vendored::SERIKA_DARK),
+    ("serika-light", vendored::SERIKA_LIGHT),
+    ("snazzy", vendored::SNAZZY),
+    ("solarized_dark", vendored::SOLARIZED_DARK),
+    ("solarized_light", vendored::SOLARIZED_LIGHT),
+    ("sonokai", vendored::SONOKAI),
+    ("spacebones_light", vendored::SPACEBONES_LIGHT),
+    ("starlight", vendored::STARLIGHT),
+    ("term16_dark", vendored::TERM16_DARK),
+    ("tokyonight", vendored::TOKYONIGHT),
+    ("ttox", vendored::TTOX),
+    ("varua", vendored::VARUA),
+    ("vim_dark_high_contrast", vendored::VIM_DARK_HIGH_CONTRAST),
+    ("voxed", vendored::VOXED),
+    ("yellowed", vendored::YELLOWED),
+    ("zed_onedark", vendored::ZED_ONEDARK),
+    ("zenburn", vendored::ZENBURN),
+];
 
 /// The largest source, in bytes, that is parsed whole even when only some of
 /// its lines are wanted. A larger one is parsed a stretch at a time, each
@@ -52,6 +143,38 @@ impl Default for Syntax {
 const WHOLE: usize = 64 * 1024;
 
 impl Syntax {
+    pub fn names() -> impl Iterator<Item = &'static str> {
+        THEMES.iter().map(|(name, _)| *name)
+    }
+
+    #[expect(
+        clippy::missing_errors_doc,
+        reason = "the Error enum names the only failure, a name no bundled theme has"
+    )]
+    pub fn named(name: &str) -> Result<Self> {
+        let (_, theme) = THEMES
+            .iter()
+            .find(|(candidate, _)| *candidate == name)
+            .ok_or_else(|| Error::UnknownTheme(name.to_owned()))?;
+
+        Self::from_helix(theme)
+    }
+
+    #[expect(
+        clippy::missing_errors_doc,
+        reason = "the Error enum names the only failure, a theme that is not Helix's TOML"
+    )]
+    pub fn from_helix(theme: &str) -> Result<Self> {
+        let theme = Theme::from_helix(theme)?;
+        let foreground = rgb(theme.fg);
+        let colors = HIGHLIGHT_NAMES
+            .iter()
+            .map(|name| theme.get_style(name).and_then(|style| style.fg).map_or(foreground, rgb))
+            .collect();
+
+        Ok(Self { colors, foreground })
+    }
+
     #[expect(
         clippy::missing_errors_doc,
         reason = "the Error enum names the only failure, which is a grammar rejecting the source"
