@@ -1,0 +1,9 @@
+---
+source: tests/bindings.rs
+assertion_line: 316
+expression: "format!(\"{}{}\", screen(&mut surface, 200, 2), screen(&mut surface, 80, 2))"
+---
+ CHANGES                           M src/other.rs  +1 −1                                                                                                                                            1/2
+  main · HEAD → worktree · 2 files · side by side                                           c comment  R reply  M merge  n hunk  ] file  v viewed  C-b files  / find  e edit  s layout  ? help  q quit
+ CHANGES                           M src/other.rs  +1 −1                    1/2
+  main · HEAD → worktree · 2 files · side by side   c comment  R reply  ? help

@@ -53,7 +53,9 @@ After `e` the diff reloads, so you see your edit straight away.
 
 The key catalog in `command.rs` is the one place a key gets its meaning. The
 help overlay, the palette and the status line hints are all drawn from it, so
-they can't drift apart.
+they can't drift apart. A program that embeds sift adds its own keys to the
+same catalog through `Opening::bindings`, so they show up in all three, and a
+key that one of sift's commands already uses is refused.
 
 ## Requires
 

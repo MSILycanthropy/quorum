@@ -42,6 +42,7 @@ pub enum Command {
     NextAnnotation,
     PreviousAnnotation,
     ToggleAnnotations,
+    Host(&'static str),
 }
 
 /// A key combination. Shift is folded into the character it produces, so `G`
@@ -105,6 +106,7 @@ pub enum Category {
     Diff,
     View,
     Annotations,
+    Host(&'static str),
 }
 
 impl Category {
@@ -118,6 +120,7 @@ impl Category {
             Self::Diff => "Diff",
             Self::View => "View",
             Self::Annotations => "Annotations",
+            Self::Host(section) => section,
         }
     }
 }
@@ -138,6 +141,20 @@ impl Binding {
         self.shortcuts.iter().map(|shortcut| shortcut.display()).collect::<Vec<_>>().join(" ")
     }
 }
+
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error("{} is bound to both {first} and {second}", .shortcut.display())]
+    SharedShortcut { shortcut: Shortcut, first: &'static str, second: &'static str },
+    #[error("two host bindings share the name {0}")]
+    SharedName(&'static str),
+    #[error("{0} must be a host command in a host section")]
+    NotHost(&'static str),
+    #[error("{} on {label} can never be pressed: write the character Shift produces", .shortcut.display())]
+    Unreachable { shortcut: Shortcut, label: &'static str },
+}
+
+pub type Result<T> = std::result::Result<T, Error>;
 
 /// The single source of truth for what a key does.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -282,6 +299,50 @@ impl Catalog {
         &self.bindings
     }
 
+    #[expect(
+        clippy::missing_errors_doc,
+        reason = "the Error enum names each way a host binding is refused"
+    )]
+    pub fn with(mut self, bindings: Vec<Binding>) -> Result<Self> {
+        for binding in bindings {
+            let (Command::Host(name), Category::Host(_)) = (binding.command, binding.category)
+            else {
+                return Err(Error::NotHost(binding.label));
+            };
+            if self.bindings.iter().any(|bound| bound.command == binding.command) {
+                return Err(Error::SharedName(name));
+            }
+            for shortcut in &binding.shortcuts {
+                if Shortcut::from(KeyEvent::new(shortcut.code, shortcut.modifiers)) != *shortcut {
+                    return Err(Error::Unreachable { shortcut: *shortcut, label: binding.label });
+                }
+                if let Some(bound) =
+                    self.bindings.iter().find(|bound| bound.shortcuts.contains(shortcut))
+                {
+                    return Err(Error::SharedShortcut {
+                        shortcut: *shortcut,
+                        first: bound.label,
+                        second: binding.label,
+                    });
+                }
+            }
+            self.bindings.push(binding);
+        }
+
+        Ok(self)
+    }
+
+    pub fn sections(&self) -> Vec<Category> {
+        let mut sections = Category::ALL.to_vec();
+        for binding in &self.bindings {
+            if !sections.contains(&binding.category) {
+                sections.push(binding.category);
+            }
+        }
+
+        sections
+    }
+
     #[must_use]
     pub fn without(&self, category: Category) -> Self {
         let bindings =
@@ -300,8 +361,13 @@ impl Catalog {
     }
 
     pub fn hints(&self) -> impl Iterator<Item = (String, &'static str)> + '_ {
-        HINTED.iter().filter_map(|command| {
-            let binding = self.bindings.iter().find(|binding| binding.command == *command)?;
+        let host =
+            self.bindings.iter().filter(|binding| matches!(binding.command, Command::Host(_)));
+        let sift = HINTED
+            .iter()
+            .filter_map(|command| self.bindings.iter().find(|binding| binding.command == *command));
+
+        host.chain(sift).filter_map(|binding| {
             let hint = binding.hint?;
             let key = binding.shortcuts.first()?.display();
 

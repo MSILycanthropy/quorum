@@ -57,9 +57,10 @@ impl Help {
             return;
         }
 
-        let sections: Vec<Section> = Category::ALL
-            .into_iter()
-            .map(|category| Section {
+        let categories = catalog.sections();
+        let sections: Vec<Section> = categories
+            .iter()
+            .map(|&category| Section {
                 category,
                 bindings: catalog
                     .bindings()
@@ -75,7 +76,7 @@ impl Help {
             .bindings()
             .iter()
             .map(|binding| binding.label.width())
-            .chain(Category::ALL.iter().map(|category| category.title().width()))
+            .chain(categories.iter().map(|category| category.title().width()))
             .max()
             .unwrap_or(0);
         let column_width = keys_width + 2 + label_width;

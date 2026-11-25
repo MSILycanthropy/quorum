@@ -10,7 +10,7 @@ use ratatui::style::{Color, Style};
 use unicode_width::UnicodeWidthStr;
 
 use crate::color::Rgb;
-use crate::command::{Catalog, Category, Command, PaletteEntry, PaletteTarget};
+use crate::command::{Binding, Catalog, Category, Command, PaletteEntry, PaletteTarget};
 use crate::git::{Content, FileChange};
 use crate::theme::{Tints, TokyoNight};
 use crate::ui::{
@@ -26,6 +26,7 @@ pub struct Opening {
     pub branch: Option<String>,
     pub comparing: String,
     pub files: Vec<PathBuf>,
+    pub bindings: Vec<Binding>,
 }
 
 impl Default for Opening {
@@ -37,6 +38,7 @@ impl Default for Opening {
             branch: None,
             comparing: String::new(),
             files: Vec::new(),
+            bindings: Vec::new(),
         }
     }
 }
@@ -44,12 +46,12 @@ impl Default for Opening {
 impl Opening {
     #[expect(
         clippy::missing_errors_doc,
-        reason = "the Error enum names the only failure, highlighting the selected file"
+        reason = "the Error enum names the failures, a refused host binding and highlighting the selected file"
     )]
     pub fn surface(self, changes: Vec<FileChange>) -> Result<Surface> {
         Ok(Surface {
+            catalog: Catalog::default().with(self.bindings)?,
             review: Review::new(changes, self.mode, self.wrap, self.tab_width)?,
-            catalog: Catalog::default(),
             palette: Palette::default(),
             help: Help::default(),
             branch: self.branch,
@@ -170,6 +172,7 @@ impl Surface {
     pub fn run(&mut self, command: Command) -> Result<Control> {
         match command {
             Command::Quit => return Ok(Control::Quit),
+            Command::Host(name) => return Ok(Control::Host(name)),
             Command::Back => {
                 if !self.review.close_peek() {
                     return Ok(Control::Quit);

@@ -1,0 +1,13 @@
+---
+source: tests/bindings.rs
+assertion_line: 133
+expression: "screen(&mut surface, 100, 8)"
+---
+ CHANGES                           M src/other.rs  +1 −1                                        1/2
+  src     command › c
+    other Copy path                                                                    y
+    total Copy path:line                                                               Y
+           Cursor to the old side                                                   H S-←
+                                 │
+                                 │
+  main · HEAD → worktree · 2 files · 1 hunks · side by side    c comment  R reply  M merge  ? help

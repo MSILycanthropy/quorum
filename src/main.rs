@@ -121,6 +121,7 @@ fn view(arguments: &Arguments) -> Result<()> {
         branch: subject.branch()?,
         comparing: subject.describe(),
         files: subject.files()?,
+        bindings: Vec::new(),
     };
     let mut shown = subject.changes()?;
     let mut surface = opening.surface(shown.clone())?;
@@ -139,7 +140,7 @@ fn view(arguments: &Arguments) -> Result<()> {
         while let Ok(event) = events.recv() {
             match event {
                 Event::Key(key) => match surface.key(key)? {
-                    Control::Continue => {}
+                    Control::Continue | Control::Host(_) => {}
                     Control::Quit => return Ok(()),
                     Control::Reload => {
                         reload(&mut surface, &subject, &mut shown)?;

@@ -25,6 +25,8 @@ pub enum Error {
     Syntax(#[from] crate::syntax::Error),
     #[error("two annotations share the id {0}")]
     DuplicateAnnotation(String),
+    #[error(transparent)]
+    Binding(#[from] crate::command::Error),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -73,4 +75,5 @@ pub enum Control {
         path: std::path::PathBuf,
         line: Option<usize>,
     },
+    Host(&'static str),
 }
