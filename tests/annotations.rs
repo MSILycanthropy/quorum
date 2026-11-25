@@ -88,7 +88,9 @@ impl Shown {
 
     fn draw(&mut self) {
         let viewer = &mut self.viewer;
-        self.terminal.draw(|frame| viewer.draw(frame, frame.area())).expect("draw succeeds");
+        self.terminal
+            .draw(|frame| frame.render_widget(&mut *viewer, frame.area()))
+            .expect("draw succeeds");
     }
 
     fn text(&self) -> String {
@@ -520,14 +522,14 @@ fn surface(changes: Vec<FileChange>) -> Surface {
 
 fn screen(surface: &mut Surface, width: u16, height: u16) -> String {
     let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("test backend starts");
-    terminal.draw(|frame| surface.draw(frame)).expect("draw succeeds");
+    terminal.draw(|frame| frame.render_widget(&mut *surface, frame.area())).expect("draw succeeds");
 
     describe(terminal.backend().buffer(), background)
 }
 
 fn words(surface: &mut Surface, width: u16, height: u16) -> String {
     let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("test backend starts");
-    terminal.draw(|frame| surface.draw(frame)).expect("draw succeeds");
+    terminal.draw(|frame| frame.render_widget(&mut *surface, frame.area())).expect("draw succeeds");
 
     let buffer = terminal.backend().buffer();
     let mut out = String::new();

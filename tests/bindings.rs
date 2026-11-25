@@ -105,7 +105,7 @@ fn typed(surface: &mut Surface, keys: &[KeyEvent]) -> Vec<Control> {
 
 fn screen(surface: &mut Surface, width: u16, height: u16) -> String {
     let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("test backend starts");
-    terminal.draw(|frame| surface.draw(frame)).expect("draw succeeds");
+    terminal.draw(|frame| frame.render_widget(&mut *surface, frame.area())).expect("draw succeeds");
 
     let buffer = terminal.backend().buffer();
     let mut out = String::new();

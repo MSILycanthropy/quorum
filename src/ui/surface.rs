@@ -2,11 +2,11 @@
 
 use std::path::{Path, PathBuf};
 
-use ratatui::Frame;
 use ratatui::buffer::Buffer;
 use ratatui::crossterm::event::{KeyEvent, MouseEvent};
-use ratatui::layout::Rect;
+use ratatui::layout::{Position, Rect};
 use ratatui::style::{Color, Style};
+use ratatui::widgets::Widget;
 use unicode_width::UnicodeWidthStr;
 
 use crate::color::Rgb;
@@ -62,6 +62,7 @@ impl Opening {
             notice: None,
             annotating: false,
             tints: TokyoNight::TINTS,
+            area: Rect::default(),
         })
     }
 }
@@ -78,23 +79,10 @@ pub struct Surface {
     notice: Option<String>,
     annotating: bool,
     tints: Tints,
+    area: Rect,
 }
 
 impl Surface {
-    pub fn draw(&mut self, frame: &mut Frame) {
-        let whole = frame.area();
-        if whole.height == 0 {
-            return;
-        }
-        let status = Rect::new(whole.x, whole.y + whole.height - 1, whole.width, 1);
-        let area = Rect::new(whole.x, whole.y, whole.width, whole.height - 1);
-
-        self.review.draw(frame, area);
-        self.status(frame.buffer_mut(), status);
-        self.help.draw(frame, &self.shown_catalog());
-        self.palette.draw(frame);
-    }
-
     #[expect(
         clippy::missing_errors_doc,
         reason = "the Error enum names the only failure, highlighting the file moved to"
@@ -132,7 +120,8 @@ impl Surface {
         reason = "the Error enum names the only failure, highlighting the file clicked on"
     )]
     pub fn mouse(&mut self, mouse: MouseEvent) -> Result<()> {
-        if self.help.is_open() || self.palette.is_open() {
+        let outside = !self.area.contains(Position::new(mouse.column, mouse.row));
+        if outside || self.help.is_open() || self.palette.is_open() {
             return Ok(());
         }
 
@@ -324,6 +313,22 @@ impl Surface {
         parts.push(self.review.laid());
 
         parts.into_iter().filter(|part| !part.is_empty()).collect::<Vec<_>>().join(" · ")
+    }
+}
+
+impl Widget for &mut Surface {
+    fn render(self, area: Rect, buffer: &mut Buffer) {
+        self.area = area;
+        if area.is_empty() {
+            return;
+        }
+        let status = Rect::new(area.x, area.bottom() - 1, area.width, 1);
+        let above = Rect::new(area.x, area.y, area.width, area.height - 1);
+
+        self.review.render(above, buffer);
+        self.status(buffer, status);
+        self.help.draw(area, buffer, &self.shown_catalog());
+        self.palette.render(area, buffer);
     }
 }
 

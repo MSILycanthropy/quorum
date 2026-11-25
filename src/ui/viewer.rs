@@ -4,10 +4,10 @@ use std::collections::HashSet;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 
-use ratatui::Frame;
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Position, Rect};
 use ratatui::style::{Color, Modifier, Style};
+use ratatui::widgets::Widget;
 
 use crate::color::Rgb;
 use crate::command::Command;
@@ -173,73 +173,6 @@ impl Viewer {
         viewer.highlight()?;
 
         Ok(viewer)
-    }
-
-    pub fn draw(&mut self, frame: &mut Frame, area: Rect) {
-        self.height = usize::from(area.height);
-        self.area = area;
-        self.lay_out();
-        match self.landing.take() {
-            Some(Landing::FirstHunk) => {
-                self.land(self.hunks.first().copied());
-            }
-            Some(Landing::LastHunk) => {
-                self.land(self.hunks.last().copied());
-            }
-            Some(Landing::Line(line)) => self.go_to(line),
-            Some(Landing::FirstAnnotation) => {
-                self.land(self.headings.first().copied());
-            }
-            Some(Landing::LastAnnotation) => {
-                self.land(self.headings.last().copied());
-            }
-            Some(Landing::Annotation(id)) => {
-                self.land(self.heading_of(&id));
-            }
-            None => {}
-        }
-        self.top = self.top.min(self.screen.len().saturating_sub(1));
-        if !self.shows_cursor() {
-            self.follow();
-        }
-
-        let buffer = frame.buffer_mut();
-        buffer.set_style(area, Style::new().bg(color(self.tints.background)));
-
-        let mut screen = Screen {
-            buffer,
-            tints: self.tints,
-            gutter: self.gutter(),
-            pane: self.pane(),
-            left: area.x,
-            width: area.width,
-        };
-        let rows = self.rows();
-        let under = self.cursor..=self.end_of(self.cursor);
-        let rows_on_screen = self.screen.iter().enumerate().skip(self.top);
-        for (y, (index, line)) in (area.y..area.y + area.height).zip(rows_on_screen) {
-            let cursor = under.contains(&index);
-            let painted = match line {
-                Line::Text(painted) => painted,
-                Line::Fold { hidden, .. } => {
-                    screen.fold_row(y, *hidden, cursor);
-                    continue;
-                }
-                Line::Annotation { index, row, .. } => {
-                    if let Some(boxed) = self.boxed(*index, *row, cursor) {
-                        screen.annotation_row(y, &boxed);
-                    }
-                    continue;
-                }
-            };
-            let row = &rows[painted.row];
-            let side = cursor.then(|| self.side_of(row));
-            match (self.plain, self.mode) {
-                (true, _) => screen.plain_row(y, painted, row, side),
-                (false, Mode::SideBySide) => screen.split_row(y, painted, row, side),
-                (false, Mode::Unified) => screen.unified_row(y, painted, row, side),
-            }
-        }
     }
 
     pub fn mode(&self) -> Mode {
@@ -1010,6 +943,77 @@ impl Viewer {
             .flat_map(|range| around(range, &annotated))
             .filter(|range| !self.opened.contains(&first_line(rows, range)))
             .collect()
+    }
+}
+
+impl Widget for &mut Viewer {
+    fn render(self, area: Rect, buffer: &mut Buffer) {
+        self.height = usize::from(area.height);
+        self.area = area;
+        self.lay_out();
+        match self.landing.take() {
+            Some(Landing::FirstHunk) => {
+                self.land(self.hunks.first().copied());
+            }
+            Some(Landing::LastHunk) => {
+                self.land(self.hunks.last().copied());
+            }
+            Some(Landing::Line(line)) => self.go_to(line),
+            Some(Landing::FirstAnnotation) => {
+                self.land(self.headings.first().copied());
+            }
+            Some(Landing::LastAnnotation) => {
+                self.land(self.headings.last().copied());
+            }
+            Some(Landing::Annotation(id)) => {
+                self.land(self.heading_of(&id));
+            }
+            None => {}
+        }
+        self.top = self.top.min(self.screen.len().saturating_sub(1));
+        if !self.shows_cursor() {
+            self.follow();
+        }
+
+        buffer.set_style(area, Style::new().bg(color(self.tints.background)));
+        if self.pane() == 0 {
+            return;
+        }
+
+        let mut screen = Screen {
+            buffer,
+            tints: self.tints,
+            gutter: self.gutter(),
+            pane: self.pane(),
+            left: area.x,
+            width: area.width,
+        };
+        let rows = self.rows();
+        let under = self.cursor..=self.end_of(self.cursor);
+        let rows_on_screen = self.screen.iter().enumerate().skip(self.top);
+        for (y, (index, line)) in (area.y..area.y + area.height).zip(rows_on_screen) {
+            let cursor = under.contains(&index);
+            let painted = match line {
+                Line::Text(painted) => painted,
+                Line::Fold { hidden, .. } => {
+                    screen.fold_row(y, *hidden, cursor);
+                    continue;
+                }
+                Line::Annotation { index, row, .. } => {
+                    if let Some(boxed) = self.boxed(*index, *row, cursor) {
+                        screen.annotation_row(y, &boxed);
+                    }
+                    continue;
+                }
+            };
+            let row = &rows[painted.row];
+            let side = cursor.then(|| self.side_of(row));
+            match (self.plain, self.mode) {
+                (true, _) => screen.plain_row(y, painted, row, side),
+                (false, Mode::SideBySide) => screen.split_row(y, painted, row, side),
+                (false, Mode::Unified) => screen.unified_row(y, painted, row, side),
+            }
+        }
     }
 }
 

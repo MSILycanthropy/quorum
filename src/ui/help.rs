@@ -1,10 +1,9 @@
 //! Every key, grouped, drawn straight from the command catalog.
 
-use ratatui::Frame;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
-use ratatui::widgets::Clear;
+use ratatui::widgets::{Clear, Widget};
 use unicode_width::UnicodeWidthStr;
 
 use crate::color::Rgb;
@@ -52,7 +51,7 @@ impl Help {
         self.open = false;
     }
 
-    pub fn draw(&self, frame: &mut Frame, catalog: &Catalog) {
+    pub fn draw(&self, area: Rect, buffer: &mut Buffer, catalog: &Catalog) {
         if !self.open {
             return;
         }
@@ -81,7 +80,6 @@ impl Help {
             .unwrap_or(0);
         let column_width = keys_width + 2 + label_width;
 
-        let area = frame.area();
         let room_wide = usize::from(area.width.saturating_sub(4));
         let room_tall = usize::from(area.height.saturating_sub(4));
         let most_columns = ((room_wide + GAP) / (column_width + GAP)).max(1);
@@ -100,10 +98,9 @@ impl Help {
             width,
             height,
         );
-        frame.render_widget(Clear, popup);
+        Clear.render(popup, buffer);
 
         let painter = Painter { tints: self.tints, popup, keys_width, label_width };
-        let buffer = frame.buffer_mut();
         buffer.set_style(popup, painter.base());
 
         for (index, column) in columns.iter().enumerate() {
@@ -167,22 +164,30 @@ impl Painter {
             if y >= bottom {
                 return;
             }
-            buffer.set_stringn(x, y, section.category.title(), self.label_width, heading);
+            self.put(buffer, x, y, section.category.title(), self.label_width, heading);
             y += 1;
             for binding in &section.bindings {
                 if y >= bottom {
                     return;
                 }
-                buffer.set_stringn(x, y, binding.keys(), self.keys_width, key);
-                buffer.set_stringn(label_x, y, binding.label, self.label_width, self.base());
+                self.put(buffer, x, y, &binding.keys(), self.keys_width, key);
+                self.put(buffer, label_x, y, binding.label, self.label_width, self.base());
                 y += 1;
             }
             y += 1;
         }
     }
 
+    fn put(&self, buffer: &mut Buffer, x: u16, y: u16, text: &str, width: usize, style: Style) {
+        let room = usize::from(self.popup.right().saturating_sub(x));
+        buffer.set_stringn(x, y, text, width.min(room), style);
+    }
+
     fn closing(&self, buffer: &mut Buffer) {
         let width = u16::try_from(CLOSING.width() + 1).unwrap_or(u16::MAX);
+        if width > self.popup.width {
+            return;
+        }
         let x = (self.popup.x + self.popup.width).saturating_sub(width);
         let y = self.popup.y + self.popup.height.saturating_sub(1);
         buffer.set_string(x, y, CLOSING, self.base().fg(color(self.tints.muted)));

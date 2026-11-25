@@ -4,11 +4,11 @@ use std::collections::{HashMap, HashSet};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
 
-use ratatui::Frame;
 use ratatui::buffer::Buffer;
 use ratatui::crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::layout::{Position, Rect};
 use ratatui::style::{Color, Style};
+use ratatui::widgets::Widget;
 use unicode_width::UnicodeWidthStr;
 
 use crate::color::Rgb;
@@ -82,106 +82,6 @@ impl Review {
         review.open()?;
 
         Ok(review)
-    }
-
-    pub fn draw(&mut self, frame: &mut Frame, area: Rect) {
-        let style = Style::new().bg(color(self.tints.background));
-        frame.buffer_mut().set_style(area, style);
-
-        let titled = match (&self.peek, self.changes.get(self.opened)) {
-            (Some(peek), _) => format!("  {}", peek.path.display()),
-            (None, Some(change)) => match &change.previous {
-                Some(previous) => format!(
-                    "{} {} → {}",
-                    change.status.letter(),
-                    previous.display(),
-                    change.path.display()
-                ),
-                None => format!("{} {}", change.status.letter(), change.path.display()),
-            },
-            (None, None) => {
-                let style = style.fg(color(self.tints.foreground));
-                let buffer = frame.buffer_mut();
-                buffer.set_stringn(area.x, area.y, "no changes", area.width.into(), style);
-                return;
-            }
-        };
-
-        let header = Rect::new(area.x, area.y, area.width, 1.min(area.height));
-        let rest =
-            Rect::new(area.x, area.y + header.height, area.width, area.height - header.height);
-        let (sidebar, body) = self.panes(rest);
-        self.listed = sidebar;
-
-        let buffer = frame.buffer_mut();
-        buffer.set_style(header, Style::new().bg(color(self.tints.filler)));
-
-        let heading = match sidebar {
-            Some(sidebar) => {
-                self.title(buffer, Rect::new(header.x, header.y, sidebar.width, 1), "CHANGES");
-
-                Rect::new(header.x + sidebar.width, header.y, header.width - sidebar.width, 1)
-            }
-            None => header,
-        };
-
-        let position = self
-            .tree
-            .rows()
-            .iter()
-            .filter_map(|row| row.change)
-            .position(|change| change == self.opened)
-            .map_or(0, |position| position + 1);
-        let counter = if self.peek.is_some() {
-            "not changed · Esc back ".to_owned()
-        } else {
-            format!("{position}/{} ", self.changes.len())
-        };
-        let room = u16::try_from(counter.width()).unwrap_or(0);
-        let end = heading.x + heading.width.saturating_sub(room + 1);
-        let (x, _) = buffer.set_stringn(
-            heading.x + 1,
-            heading.y,
-            titled,
-            end.saturating_sub(heading.x + 1).into(),
-            Style::new().fg(color(self.tints.foreground)).bg(color(self.tints.filler)),
-        );
-        if self.peek.is_none()
-            && let Some(change) = self.changes.get(self.opened)
-            && let Content::Text(diff) = &change.content
-        {
-            let counts = diff.counts();
-            let wanted = format!("+{} −{}", counts.added, counts.removed).width();
-            let wanted = u16::try_from(wanted).unwrap_or(u16::MAX);
-            let area = Rect::new(x + 2, heading.y, wanted.min(end.saturating_sub(x + 2)), 1);
-            self.counts(buffer, area, change, self.tints.filler);
-        }
-        buffer.set_stringn(
-            heading.x + heading.width.saturating_sub(room),
-            heading.y,
-            counter,
-            room.into(),
-            Style::new().fg(color(self.tints.gutter)).bg(color(self.tints.filler)),
-        );
-
-        if let Some(sidebar) = sidebar {
-            self.list(frame.buffer_mut(), sidebar);
-        }
-
-        let placeholder =
-            if self.collapsed() { "generated file · Enter to show" } else { "binary file" };
-        if let Some(viewer) = self.active() {
-            viewer.draw(frame, body);
-        } else {
-            let style = Style::new().fg(color(self.tints.gutter)).bg(color(self.tints.background));
-            frame.buffer_mut().set_stringn(
-                body.x + 1,
-                body.y,
-                placeholder,
-                body.width.into(),
-                style,
-            );
-        }
     }
 
     fn active(&mut self) -> Option<&mut Viewer> {
@@ -933,6 +833,107 @@ impl Review {
             (Status::Deleted, true) => self.tints.removed_emphasis,
             (Status::Modified | Status::Renamed, false) => self.tints.background,
             (Status::Modified | Status::Renamed, true) => self.tints.filler,
+        }
+    }
+}
+
+impl Widget for &mut Review {
+    fn render(self, area: Rect, buffer: &mut Buffer) {
+        if area.is_empty() {
+            self.listed = None;
+            if let Some(viewer) = self.active() {
+                viewer.render(area, buffer);
+            }
+            return;
+        }
+        let style = Style::new().bg(color(self.tints.background));
+        buffer.set_style(area, style);
+
+        let titled = match (&self.peek, self.changes.get(self.opened)) {
+            (Some(peek), _) => format!("  {}", peek.path.display()),
+            (None, Some(change)) => match &change.previous {
+                Some(previous) => format!(
+                    "{} {} → {}",
+                    change.status.letter(),
+                    previous.display(),
+                    change.path.display()
+                ),
+                None => format!("{} {}", change.status.letter(), change.path.display()),
+            },
+            (None, None) => {
+                let style = style.fg(color(self.tints.foreground));
+                buffer.set_stringn(area.x, area.y, "no changes", area.width.into(), style);
+                return;
+            }
+        };
+
+        let header = Rect::new(area.x, area.y, area.width, 1.min(area.height));
+        let rest =
+            Rect::new(area.x, area.y + header.height, area.width, area.height - header.height);
+        let (sidebar, body) = self.panes(rest);
+        self.listed = sidebar;
+
+        buffer.set_style(header, Style::new().bg(color(self.tints.filler)));
+
+        let heading = match sidebar {
+            Some(sidebar) => {
+                self.title(buffer, Rect::new(header.x, header.y, sidebar.width, 1), "CHANGES");
+
+                Rect::new(header.x + sidebar.width, header.y, header.width - sidebar.width, 1)
+            }
+            None => header,
+        };
+
+        let position = self
+            .tree
+            .rows()
+            .iter()
+            .filter_map(|row| row.change)
+            .position(|change| change == self.opened)
+            .map_or(0, |position| position + 1);
+        let counter = if self.peek.is_some() {
+            "not changed · Esc back ".to_owned()
+        } else {
+            format!("{position}/{} ", self.changes.len())
+        };
+        let room = u16::try_from(counter.width()).unwrap_or(0);
+        let end = heading.x + heading.width.saturating_sub(room + 1);
+        let (x, _) = buffer.set_stringn(
+            heading.x + 1,
+            heading.y,
+            titled,
+            end.saturating_sub(heading.x + 1).into(),
+            Style::new().fg(color(self.tints.foreground)).bg(color(self.tints.filler)),
+        );
+        if self.peek.is_none()
+            && let Some(change) = self.changes.get(self.opened)
+            && let Content::Text(diff) = &change.content
+        {
+            let counts = diff.counts();
+            let wanted = format!("+{} −{}", counts.added, counts.removed).width();
+            let wanted = u16::try_from(wanted).unwrap_or(u16::MAX);
+            let area = Rect::new(x + 2, heading.y, wanted.min(end.saturating_sub(x + 2)), 1);
+            self.counts(buffer, area, change, self.tints.filler);
+        }
+        buffer.set_stringn(
+            heading.x + heading.width.saturating_sub(room),
+            heading.y,
+            counter,
+            room.min(heading.width).into(),
+            Style::new().fg(color(self.tints.gutter)).bg(color(self.tints.filler)),
+        );
+
+        if let Some(sidebar) = sidebar {
+            self.list(buffer, sidebar);
+        }
+
+        let placeholder =
+            if self.collapsed() { "generated file · Enter to show" } else { "binary file" };
+        if let Some(viewer) = self.active() {
+            viewer.render(body, buffer);
+        } else {
+            let style = Style::new().fg(color(self.tints.gutter)).bg(color(self.tints.background));
+            buffer.set_stringn(body.x + 1, body.y, placeholder, body.width.into(), style);
         }
     }
 }

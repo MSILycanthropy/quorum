@@ -30,10 +30,12 @@ fn shown(mode: Mode, width: u16, height: u16, wrap: bool, commands: &[Command]) 
         Viewer::new(diff, Path::new("demo.rs"), mode, wrap, 4).expect("fixtures highlight");
     let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("test backend starts");
 
-    terminal.draw(|frame| viewer.draw(frame, frame.area())).expect("draw succeeds");
+    terminal.draw(|frame| frame.render_widget(&mut viewer, frame.area())).expect("draw succeeds");
     for command in commands {
         viewer.run(*command).expect("fixtures highlight");
-        terminal.draw(|frame| viewer.draw(frame, frame.area())).expect("draw succeeds");
+        terminal
+            .draw(|frame| frame.render_widget(&mut viewer, frame.area()))
+            .expect("draw succeeds");
     }
     describe(terminal.backend().buffer())
 }
@@ -128,10 +130,12 @@ fn hunked(commands: &[Command]) -> (String, (Option<usize>, usize), Option<usize
         .expect("fixtures highlight");
     let mut terminal = Terminal::new(TestBackend::new(48, 6)).expect("test backend starts");
 
-    terminal.draw(|frame| viewer.draw(frame, frame.area())).expect("draw succeeds");
+    terminal.draw(|frame| frame.render_widget(&mut viewer, frame.area())).expect("draw succeeds");
     for command in commands {
         viewer.run(*command).expect("fixtures highlight");
-        terminal.draw(|frame| viewer.draw(frame, frame.area())).expect("draw succeeds");
+        terminal
+            .draw(|frame| frame.render_widget(&mut viewer, frame.area()))
+            .expect("draw succeeds");
     }
 
     let text = describe(terminal.backend().buffer());
@@ -174,10 +178,12 @@ fn drawn(
         Viewer::new(diff, Path::new("demo.rs"), mode, wrap, 4).expect("fixtures highlight");
     let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("test backend starts");
 
-    terminal.draw(|frame| viewer.draw(frame, frame.area())).expect("draw succeeds");
+    terminal.draw(|frame| frame.render_widget(&mut viewer, frame.area())).expect("draw succeeds");
     for command in commands {
         viewer.run(*command).expect("fixtures highlight");
-        terminal.draw(|frame| viewer.draw(frame, frame.area())).expect("draw succeeds");
+        terminal
+            .draw(|frame| frame.render_widget(&mut viewer, frame.area()))
+            .expect("draw succeeds");
     }
 
     let text = describe(terminal.backend().buffer());
@@ -396,7 +402,7 @@ fn the_cursors_line_number_is_drawn_in_the_attention_tint() {
     let mut viewer = Viewer::new(diff, Path::new("demo.rs"), Mode::SideBySide, false, 4)
         .expect("fixtures highlight");
     let mut terminal = Terminal::new(TestBackend::new(64, 6)).expect("test backend starts");
-    terminal.draw(|frame| viewer.draw(frame, frame.area())).expect("draw succeeds");
+    terminal.draw(|frame| frame.render_widget(&mut viewer, frame.area())).expect("draw succeeds");
     let buffer = terminal.backend().buffer();
     let attention = TokyoNight::TINTS.attention;
     let attention = Color::Rgb(attention.red, attention.green, attention.blue);

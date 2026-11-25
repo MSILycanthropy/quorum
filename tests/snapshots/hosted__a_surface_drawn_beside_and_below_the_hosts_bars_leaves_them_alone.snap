@@ -1,0 +1,14 @@
+---
+source: tests/hosted.rs
+assertion_line: 85
+expression: hosted(&mut surface())
+---
+HOST BAR · pull request #42
+│ host │ CHANGES                           M src/other.rs  +1 −1                                1/2
+│ host │  src                           │1 one                       │1 one
+│ host │    other.rs              +1 −1 │2 two                       │2 three
+│ host │    total.rs              +1 −1 │3                           │3
+│ host │                                 │
+│ host │                                 │
+│ host │                                 │
+│ host │  main · HEAD → worktree · 2 files · 1 hunks · side by side         n hunk  ] file  ? help

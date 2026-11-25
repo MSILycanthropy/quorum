@@ -136,7 +136,7 @@ fn view(arguments: &Arguments) -> Result<()> {
 
     ratatui::run(|terminal| -> Result<()> {
         let _reporting = Reporting::on()?;
-        terminal.draw(|frame| surface.draw(frame))?;
+        terminal.draw(|frame| frame.render_widget(&mut surface, frame.area()))?;
 
         while let Ok(event) = events.recv() {
             match event {
@@ -178,7 +178,7 @@ fn view(arguments: &Arguments) -> Result<()> {
                     }
                 }
             }
-            terminal.draw(|frame| surface.draw(frame))?;
+            terminal.draw(|frame| frame.render_widget(&mut surface, frame.area()))?;
         }
 
         Ok(())

@@ -1,11 +1,10 @@
 //! The keyboard-driven overlay for running a command or jumping to a file by name.
 
-use ratatui::Frame;
 use ratatui::buffer::Buffer;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
-use ratatui::widgets::Clear;
+use ratatui::widgets::{Clear, Widget};
 use unicode_width::UnicodeWidthStr;
 
 use crate::color::Rgb;
@@ -123,11 +122,32 @@ impl Palette {
         }
     }
 
-    pub fn draw(&self, frame: &mut Frame) {
+    fn down(&mut self) {
+        let count = self.model.rank(&self.query, &self.entries).len();
+        self.selected = self.selected.saturating_add(1).min(count.saturating_sub(1));
+    }
+
+    fn row(&self, buffer: &mut Buffer, area: Rect, entry: &PaletteEntry, style: Style) {
+        buffer.set_style(area, style);
+        let keys = u16::try_from(entry.keys.width()).unwrap_or(0);
+        let label_room = area.width.saturating_sub(keys + 4);
+        buffer.set_stringn(area.x + 1, area.y, &entry.label, usize::from(label_room), style);
+        if keys > 0 && keys + 4 < area.width {
+            buffer.set_string(
+                area.x + area.width - keys - 1,
+                area.y,
+                &entry.keys,
+                style.fg(color(self.tints.attention)),
+            );
+        }
+    }
+}
+
+impl Widget for &Palette {
+    fn render(self, area: Rect, buffer: &mut Buffer) {
         if !self.is_open() {
             return;
         }
-        let area = frame.area();
         let width = area.width.saturating_sub(4).min(80);
         let ranked = self.model.rank(&self.query, &self.entries);
         let wanted = u16::try_from(ranked.len().max(1) + 1).unwrap_or(u16::MAX);
@@ -135,8 +155,7 @@ impl Palette {
         let left = area.x + area.width.saturating_sub(width) / 2;
         let top = area.y + area.height.saturating_sub(height) / 3;
         let popup = Rect::new(left, top, width, height);
-        frame.render_widget(Clear, popup);
-        let buffer = frame.buffer_mut();
+        Clear.render(popup, buffer);
 
         let base = Style::new().bg(color(self.tints.filler)).fg(color(self.tints.foreground));
         let muted = base.fg(color(self.tints.muted));
@@ -167,26 +186,6 @@ impl Palette {
         }
         if ranked.is_empty() {
             buffer.set_stringn(popup.x + 1, popup.y + 1, "no matches", usize::from(inner), muted);
-        }
-    }
-
-    fn down(&mut self) {
-        let count = self.model.rank(&self.query, &self.entries).len();
-        self.selected = self.selected.saturating_add(1).min(count.saturating_sub(1));
-    }
-
-    fn row(&self, buffer: &mut Buffer, area: Rect, entry: &PaletteEntry, style: Style) {
-        buffer.set_style(area, style);
-        let keys = u16::try_from(entry.keys.width()).unwrap_or(0);
-        let label_room = area.width.saturating_sub(keys + 4);
-        buffer.set_stringn(area.x + 1, area.y, &entry.label, usize::from(label_room), style);
-        if keys > 0 && keys + 4 < area.width {
-            buffer.set_string(
-                area.x + area.width - keys - 1,
-                area.y,
-                &entry.keys,
-                style.fg(color(self.tints.attention)),
-            );
         }
     }
 }

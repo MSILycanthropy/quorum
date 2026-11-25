@@ -86,10 +86,12 @@ fn moused(changes: Vec<FileChange>, width: u16, height: u16, mouse: &[MouseEvent
         Review::new(changes, Mode::SideBySide, false, 4).expect("the fixtures highlight");
     let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("test backend starts");
 
-    terminal.draw(|frame| review.draw(frame, frame.area())).expect("draw succeeds");
+    terminal.draw(|frame| frame.render_widget(&mut review, frame.area())).expect("draw succeeds");
     for event in mouse {
         review.mouse(*event).expect("the fixtures highlight");
-        terminal.draw(|frame| review.draw(frame, frame.area())).expect("draw succeeds");
+        terminal
+            .draw(|frame| frame.render_widget(&mut review, frame.area()))
+            .expect("draw succeeds");
     }
 
     describe(terminal.backend().buffer())
@@ -100,10 +102,12 @@ fn shown(changes: Vec<FileChange>, width: u16, height: u16, commands: &[Command]
         Review::new(changes, Mode::SideBySide, false, 4).expect("the fixtures highlight");
     let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("test backend starts");
 
-    terminal.draw(|frame| review.draw(frame, frame.area())).expect("draw succeeds");
+    terminal.draw(|frame| frame.render_widget(&mut review, frame.area())).expect("draw succeeds");
     for command in commands {
         review.run(*command).expect("the fixtures highlight");
-        terminal.draw(|frame| review.draw(frame, frame.area())).expect("draw succeeds");
+        terminal
+            .draw(|frame| frame.render_widget(&mut review, frame.area()))
+            .expect("draw succeeds");
     }
 
     describe(terminal.backend().buffer())
@@ -193,7 +197,7 @@ fn hunks_are_counted_for_the_file_on_screen() {
     let mut review = Review::new(vec![tall("src/tall.rs")], Mode::SideBySide, false, 4)
         .expect("the fixtures highlight");
     let mut terminal = Terminal::new(TestBackend::new(90, 8)).expect("test backend starts");
-    terminal.draw(|frame| review.draw(frame, frame.area())).expect("draw succeeds");
+    terminal.draw(|frame| frame.render_widget(&mut review, frame.area())).expect("draw succeeds");
     assert_eq!(review.hunk(), (None, 1));
 
     review.run(Command::NextHunk).expect("the fixtures highlight");
@@ -276,7 +280,7 @@ fn a_rescan_that_adds_a_file_above_the_selection_keeps_the_file_you_were_reading
     review.refresh(grown).expect("the fixtures highlight");
 
     let mut terminal = Terminal::new(TestBackend::new(80, 6)).expect("test backend starts");
-    terminal.draw(|frame| review.draw(frame, frame.area())).expect("draw succeeds");
+    terminal.draw(|frame| frame.render_widget(&mut review, frame.area())).expect("draw succeeds");
 
     insta::assert_snapshot!(describe(terminal.backend().buffer()));
 }
@@ -291,7 +295,7 @@ fn a_rescan_that_drops_the_file_you_were_reading_falls_back_to_the_first() {
         .expect("the fixtures highlight");
 
     let mut terminal = Terminal::new(TestBackend::new(80, 6)).expect("test backend starts");
-    terminal.draw(|frame| review.draw(frame, frame.area())).expect("draw succeeds");
+    terminal.draw(|frame| frame.render_widget(&mut review, frame.area())).expect("draw succeeds");
 
     insta::assert_snapshot!(describe(terminal.backend().buffer()));
 }
@@ -301,15 +305,15 @@ fn a_rescan_of_the_file_you_were_reading_keeps_your_place_and_layout() {
     let mut review = Review::new(vec![tall("src/tall.rs")], Mode::SideBySide, false, 4)
         .expect("the fixtures highlight");
     let mut terminal = Terminal::new(TestBackend::new(90, 8)).expect("test backend starts");
-    terminal.draw(|frame| review.draw(frame, frame.area())).expect("draw succeeds");
+    terminal.draw(|frame| frame.render_widget(&mut review, frame.area())).expect("draw succeeds");
     for command in [Command::ToggleLayout, Command::NextLine, Command::NextLine] {
         review.run(command).expect("the fixtures highlight");
     }
-    terminal.draw(|frame| review.draw(frame, frame.area())).expect("draw succeeds");
+    terminal.draw(|frame| frame.render_widget(&mut review, frame.area())).expect("draw succeeds");
     let before = describe(terminal.backend().buffer());
 
     review.refresh(vec![tall("src/tall.rs")]).expect("the fixtures highlight");
-    terminal.draw(|frame| review.draw(frame, frame.area())).expect("draw succeeds");
+    terminal.draw(|frame| frame.render_widget(&mut review, frame.area())).expect("draw succeeds");
 
     assert_eq!(describe(terminal.backend().buffer()), before);
 }
@@ -327,12 +331,12 @@ fn peeked(line: Option<usize>, commands: &[Command]) -> String {
         writeln!(text, "line {line}").expect("writing to a String cannot fail");
     }
 
-    terminal.draw(|frame| review.draw(frame, frame.area())).expect("draw succeeds");
+    terminal.draw(|frame| frame.render_widget(&mut review, frame.area())).expect("draw succeeds");
     review.peek(PathBuf::from("src/lib.rs"), &unchanged(&text), line).expect("the file highlights");
     for command in commands {
         review.run(*command).expect("the fixtures highlight");
     }
-    terminal.draw(|frame| review.draw(frame, frame.area())).expect("draw succeeds");
+    terminal.draw(|frame| frame.render_widget(&mut review, frame.area())).expect("draw succeeds");
 
     describe(terminal.backend().buffer())
 }
@@ -422,10 +426,10 @@ fn going_to_a_folded_line_opens_its_fold() {
     )
     .expect("the fixtures highlight");
     let mut terminal = Terminal::new(TestBackend::new(90, 12)).expect("test backend starts");
-    terminal.draw(|frame| review.draw(frame, frame.area())).expect("draw succeeds");
+    terminal.draw(|frame| frame.render_widget(&mut review, frame.area())).expect("draw succeeds");
 
     review.select_path(std::path::Path::new("src/middle.rs"), Some(25)).expect("highlights");
-    terminal.draw(|frame| review.draw(frame, frame.area())).expect("draw succeeds");
+    terminal.draw(|frame| frame.render_widget(&mut review, frame.area())).expect("draw succeeds");
 
     insta::assert_snapshot!(describe(terminal.backend().buffer()));
 }
@@ -434,7 +438,7 @@ fn review(changes: Vec<FileChange>) -> (Review, Terminal<TestBackend>) {
     let mut review =
         Review::new(changes, Mode::SideBySide, false, 4).expect("the fixtures highlight");
     let mut terminal = Terminal::new(TestBackend::new(90, 8)).expect("test backend starts");
-    terminal.draw(|frame| review.draw(frame, frame.area())).expect("draw succeeds");
+    terminal.draw(|frame| frame.render_widget(&mut review, frame.area())).expect("draw succeeds");
 
     (review, terminal)
 }
@@ -503,7 +507,7 @@ fn ignoring_whitespace_hides_a_reindented_line() {
     assert_eq!(review.hunk().1, 1);
 
     review.run(Command::ToggleWhitespace).expect("the fixtures highlight");
-    terminal.draw(|frame| review.draw(frame, frame.area())).expect("draw succeeds");
+    terminal.draw(|frame| frame.render_widget(&mut review, frame.area())).expect("draw succeeds");
 
     assert_eq!(review.hunk().1, 0);
     assert_eq!(review.laid(), "side by side · ignoring whitespace");
@@ -546,7 +550,7 @@ fn a_reload_returns_the_cursor_to_its_line() {
     assert_eq!(review.cursor(), Some(anchor("src/tall.rs", Side::New, 6)));
 
     review.refresh(vec![tall("src/tall.rs")]).expect("the fixtures highlight");
-    terminal.draw(|frame| review.draw(frame, frame.area())).expect("draw succeeds");
+    terminal.draw(|frame| frame.render_widget(&mut review, frame.area())).expect("draw succeeds");
 
     assert_eq!(review.cursor(), Some(anchor("src/tall.rs", Side::New, 6)));
 }
@@ -557,7 +561,7 @@ fn toggling_whitespace_keeps_the_cursor_on_its_line() {
     for command in [Command::NextLine, Command::OldSide, Command::ToggleWhitespace] {
         review.run(command).expect("the fixtures highlight");
     }
-    terminal.draw(|frame| review.draw(frame, frame.area())).expect("draw succeeds");
+    terminal.draw(|frame| frame.render_widget(&mut review, frame.area())).expect("draw succeeds");
 
     assert_eq!(review.cursor(), Some(anchor("src/tall.rs", Side::Old, 2)));
 }
@@ -570,7 +574,7 @@ fn clicking_a_row_moves_the_cursor_to_the_pane_clicked() {
     assert_eq!(review.cursor(), Some(anchor("src/tall.rs", Side::Old, 3)));
 
     review.mouse(click(70, 4)).expect("the fixtures highlight");
-    terminal.draw(|frame| review.draw(frame, frame.area())).expect("draw succeeds");
+    terminal.draw(|frame| frame.render_widget(&mut review, frame.area())).expect("draw succeeds");
     assert_eq!(review.cursor(), Some(anchor("src/tall.rs", Side::New, 4)));
 }
 
@@ -587,7 +591,7 @@ fn an_unchanged_file_always_puts_the_cursor_on_the_new_side() {
         Review::new(fixtures(), Mode::SideBySide, false, 4).expect("the fixtures highlight");
     let mut terminal = Terminal::new(TestBackend::new(90, 8)).expect("test backend starts");
     review.peek(PathBuf::from("src/lib.rs"), &unchanged("one\ntwo\n"), None).expect("highlights");
-    terminal.draw(|frame| review.draw(frame, frame.area())).expect("draw succeeds");
+    terminal.draw(|frame| frame.render_widget(&mut review, frame.area())).expect("draw succeeds");
 
     review.run(Command::OldSide).expect("the fixtures highlight");
     review.run(Command::NextLine).expect("the fixtures highlight");
