@@ -25,5 +25,5 @@ Glean looks for the repository on the `upstream` remote first, then on
 
 ## Requires
 
-Rust stable (edition 2024) and git. Once Glean opens pull requests in Sift, it
-will also need Sift checked out next to this repository.
+Rust stable (edition 2024) and git. Sift comes with it: both live in this
+workspace.
