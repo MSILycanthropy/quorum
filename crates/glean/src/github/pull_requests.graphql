@@ -1,0 +1,38 @@
+query PullRequests($owner: String!, $name: String!, $search: String!, $first: Int!, $after: String) {
+  repository(owner: $owner, name: $name) {
+    id
+  }
+  search(query: $search, type: ISSUE, first: $first, after: $after) {
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
+    nodes {
+      __typename
+      ... on PullRequest {
+        id
+        number
+        title
+        author {
+          login
+        }
+        state
+        isDraft
+        baseRefName
+        baseRefOid
+        headRefName
+        headRefOid
+        createdAt
+        updatedAt
+        comments {
+          totalCount
+        }
+        labels(first: 20) {
+          nodes {
+            name
+          }
+        }
+      }
+    }
+  }
+}

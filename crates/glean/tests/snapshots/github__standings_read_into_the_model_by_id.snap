@@ -1,0 +1,57 @@
+---
+source: tests/github.rs
+expression: "standings(&[\"PR_sift12\", \"PR_sift13\", \"PR_sift4\"], STANDINGS)"
+---
+[
+    Ok(
+        [
+            (
+                "PR_sift12",
+                Standing {
+                    review_decision: Some(
+                        Approved,
+                    ),
+                    checks: Some(
+                        Passed,
+                    ),
+                    mergeability: Clean,
+                    requested_reviewers: [
+                        "hubot",
+                        "reviewers",
+                    ],
+                    added: 412,
+                    removed: 37,
+                    changed_files: 9,
+                },
+            ),
+            (
+                "PR_sift13",
+                Standing {
+                    review_decision: None,
+                    checks: None,
+                    mergeability: Unknown,
+                    requested_reviewers: [],
+                    added: 0,
+                    removed: 0,
+                    changed_files: 0,
+                },
+            ),
+            (
+                "PR_sift4",
+                Standing {
+                    review_decision: Some(
+                        ChangesRequested,
+                    ),
+                    checks: Some(
+                        Failed,
+                    ),
+                    mergeability: Conflicting,
+                    requested_reviewers: [],
+                    added: 68,
+                    removed: 68,
+                    changed_files: 17,
+                },
+            ),
+        ],
+    ),
+]

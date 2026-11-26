@@ -1,0 +1,64 @@
+{
+  "data": {
+    "repository": { "id": "R_kgDOsift" },
+    "search": {
+      "pageInfo": { "hasNextPage": true, "endCursor": "Y3Vyc29yOjIw" },
+      "nodes": [
+        {
+          "__typename": "PullRequest",
+          "id": "PR_sift12",
+          "number": 12,
+          "title": "feat(ui): annotations under a line of the diff",
+          "author": { "login": "octocat" },
+          "state": "OPEN",
+          "isDraft": false,
+          "baseRefName": "main",
+          "baseRefOid": "1111111111111111111111111111111111111111",
+          "headRefName": "annotations",
+          "headRefOid": "2222222222222222222222222222222222222222",
+          "createdAt": "2026-11-20T08:00:00Z",
+          "updatedAt": "2026-11-24T19:07:03Z",
+          "comments": { "totalCount": 3 },
+          "labels": { "nodes": [{ "name": "ui" }, { "name": "feature" }] }
+        },
+        {
+          "__typename": "Issue"
+        },
+        {
+          "__typename": "PullRequest",
+          "id": "PR_sift13",
+          "number": 13,
+          "title": "wip: range selection",
+          "author": null,
+          "state": "OPEN",
+          "isDraft": true,
+          "baseRefName": "main",
+          "baseRefOid": "1111111111111111111111111111111111111111",
+          "headRefName": "range",
+          "headRefOid": "3333333333333333333333333333333333333333",
+          "createdAt": "2024-02-29T23:59:59Z",
+          "updatedAt": "2026-11-25T10:30:00Z",
+          "comments": { "totalCount": 0 },
+          "labels": { "nodes": [] }
+        },
+        {
+          "__typename": "PullRequest",
+          "id": "PR_sift4",
+          "number": 4,
+          "title": "refactor!: rename quorum to sift",
+          "author": { "login": "octocat" },
+          "state": "MERGED",
+          "isDraft": false,
+          "baseRefName": "main",
+          "baseRefOid": "4444444444444444444444444444444444444444",
+          "headRefName": "rename-to-sift",
+          "headRefOid": "5555555555555555555555555555555555555555",
+          "createdAt": "2026-11-24T19:07:03Z",
+          "updatedAt": "2026-11-24T19:07:03Z",
+          "comments": { "totalCount": 1 },
+          "labels": { "nodes": [] }
+        }
+      ]
+    }
+  }
+}

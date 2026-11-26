@@ -1,0 +1,87 @@
+---
+source: tests/github.rs
+expression: "listed(Filter::Open)"
+---
+[
+    PullRequest {
+        id: "PR_sift12",
+        number: 12,
+        title: "feat(ui): annotations under a line of the diff",
+        author: "octocat",
+        state: Open,
+        base: Branch {
+            name: "main",
+            commit: "1111111111111111111111111111111111111111",
+        },
+        head: Branch {
+            name: "annotations",
+            commit: "2222222222222222222222222222222222222222",
+        },
+        created: SystemTime {
+            tv_sec: 1795161600,
+            tv_nsec: 0,
+        },
+        updated: SystemTime {
+            tv_sec: 1795547223,
+            tv_nsec: 0,
+        },
+        labels: [
+            "ui",
+            "feature",
+        ],
+        comments: 3,
+        standing: None,
+    },
+    PullRequest {
+        id: "PR_sift13",
+        number: 13,
+        title: "wip: range selection",
+        author: "ghost",
+        state: Draft,
+        base: Branch {
+            name: "main",
+            commit: "1111111111111111111111111111111111111111",
+        },
+        head: Branch {
+            name: "range",
+            commit: "3333333333333333333333333333333333333333",
+        },
+        created: SystemTime {
+            tv_sec: 1709251199,
+            tv_nsec: 0,
+        },
+        updated: SystemTime {
+            tv_sec: 1795602600,
+            tv_nsec: 0,
+        },
+        labels: [],
+        comments: 0,
+        standing: None,
+    },
+    PullRequest {
+        id: "PR_sift4",
+        number: 4,
+        title: "refactor!: rename quorum to sift",
+        author: "octocat",
+        state: Merged,
+        base: Branch {
+            name: "main",
+            commit: "4444444444444444444444444444444444444444",
+        },
+        head: Branch {
+            name: "rename-to-sift",
+            commit: "5555555555555555555555555555555555555555",
+        },
+        created: SystemTime {
+            tv_sec: 1795547223,
+            tv_nsec: 0,
+        },
+        updated: SystemTime {
+            tv_sec: 1795547223,
+            tv_nsec: 0,
+        },
+        labels: [],
+        comments: 1,
+        standing: None,
+    },
+]
