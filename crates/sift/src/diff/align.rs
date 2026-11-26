@@ -4,6 +4,7 @@ use super::model::{Change, ChangeKind, FileDiff};
 use similar::{Algorithm, DiffOp, TextDiff};
 use std::cmp::Ordering;
 use std::ops::Range;
+use unicode_segmentation::UnicodeSegmentation;
 
 /// A byte range within a single line, relative to that line's start.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
@@ -25,6 +26,30 @@ impl Similarity {
     pub fn new(score: f32) -> Self {
         Self(score.clamp(Self::NONE.0, Self::IDENTICAL.0))
     }
+}
+
+/// What within a changed line is picked out from the rest of it: its changed
+/// words with one-character gaps between them closed, each changed word on
+/// its own, each changed character, or nothing.
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Deserialize,
+    serde::Serialize,
+    clap::ValueEnum,
+)]
+#[serde(rename_all = "kebab-case")]
+pub enum Emphasis {
+    #[default]
+    Words,
+    EachWord,
+    Characters,
+    None,
 }
 
 /// One side of a row. `line` is `None` for filler.
@@ -85,6 +110,7 @@ pub struct Align {
     pub emphasis_threshold: Similarity,
     pub max_block_lines: usize,
     pub strategy: Strategy,
+    pub emphasis: Emphasis,
 }
 
 impl Default for Align {
@@ -94,6 +120,7 @@ impl Default for Align {
             emphasis_threshold: Similarity::EMPHASIS,
             max_block_lines: 100,
             strategy: Strategy::default(),
+            emphasis: Emphasis::default(),
         }
     }
 }
@@ -156,7 +183,7 @@ impl Align {
 
     fn paired_row(&self, diff: &FileDiff, old: usize, new: usize, score: Similarity) -> Row {
         let (old_spans, new_spans) = if score >= self.emphasis_threshold {
-            word_spans(diff.old.line(old), diff.new.line(new))
+            emphasized(self.emphasis, diff.old.line(old), diff.new.line(new))
         } else {
             (Vec::new(), Vec::new())
         };
@@ -308,9 +335,25 @@ impl Bigrams<'_> {
     }
 }
 
-fn word_spans(old: &str, new: &str) -> (Vec<Span>, Vec<Span>) {
-    let diff = TextDiff::configure().algorithm(Algorithm::Patience).diff_unicode_words(old, new);
+fn emphasized(emphasis: Emphasis, old: &str, new: &str) -> (Vec<Span>, Vec<Span>) {
+    match emphasis {
+        Emphasis::Words => {
+            let (old_spans, new_spans) = word_spans(old, new);
+            (close_gaps(old, old_spans), close_gaps(new, new_spans))
+        }
+        Emphasis::EachWord => word_spans(old, new),
+        Emphasis::Characters => {
+            spans(&TextDiff::configure().algorithm(Algorithm::Myers).diff_graphemes(old, new))
+        }
+        Emphasis::None => (Vec::new(), Vec::new()),
+    }
+}
 
+fn word_spans(old: &str, new: &str) -> (Vec<Span>, Vec<Span>) {
+    spans(&TextDiff::configure().algorithm(Algorithm::Patience).diff_unicode_words(old, new))
+}
+
+fn spans(diff: &TextDiff<'_, '_, str>) -> (Vec<Span>, Vec<Span>) {
     let old_offsets = word_offsets(diff.iter_old_slices());
     let new_offsets = word_offsets(diff.iter_new_slices());
 
@@ -345,6 +388,19 @@ fn word_offsets<'a>(slices: impl Iterator<Item = &'a str>) -> Vec<usize> {
 
 fn span(offsets: &[usize], index: usize, len: usize) -> Span {
     Span { start: offsets[index], end: offsets[index + len] }
+}
+
+fn close_gaps(line: &str, spans: Vec<Span>) -> Vec<Span> {
+    let mut closed: Vec<Span> = Vec::with_capacity(spans.len());
+    for span in spans {
+        match closed.last_mut() {
+            Some(last) if line[last.end..span.start].graphemes(true).count() == 1 => {
+                last.end = span.end;
+            }
+            _ => closed.push(span),
+        }
+    }
+    closed
 }
 
 fn merge_touching(spans: Vec<Span>) -> Vec<Span> {

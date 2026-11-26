@@ -1,0 +1,19 @@
+---
+source: crates/sift/tests/align.rs
+expression: "every_emphasis(\"    let totals = 0x40;\\n\", \"    let total = 0x48;\\n\",)"
+---
+Words
+~   1   1 │     let ⟦totals⟧ = ⟦0x40⟧;             │     let ⟦total⟧ = ⟦0x48⟧;
+    2   2 │                                        │ 
+
+EachWord
+~   1   1 │     let ⟦totals⟧ = ⟦0x40⟧;             │     let ⟦total⟧ = ⟦0x48⟧;
+    2   2 │                                        │ 
+
+Characters
+~   1   1 │     let total⟦s⟧ = 0x4⟦0⟧;             │     let total = 0x4⟦8⟧;
+    2   2 │                                        │ 
+
+None
+~   1   1 │     let totals = 0x40;                 │     let total = 0x48;
+    2   2 │                                        │

@@ -2,7 +2,7 @@
 
 use std::fmt::Write;
 
-use sift::diff::{Align, Cell, FileDiff, Row, RowKind, Source, Strategy, unified};
+use sift::diff::{Align, Cell, Emphasis, FileDiff, Row, RowKind, Source, Strategy, unified};
 
 fn table(old: &str, new: &str) -> String {
     aligned(Align::default(), old, new)
@@ -157,4 +157,34 @@ fn unified_never_emits_a_row_with_both_sides_filled_except_where_they_agree() {
             assert!(row.old.line.is_none() || row.new.line.is_none());
         }
     }
+}
+
+fn every_emphasis(old: &str, new: &str) -> String {
+    let mut rendered = String::new();
+    for emphasis in [Emphasis::Words, Emphasis::EachWord, Emphasis::Characters, Emphasis::None] {
+        let table = aligned(Align { emphasis, ..Align::default() }, old, new);
+        writeln!(rendered, "{emphasis:?}\n{table}").expect("writing to a String cannot fail");
+    }
+    rendered
+}
+
+#[test]
+fn words_join_two_changes_a_paren_apart_where_each_word_keeps_them_apart() {
+    insta::assert_snapshot!(every_emphasis(
+        "    let size = layout.width(cart).max(minimum);\n",
+        "    let size = layout.height(order).max(minimum);\n",
+    ));
+}
+
+#[test]
+fn words_keep_two_changes_apart_when_more_than_a_character_separates_them() {
+    insta::assert_snapshot!(every_emphasis(
+        "    let total = price * quantity + tax + shipping;\n",
+        "    let total = cost * quantity + tax + handling;\n",
+    ));
+}
+
+#[test]
+fn characters_pick_out_only_the_characters_that_changed() {
+    insta::assert_snapshot!(every_emphasis("    let totals = 0x40;\n", "    let total = 0x48;\n",));
 }

@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::diff::Whitespace;
+use crate::diff::{Emphasis, Whitespace};
 use crate::theme::Scheme;
 use crate::ui::{Indicators, Mode, Presentation};
 
@@ -57,6 +57,8 @@ pub struct Config {
         help = "Unchanged lines kept around a change before the rest fold"
     )]
     pub context: Option<usize>,
+    #[arg(long, value_enum, help = "What within a changed line is picked out from the rest of it")]
+    pub emphasis: Option<Emphasis>,
     #[arg(long, value_enum, help = "Where the background and diff colours come from")]
     pub theme: Option<Scheme>,
     #[arg(
@@ -80,6 +82,7 @@ impl Config {
             line_numbers: self.line_numbers.unwrap_or(default.line_numbers),
             whitespace: self.whitespace.unwrap_or(default.whitespace),
             context: self.context.unwrap_or(default.context),
+            emphasis: self.emphasis.unwrap_or(default.emphasis),
         }
     }
 }

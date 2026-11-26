@@ -59,6 +59,7 @@ backgrounds = false        # changed lines keep only their word highlights
 line-numbers = false
 whitespace = "ignore"      # or "compare"
 context = 5                # unchanged lines kept around a change
+emphasis = "characters"    # "words" by default, or "each-word" or "none"
 theme = "tokyo-night"      # or "terminal"
 syntax-theme = "catppuccin_mocha"
 ```

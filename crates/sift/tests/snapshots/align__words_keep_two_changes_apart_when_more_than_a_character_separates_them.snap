@@ -1,0 +1,19 @@
+---
+source: crates/sift/tests/align.rs
+expression: "every_emphasis(\"    let total = price * quantity + tax + shipping;\\n\",\n\"    let total = cost * quantity + tax + handling;\\n\",)"
+---
+Words
+~   1   1 │     let total = ⟦price⟧ * quantity + tax + ⟦shipping⟧; │     let total = ⟦cost⟧ * quantity + tax + ⟦handling⟧;
+    2   2 │                                        │ 
+
+EachWord
+~   1   1 │     let total = ⟦price⟧ * quantity + tax + ⟦shipping⟧; │     let total = ⟦cost⟧ * quantity + tax + ⟦handling⟧;
+    2   2 │                                        │ 
+
+Characters
+~   1   1 │     let total = ⟦pri⟧c⟦e⟧ * quantity + tax + ⟦s⟧h⟦ipp⟧ing; │     let total = c⟦ost⟧ * quantity + tax + h⟦andl⟧ing;
+    2   2 │                                        │ 
+
+None
+~   1   1 │     let total = price * quantity + tax + shipping; │     let total = cost * quantity + tax + handling;
+    2   2 │                                        │

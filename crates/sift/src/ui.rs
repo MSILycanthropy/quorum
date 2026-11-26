@@ -85,6 +85,7 @@ pub struct Presentation {
     pub line_numbers: bool,
     pub whitespace: crate::diff::Whitespace,
     pub context: usize,
+    pub emphasis: crate::diff::Emphasis,
 }
 
 impl Default for Presentation {
@@ -98,6 +99,7 @@ impl Default for Presentation {
             line_numbers: true,
             whitespace: crate::diff::Whitespace::default(),
             context: 3,
+            emphasis: crate::diff::Emphasis::default(),
         }
     }
 }

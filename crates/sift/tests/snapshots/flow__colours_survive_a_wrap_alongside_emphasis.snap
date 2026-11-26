@@ -1,11 +1,10 @@
 ---
-source: tests/flow.rs
-assertion_line: 147
+source: crates/sift/tests/flow.rs
 expression: "highlighted(\"let message = format!(\\\"hello there\\\");\\n\",\n\"let message = format!(\\\"goodbye now\\\");\\n\", wrapped(24))"
 ---
  0   old #9d7cd8  "let" #c0caf5  " message = " #7dcfff  "format!" #89ddff  "(" #9ece6a  "\"" #9ece6a⟦⟧"h"
  0   new #9d7cd8  "let" #c0caf5  " message = " #7dcfff  "format!" #89ddff  "(" #9ece6a  "\"" #9ece6a⟦⟧"g"
- 0 ↳ old #9ece6a⟦⟧"ello" #9ece6a  " " #9ece6a⟦⟧"there" #9ece6a  "\"" #89ddff  ");"
- 0 ↳ new #9ece6a⟦⟧"oodbye" #9ece6a  " " #9ece6a⟦⟧"now" #9ece6a  "\"" #89ddff  ");"
+ 0 ↳ old #9ece6a⟦⟧"ello there" #9ece6a  "\"" #89ddff  ");"
+ 0 ↳ new #9ece6a⟦⟧"oodbye now" #9ece6a  "\"" #89ddff  ");"
  1   old 
  1   new

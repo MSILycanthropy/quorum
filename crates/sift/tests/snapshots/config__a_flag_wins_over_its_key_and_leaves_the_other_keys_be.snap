@@ -27,6 +27,9 @@ Config {
     context: Some(
         5,
     ),
+    emphasis: Some(
+        Characters,
+    ),
     theme: Some(
         TokyoNight,
     ),

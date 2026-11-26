@@ -6,5 +6,6 @@ backgrounds = false
 line-numbers = false
 whitespace = "ignore"
 context = 5
+emphasis = "characters"
 theme = "tokyo-night"
 syntax-theme = "github_light"

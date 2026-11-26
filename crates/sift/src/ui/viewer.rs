@@ -132,7 +132,8 @@ impl Viewer {
         presentation: Presentation,
         theme: &Theme,
     ) -> Result<Self> {
-        let side_by_side = Align::default().rows(&diff);
+        let side_by_side =
+            Align { emphasis: presentation.emphasis, ..Align::default() }.rows(&diff);
         let unified = unified(&side_by_side);
         let plain = diff.changes.iter().all(|change| change.kind == ChangeKind::Equal);
 

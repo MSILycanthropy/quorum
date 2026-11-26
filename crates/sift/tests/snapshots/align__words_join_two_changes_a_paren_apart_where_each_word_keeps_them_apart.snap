@@ -1,0 +1,19 @@
+---
+source: crates/sift/tests/align.rs
+expression: "every_emphasis(\"    let size = layout.width(cart).max(minimum);\\n\",\n\"    let size = layout.height(order).max(minimum);\\n\",)"
+---
+Words
+~   1   1 │     let size = ⟦layout.width(cart⟧).max(minimum); │     let size = ⟦layout.height(order⟧).max(minimum);
+    2   2 │                                        │ 
+
+EachWord
+~   1   1 │     let size = ⟦layout.width⟧(⟦cart⟧).max(minimum); │     let size = ⟦layout.height⟧(⟦order⟧).max(minimum);
+    2   2 │                                        │ 
+
+Characters
+~   1   1 │     let size = layout.⟦w⟧i⟦dt⟧h(⟦ca⟧r⟦t⟧).max(minimum); │     let size = layout.⟦he⟧i⟦g⟧h⟦t⟧(⟦orde⟧r).max(minimum);
+    2   2 │                                        │ 
+
+None
+~   1   1 │     let size = layout.width(cart).max(minimum); │     let size = layout.height(order).max(minimum);
+    2   2 │                                        │
