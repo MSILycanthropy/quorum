@@ -16,7 +16,9 @@ use crate::diff::{FileDiff, Side, Whitespace};
 use crate::git::{Content, FileChange, Status};
 use crate::theme::Theme;
 use crate::ui::annotation::has_body;
-use crate::ui::{Anchor, Annotation, Control, Error, Landing, Mode, Result, Row, Tree, Viewer};
+use crate::ui::{
+    Anchor, Annotation, Control, Error, Landing, Mode, Presentation, Result, Row, Tree, Viewer,
+};
 use hue::Rgb;
 
 const SIDEBAR: u16 = 34;
@@ -34,10 +36,7 @@ pub struct Review {
     showing: bool,
     listing: u16,
     listed: Option<Rect>,
-    mode: Mode,
-    wrap: bool,
-    whitespace: Whitespace,
-    tab_width: usize,
+    presentation: Presentation,
     viewed: HashMap<PathBuf, u64>,
     revealed: HashSet<PathBuf>,
     annotations: Vec<Annotation>,
@@ -50,13 +49,7 @@ impl Review {
         clippy::missing_errors_doc,
         reason = "the Error enum names the only failure, highlighting the selected file"
     )]
-    pub fn new(
-        changes: Vec<FileChange>,
-        mode: Mode,
-        wrap: bool,
-        tab_width: usize,
-        theme: Theme,
-    ) -> Result<Self> {
+    pub fn new(changes: Vec<FileChange>, presentation: Presentation, theme: Theme) -> Result<Self> {
         let tree = Tree::of(&changes);
         let (selected, opened) = tree
             .rows()
@@ -75,10 +68,7 @@ impl Review {
             showing: true,
             listing: SIDEBAR,
             listed: None,
-            mode,
-            wrap,
-            whitespace: Whitespace::Compare,
-            tab_width,
+            presentation,
             viewed: HashMap::new(),
             revealed: HashSet::new(),
             annotations: Vec::new(),
@@ -173,7 +163,7 @@ impl Review {
                 self.next_unviewed()?;
             }
             Command::ToggleWhitespace => {
-                self.whitespace = match self.whitespace {
+                self.presentation.whitespace = match self.presentation.whitespace {
                     Whitespace::Compare => Whitespace::Ignore,
                     Whitespace::Ignore => Whitespace::Compare,
                 };
@@ -460,16 +450,12 @@ impl Review {
             .filter(|peek| peek.path == path && line.is_none())
             .and_then(|peek| peek.viewer.as_ref())
             .map(Viewer::place);
-        let wrap = self.viewer.as_ref().map_or(self.wrap, Viewer::wrap);
+        let wrap = self.viewer.as_ref().map_or(self.presentation.wrap, Viewer::wrap);
+        let presentation = Presentation { mode: Mode::Unified, wrap, ..self.presentation };
         let mut viewer = match content {
-            Content::Text(diff) => Some(Viewer::new(
-                diff.clone(),
-                &path,
-                Mode::Unified,
-                wrap,
-                self.tab_width,
-                &self.theme,
-            )?),
+            Content::Text(diff) => {
+                Some(Viewer::new(diff.clone(), &path, presentation, &self.theme)?)
+            }
             Content::Binary => None,
         };
         if let Some(viewer) = &mut viewer {
@@ -621,8 +607,8 @@ impl Review {
 
     fn remember(&mut self) {
         if let Some(viewer) = &self.viewer {
-            self.mode = viewer.mode();
-            self.wrap = viewer.wrap();
+            self.presentation.mode = viewer.mode();
+            self.presentation.wrap = viewer.wrap();
         }
     }
 
@@ -659,13 +645,15 @@ impl Review {
         let collapsed = self.collapsed();
         self.viewer = match self.changes.get(self.opened) {
             Some(FileChange { content: Content::Text(diff), path, .. }) if !collapsed => {
-                let diff = match self.whitespace {
+                let diff = match self.presentation.whitespace {
                     Whitespace::Compare => diff.clone(),
-                    Whitespace::Ignore => {
-                        FileDiff::compute_with(diff.old.clone(), diff.new.clone(), self.whitespace)
-                    }
+                    Whitespace::Ignore => FileDiff::compute_with(
+                        diff.old.clone(),
+                        diff.new.clone(),
+                        self.presentation.whitespace,
+                    ),
                 };
-                Some(Viewer::new(diff, path, self.mode, self.wrap, self.tab_width, &self.theme)?)
+                Some(Viewer::new(diff, path, self.presentation, &self.theme)?)
             }
             _ => None,
         };
@@ -691,18 +679,18 @@ impl Review {
         if self.peek.is_some() {
             return "read only".to_owned();
         }
-        let layout = match self.viewer.as_ref().map_or(self.mode, Viewer::mode) {
+        let layout = match self.viewer.as_ref().map_or(self.presentation.mode, Viewer::mode) {
             Mode::SideBySide => "side by side",
             Mode::Unified => "unified",
         };
-        match self.whitespace {
+        match self.presentation.whitespace {
             Whitespace::Compare => layout.to_owned(),
             Whitespace::Ignore => format!("{layout} · ignoring whitespace"),
         }
     }
 
     pub fn tabbed(&self) -> usize {
-        self.tab_width
+        self.presentation.tab_width
     }
 
     fn title(&self, buffer: &mut Buffer, area: Rect, name: &str) {

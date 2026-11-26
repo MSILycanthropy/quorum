@@ -1,0 +1,36 @@
+---
+source: crates/sift/tests/config.rs
+expression: "file.over(flags).parse::<Config>().expect(\"both are configs\")"
+---
+Config {
+    layout: Some(
+        SideBySide,
+    ),
+    wrap: Some(
+        false,
+    ),
+    tab_width: Some(
+        8,
+    ),
+    indicators: Some(
+        Signs,
+    ),
+    backgrounds: Some(
+        false,
+    ),
+    line_numbers: Some(
+        false,
+    ),
+    whitespace: Some(
+        Ignore,
+    ),
+    context: Some(
+        5,
+    ),
+    theme: Some(
+        TokyoNight,
+    ),
+    syntax_theme: Some(
+        "github_light",
+    ),
+}

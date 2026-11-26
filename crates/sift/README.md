@@ -54,12 +54,19 @@ optional, so the file only needs the ones you change:
 layout = "unified"         # or "side-by-side"
 wrap = true
 tab-width = 2
+indicators = "bars"        # "signs" for git's + and -, or "none"
+backgrounds = false        # changed lines keep only their word highlights
+line-numbers = false
+whitespace = "ignore"      # or "compare"
+context = 5                # unchanged lines kept around a change
 theme = "tokyo-night"      # or "terminal"
 syntax-theme = "catppuccin_mocha"
 ```
 
-Flags win over the file. `--side-by-side` and `--no-wrap` undo a setting for
-one run. A key Sift doesn't know is an error, with the line it's on.
+Every key is also a flag with the same name, and a flag wins over the file for
+that run. So `sift --layout side-by-side` undoes `layout = "unified"`, and
+`--wrap=false` undoes `wrap = true`. A key Sift doesn't know is an error, with
+the line it's on.
 
 ## Layout
 

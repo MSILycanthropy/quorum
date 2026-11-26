@@ -13,7 +13,7 @@ use sift::command::Command;
 use sift::diff::{FileDiff, Side, Source};
 use sift::git::{Content, FileChange, Status};
 use sift::theme::{Theme, TokyoNight};
-use sift::ui::{Anchor, Annotation, Error, Mode, Opening, Surface, Viewer};
+use sift::ui::{Anchor, Annotation, Error, Mode, Opening, Presentation, Surface, Viewer};
 
 const OLD: &str = "fn total(cart: &Cart) -> u32 {\n    let total = 1;\n    dead();\n    total\n}\n";
 const NEW: &str = "fn total(cart: &Cart) -> u32 {\n    let total = 42;\n    total\n}\n";
@@ -56,8 +56,13 @@ struct Shown {
 impl Shown {
     fn new(old: &str, new: &str, mode: Mode, wrap: bool, size: (u16, u16)) -> Self {
         let diff = FileDiff::compute(Source::new(old), Source::new(new));
-        let viewer = Viewer::new(diff, Path::new("demo.rs"), mode, wrap, 4, &Theme::default())
-            .expect("fixtures highlight");
+        let viewer = Viewer::new(
+            diff,
+            Path::new("demo.rs"),
+            Presentation { mode, wrap, ..Presentation::default() },
+            &Theme::default(),
+        )
+        .expect("fixtures highlight");
         let terminal =
             Terminal::new(TestBackend::new(size.0, size.1)).expect("test backend starts");
         let mut shown = Self { viewer, terminal };

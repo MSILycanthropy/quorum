@@ -11,7 +11,7 @@ use ratatui::style::Color;
 use sift::command::Command;
 use sift::diff::{FileDiff, Side, Source};
 use sift::theme::{Theme, TokyoNight};
-use sift::ui::{Mode, Viewer};
+use sift::ui::{Indicators, Mode, Presentation, Viewer};
 
 const OLD: &str = "fn total(cart: &Cart) -> u32 {\n    let total = 1;\n    dead();\n    total\n}\n";
 const NEW: &str = "fn total(cart: &Cart) -> u32 {\n    let total = 42;\n    total\n}\n";
@@ -26,8 +26,13 @@ fn scrolled(width: u16, height: u16, wrap: bool, commands: &[Command]) -> String
 
 fn shown(mode: Mode, width: u16, height: u16, wrap: bool, commands: &[Command]) -> String {
     let diff = FileDiff::compute(Source::new(OLD), Source::new(NEW));
-    let mut viewer = Viewer::new(diff, Path::new("demo.rs"), mode, wrap, 4, &Theme::default())
-        .expect("fixtures highlight");
+    let mut viewer = Viewer::new(
+        diff,
+        Path::new("demo.rs"),
+        Presentation { mode, wrap, ..Presentation::default() },
+        &Theme::default(),
+    )
+    .expect("fixtures highlight");
     let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("test backend starts");
 
     terminal.draw(|frame| frame.render_widget(&mut viewer, frame.area())).expect("draw succeeds");
@@ -127,7 +132,7 @@ fn hunked(commands: &[Command]) -> (String, (Option<usize>, usize), Option<usize
     let (old, new) = far_apart();
     let diff = FileDiff::compute(Source::new(old), Source::new(new));
     let mut viewer =
-        Viewer::new(diff, Path::new("demo.txt"), Mode::SideBySide, false, 4, &Theme::default())
+        Viewer::new(diff, Path::new("demo.txt"), Presentation::default(), &Theme::default())
             .expect("fixtures highlight");
     let mut terminal = Terminal::new(TestBackend::new(48, 6)).expect("test backend starts");
 
@@ -175,8 +180,13 @@ fn drawn(
     commands: &[Command],
 ) -> (Viewer, String) {
     let diff = FileDiff::compute(Source::new(old), Source::new(new));
-    let mut viewer = Viewer::new(diff, Path::new("demo.rs"), mode, wrap, 4, &Theme::default())
-        .expect("fixtures highlight");
+    let mut viewer = Viewer::new(
+        diff,
+        Path::new("demo.rs"),
+        Presentation { mode, wrap, ..Presentation::default() },
+        &Theme::default(),
+    )
+    .expect("fixtures highlight");
     let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("test backend starts");
 
     terminal.draw(|frame| frame.render_widget(&mut viewer, frame.area())).expect("draw succeeds");
@@ -401,7 +411,7 @@ fn the_wheel_drags_the_cursor_only_when_it_would_leave_the_screen() {
 fn the_cursors_line_number_is_drawn_in_the_attention_tint() {
     let diff = FileDiff::compute(Source::new(OLD), Source::new(NEW));
     let mut viewer =
-        Viewer::new(diff, Path::new("demo.rs"), Mode::SideBySide, false, 4, &Theme::default())
+        Viewer::new(diff, Path::new("demo.rs"), Presentation::default(), &Theme::default())
             .expect("fixtures highlight");
     let mut terminal = Terminal::new(TestBackend::new(64, 6)).expect("test backend starts");
     terminal.draw(|frame| frame.render_widget(&mut viewer, frame.area())).expect("draw succeeds");
@@ -427,4 +437,75 @@ fn the_cursor_lights_each_kind_of_row_on_the_old_side() {
 #[test]
 fn the_cursor_lights_each_kind_of_row_in_unified_mode() {
     insta::assert_snapshot!(every_row(Mode::Unified, &[]));
+}
+
+fn presented(presentation: Presentation, (old, new): (&str, &str), height: u16) -> String {
+    let diff = FileDiff::compute(Source::new(old), Source::new(new));
+    let mut viewer = Viewer::new(diff, Path::new("demo.rs"), presentation, &Theme::default())
+        .expect("fixtures highlight");
+    let mut terminal = Terminal::new(TestBackend::new(56, height)).expect("test backend starts");
+    terminal.draw(|frame| frame.render_widget(&mut viewer, frame.area())).expect("draw succeeds");
+
+    describe(terminal.backend().buffer())
+}
+
+fn marked(indicators: Indicators, mode: Mode, diff: (&str, &str), wrap: bool) -> String {
+    presented(Presentation { mode, wrap, indicators, ..Presentation::default() }, diff, 7)
+}
+
+const LONG_OLD: &str = "let short = 1;\n";
+const LONG_NEW: &str = "let long = one + two + three + four + five + six + seven;\n";
+
+#[test]
+fn bars_mark_each_changed_side_in_a_column_of_their_own() {
+    insta::assert_snapshot!(marked(
+        Indicators::Bars,
+        Mode::SideBySide,
+        (EVERY_KIND_OLD, EVERY_KIND_NEW),
+        false
+    ));
+}
+
+#[test]
+fn signs_mark_removed_lines_minus_and_added_lines_plus() {
+    insta::assert_snapshot!(marked(
+        Indicators::Signs,
+        Mode::Unified,
+        (EVERY_KIND_OLD, EVERY_KIND_NEW),
+        false
+    ));
+}
+
+#[test]
+fn a_wrapped_line_takes_its_sign_once_and_its_bar_on_every_row() {
+    let signs = marked(Indicators::Signs, Mode::SideBySide, (LONG_OLD, LONG_NEW), true);
+    let bars = marked(Indicators::Bars, Mode::SideBySide, (LONG_OLD, LONG_NEW), true);
+
+    insta::assert_snapshot!(format!("{signs}\n{bars}"));
+}
+
+#[test]
+fn without_backgrounds_a_changed_line_keeps_only_its_emphasis_and_its_bar() {
+    let presentation = Presentation {
+        backgrounds: false,
+        indicators: Indicators::Bars,
+        ..Presentation::default()
+    };
+
+    insta::assert_snapshot!(presented(presentation, (EVERY_KIND_OLD, EVERY_KIND_NEW), 7));
+}
+
+#[test]
+fn without_line_numbers_the_code_starts_a_column_in() {
+    let presentation = Presentation { line_numbers: false, ..Presentation::default() };
+
+    insta::assert_snapshot!(presented(presentation, (EVERY_KIND_OLD, EVERY_KIND_NEW), 7));
+}
+
+#[test]
+fn a_context_of_one_keeps_a_line_either_side_of_each_change_before_folding() {
+    let (old, new) = far_apart();
+    let presentation = Presentation { context: 1, ..Presentation::default() };
+
+    insta::assert_snapshot!(presented(presentation, (&old, &new), 10));
 }

@@ -3,10 +3,33 @@ source: crates/sift/tests/config.rs
 expression: "settings.parse::<Config>().expect(\"every value is known\")"
 ---
 Config {
-    layout: Unified,
-    wrap: true,
-    tab_width: 8,
-    theme: TokyoNight,
+    layout: Some(
+        Unified,
+    ),
+    wrap: Some(
+        true,
+    ),
+    tab_width: Some(
+        8,
+    ),
+    indicators: Some(
+        Signs,
+    ),
+    backgrounds: Some(
+        false,
+    ),
+    line_numbers: Some(
+        false,
+    ),
+    whitespace: Some(
+        Ignore,
+    ),
+    context: Some(
+        5,
+    ),
+    theme: Some(
+        TokyoNight,
+    ),
     syntax_theme: Some(
         "github_light",
     ),

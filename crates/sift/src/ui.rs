@@ -32,12 +32,74 @@ pub enum Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Two panes against each other, or one column with deletions above insertions.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Deserialize)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Deserialize,
+    serde::Serialize,
+    clap::ValueEnum,
+)]
 #[serde(rename_all = "kebab-case")]
 pub enum Mode {
     #[default]
     SideBySide,
     Unified,
+}
+
+/// What marks a changed line beside its number, besides its background: a
+/// bar, git's `+` and `-`, or nothing.
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Deserialize,
+    serde::Serialize,
+    clap::ValueEnum,
+)]
+#[serde(rename_all = "kebab-case")]
+pub enum Indicators {
+    #[default]
+    None,
+    Bars,
+    Signs,
+}
+
+/// How a diff is first drawn. Keys change the layout, the wrapping and the
+/// whitespace from there.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct Presentation {
+    pub mode: Mode,
+    pub wrap: bool,
+    pub tab_width: usize,
+    pub indicators: Indicators,
+    pub backgrounds: bool,
+    pub line_numbers: bool,
+    pub whitespace: crate::diff::Whitespace,
+    pub context: usize,
+}
+
+impl Default for Presentation {
+    fn default() -> Self {
+        Self {
+            mode: Mode::default(),
+            wrap: false,
+            tab_width: 4,
+            indicators: Indicators::default(),
+            backgrounds: true,
+            line_numbers: true,
+            whitespace: crate::diff::Whitespace::default(),
+            context: 3,
+        }
+    }
 }
 
 /// One line of one side of a file, counted from one.

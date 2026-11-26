@@ -3,6 +3,7 @@
 use std::path::{Path, PathBuf};
 
 use etcetera::BaseStrategy;
+use serde::Serialize;
 use serde::de::DeserializeOwned;
 use toml::{Table, Value};
 
@@ -14,6 +15,8 @@ pub enum Error {
     Parse { path: PathBuf, source: toml::de::Error },
     #[error(transparent)]
     Layered(#[from] toml::de::Error),
+    #[error(transparent)]
+    Serialized(#[from] toml::ser::Error),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -57,6 +60,14 @@ impl Settings {
         toml::from_str::<T>(&text).map_err(parse)?;
 
         Ok(Self { table: toml::from_str(&text).map_err(parse)? })
+    }
+
+    #[expect(
+        clippy::missing_errors_doc,
+        reason = "the Error enum names the only failure, a value TOML has no table for"
+    )]
+    pub fn serialized<T: Serialize>(value: &T) -> Result<Self> {
+        Ok(Self { table: Table::try_from(value)? })
     }
 
     #[must_use]

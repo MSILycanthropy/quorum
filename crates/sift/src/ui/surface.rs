@@ -13,37 +13,19 @@ use crate::command::{Binding, Catalog, Category, Command, PaletteEntry, PaletteT
 use crate::git::{Content, FileChange};
 use crate::theme::{Theme, Tints};
 use crate::ui::{
-    Anchor, Annotation, Control, Help, Icon, Mode, Palette, PaletteAction, Result, Review,
+    Anchor, Annotation, Control, Help, Icon, Palette, PaletteAction, Presentation, Result, Review,
 };
 
 /// What the surface is opened with, beyond its changes.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct Opening {
-    pub mode: Mode,
-    pub wrap: bool,
-    pub tab_width: usize,
+    pub presentation: Presentation,
     pub branch: Option<String>,
     pub comparing: String,
     pub files: Vec<PathBuf>,
     pub bindings: Vec<Binding>,
     pub unbound: Vec<Command>,
     pub theme: Theme,
-}
-
-impl Default for Opening {
-    fn default() -> Self {
-        Self {
-            mode: Mode::default(),
-            wrap: false,
-            tab_width: 4,
-            branch: None,
-            comparing: String::new(),
-            files: Vec::new(),
-            bindings: Vec::new(),
-            unbound: Vec::new(),
-            theme: Theme::default(),
-        }
-    }
 }
 
 impl Opening {
@@ -54,7 +36,7 @@ impl Opening {
     pub fn surface(self, changes: Vec<FileChange>) -> Result<Surface> {
         Ok(Surface {
             catalog: Catalog::default().unbind(&self.unbound)?.with(self.bindings)?,
-            review: Review::new(changes, self.mode, self.wrap, self.tab_width, self.theme.clone())?,
+            review: Review::new(changes, self.presentation, self.theme.clone())?,
             palette: Palette::new(self.theme.tints),
             help: Help::new(self.theme.tints),
             branch: self.branch,

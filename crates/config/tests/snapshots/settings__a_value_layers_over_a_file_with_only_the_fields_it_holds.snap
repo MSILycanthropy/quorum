@@ -1,0 +1,12 @@
+---
+source: crates/config/tests/settings.rs
+expression: "settings.parse::<Example>().expect(\"given is part of an example\")"
+---
+Example {
+    name: "base",
+    depth: 7,
+    nested: Nested {
+        colour: "red",
+        size: 1,
+    },
+}

@@ -184,7 +184,18 @@ pub struct Theme {
 }
 
 /// Where the tints come from: the terminal's own colours, or a bundled theme.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Deserialize)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Deserialize,
+    serde::Serialize,
+    clap::ValueEnum,
+)]
 #[serde(rename_all = "kebab-case")]
 pub enum Scheme {
     #[default]

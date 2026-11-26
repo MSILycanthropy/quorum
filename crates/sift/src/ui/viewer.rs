@@ -17,11 +17,11 @@ use crate::diff::{
 use crate::syntax::Syntax;
 use crate::theme::{Theme, Tints};
 use crate::ui::annotation::{clean, cut, has_body, heading, wrap};
-use crate::ui::{Annotation, Mode, Result};
+use crate::ui::{Annotation, Indicators, Mode, Presentation, Result};
 use hue::Rgb;
 
-/// How many rows of context a hunk jump leaves above the hunk, folding leaves
-/// around it, and the cursor keeps from the edges of the screen.
+/// How many rows a hunk jump leaves above the hunk, and the cursor keeps from
+/// the edges of the screen.
 const CONTEXT: usize = 3;
 
 /// Where to land once the diff has been laid out for the first time: a hunk,
@@ -76,15 +76,13 @@ pub struct Viewer {
     diff: FileDiff,
     side_by_side: Vec<Row>,
     unified: Vec<Row>,
-    mode: Mode,
+    presentation: Presentation,
     plain: bool,
     path: PathBuf,
     syntax: Syntax,
     old_syntax: Highlighting,
     new_syntax: Highlighting,
     tints: Tints,
-    wrap: bool,
-    tab_width: usize,
     top: usize,
     left: usize,
     height: usize,
@@ -131,9 +129,7 @@ impl Viewer {
     pub fn new(
         diff: FileDiff,
         path: &Path,
-        mode: Mode,
-        wrap: bool,
-        tab_width: usize,
+        presentation: Presentation,
         theme: &Theme,
     ) -> Result<Self> {
         let side_by_side = Align::default().rows(&diff);
@@ -144,15 +140,13 @@ impl Viewer {
             plain,
             diff,
             unified,
-            mode,
+            presentation,
             side_by_side,
             path: path.to_owned(),
             syntax: theme.syntax.clone(),
             old_syntax: Highlighting::EMPTY,
             new_syntax: Highlighting::EMPTY,
             tints: theme.tints,
-            wrap,
-            tab_width,
             top: 0,
             left: 0,
             height: 0,
@@ -177,11 +171,11 @@ impl Viewer {
     }
 
     pub fn mode(&self) -> Mode {
-        self.mode
+        self.presentation.mode
     }
 
     pub fn wrap(&self) -> bool {
-        self.wrap
+        self.presentation.wrap
     }
 
     pub fn scroll_by(&mut self, rows: isize) {
@@ -265,12 +259,12 @@ impl Viewer {
             Command::ScrollLeft => self.left = self.left.saturating_sub(4),
             Command::ScrollRight => self.left += 4,
             Command::ToggleWrapping => {
-                self.wrap = !self.wrap;
+                self.presentation.wrap = !self.presentation.wrap;
                 self.left = 0;
             }
             Command::ToggleLayout if self.plain => {}
             Command::ToggleLayout => {
-                self.mode = match self.mode {
+                self.presentation.mode = match self.presentation.mode {
                     Mode::SideBySide => Mode::Unified,
                     Mode::Unified => Mode::SideBySide,
                 };
@@ -339,7 +333,7 @@ impl Viewer {
                 self.lay_out();
             }
             Ok(row) => {
-                let divider = self.area.x + self.gutter() + 1 + self.pane();
+                let divider = self.area.x + self.margin() + self.pane();
                 let side = if column < divider { Side::Old } else { Side::New };
                 if self.shown() == Mode::SideBySide && cell(row, side).line.is_some() {
                     self.chosen = side;
@@ -517,7 +511,7 @@ impl Viewer {
                 (false, true) => "▸",
                 (false, false) => "▾",
             };
-            (marker, cut(&heading(&annotation.heading, self.tab_width), width))
+            (marker, cut(&heading(&annotation.heading, self.presentation.tab_width), width))
         } else {
             ("▎", body.get(row - 1)?.clone())
         };
@@ -534,8 +528,8 @@ impl Viewer {
 
         Some(Boxed {
             at: self.annotation_at(annotation.anchor.side),
-            divider: (!self.plain && self.mode == Mode::SideBySide)
-                .then(|| self.area.x + self.gutter() + 1 + self.pane()),
+            divider: (!self.plain && self.presentation.mode == Mode::SideBySide)
+                .then(|| self.area.x + self.margin() + self.pane()),
             marker,
             text,
             base,
@@ -545,12 +539,12 @@ impl Viewer {
     }
 
     fn annotation_at(&self, side: Side) -> u16 {
-        let gutter = self.gutter();
+        let margin = self.margin();
         let left = self.area.x;
-        match (self.plain, self.mode, side) {
-            (true, _, _) | (false, Mode::SideBySide, Side::Old) => left + gutter + 1,
-            (false, Mode::SideBySide, Side::New) => left + 2 * gutter + 3 + self.pane(),
-            (false, Mode::Unified, _) => left + 2 * (gutter + 1),
+        match (self.plain, self.presentation.mode, side) {
+            (true, _, _) | (false, Mode::SideBySide, Side::Old) => left + margin,
+            (false, Mode::SideBySide, Side::New) => left + 2 * margin + 1 + self.pane(),
+            (false, Mode::Unified, _) => left + margin + self.gutter() + 1,
         }
     }
 
@@ -762,7 +756,7 @@ impl Viewer {
     }
 
     fn shown(&self) -> Mode {
-        if self.plain { Mode::Unified } else { self.mode }
+        if self.plain { Mode::Unified } else { self.presentation.mode }
     }
 
     fn rows(&self) -> &[Row] {
@@ -773,16 +767,27 @@ impl Viewer {
     }
 
     fn gutter(&self) -> u16 {
+        if !self.presentation.line_numbers {
+            return 0;
+        }
         let widest = self.diff.old.len().max(self.diff.new.len()).max(1);
         u16::try_from(widest.to_string().len()).unwrap_or(u16::MAX)
     }
 
+    fn marker(&self) -> u16 {
+        u16::from(!self.plain && self.presentation.indicators != Indicators::None)
+    }
+
+    fn margin(&self) -> u16 {
+        self.gutter() + 1 + self.marker()
+    }
+
     fn pane(&self) -> u16 {
-        let gutter = self.gutter();
-        if self.plain {
-            self.area.width.saturating_sub(gutter + 1)
-        } else {
-            pane_width(self.area, gutter, self.mode)
+        let margin = self.margin();
+        match (self.plain, self.presentation.mode) {
+            (true, _) => self.area.width.saturating_sub(margin),
+            (false, Mode::SideBySide) => self.area.width.saturating_sub(2 * margin + 1) / 2,
+            (false, Mode::Unified) => self.area.width.saturating_sub(margin + self.gutter() + 1),
         }
     }
 
@@ -791,7 +796,8 @@ impl Viewer {
             return;
         }
         let pane = self.pane();
-        let geometry = Geometry { pane, wrap: self.wrap, left: self.left, mode: self.shown() };
+        let geometry =
+            Geometry { pane, wrap: self.presentation.wrap, left: self.left, mode: self.shown() };
         if self.laid_out == Some(geometry) {
             return;
         }
@@ -801,7 +807,9 @@ impl Viewer {
             self.bodies = self
                 .annotations
                 .iter()
-                .map(|annotation| wrap(&clean(&annotation.body, self.tab_width), text_width))
+                .map(|annotation| {
+                    wrap(&clean(&annotation.body, self.presentation.tab_width), text_width)
+                })
                 .collect();
             self.bodies_width = Some(text_width);
         }
@@ -809,8 +817,8 @@ impl Viewer {
         let layout = Layout {
             viewport: Viewport {
                 width: usize::from(pane),
-                tab_width: self.tab_width,
-                wrap: self.wrap,
+                tab_width: self.presentation.tab_width,
+                wrap: self.presentation.wrap,
                 scroll: self.left,
             },
             metric: &Cells,
@@ -939,7 +947,7 @@ impl Viewer {
         let rows = self.rows();
         let annotated: Vec<usize> = self.placed().iter().map(|placement| placement.row).collect();
 
-        foldable(rows)
+        foldable(rows, self.presentation.context)
             .into_iter()
             .flat_map(|range| around(range, &annotated))
             .filter(|range| !self.opened.contains(&first_line(rows, range)))
@@ -985,6 +993,10 @@ impl Widget for &mut Viewer {
             buffer,
             tints: self.tints,
             gutter: self.gutter(),
+            marker: self.marker(),
+            indicators: self.presentation.indicators,
+            backgrounds: self.presentation.backgrounds,
+            line_numbers: self.presentation.line_numbers,
             pane: self.pane(),
             left: area.x,
             width: area.width,
@@ -1009,7 +1021,7 @@ impl Widget for &mut Viewer {
             };
             let row = &rows[painted.row];
             let side = cursor.then(|| self.side_of(row));
-            match (self.plain, self.mode) {
+            match (self.plain, self.presentation.mode) {
                 (true, _) => screen.plain_row(y, painted, row, side),
                 (false, Mode::SideBySide) => screen.split_row(y, painted, row, side),
                 (false, Mode::Unified) => screen.unified_row(y, painted, row, side),
@@ -1051,6 +1063,10 @@ struct Screen<'a> {
     buffer: &'a mut Buffer,
     tints: Tints,
     gutter: u16,
+    marker: u16,
+    indicators: Indicators,
+    backgrounds: bool,
+    line_numbers: bool,
     pane: u16,
     left: u16,
     width: u16,
@@ -1111,10 +1127,19 @@ impl Screen<'_> {
         }
         let (old_number, new_number) = numbers(painted, row);
 
-        self.number(self.left, y, old_number, old.tint, cursor == Some(Side::Old));
-        self.text(self.left + self.gutter + 1, y, &painted.old, old);
+        let (old_change, new_change) = match row.kind {
+            RowKind::Equal => (None, None),
+            RowKind::Delete => (Some(Side::Old), None),
+            RowKind::Insert => (None, Some(Side::New)),
+            RowKind::Replace => (Some(Side::Old), Some(Side::New)),
+        };
 
-        let divider = self.left + self.gutter + 1 + self.pane;
+        self.number(self.left, y, old_number, old.tint, cursor == Some(Side::Old));
+        let old_at = self.left + self.gutter + 1;
+        self.indicator(old_at, y, old_change, old.tint, painted.continuation);
+        self.text(old_at + self.marker, y, &painted.old, old);
+
+        let divider = old_at + self.marker + self.pane;
         self.buffer.set_string(
             divider,
             y,
@@ -1123,7 +1148,9 @@ impl Screen<'_> {
         );
 
         self.number(divider + 1, y, new_number, new.tint, cursor == Some(Side::New));
-        self.text(divider + self.gutter + 2, y, &painted.new, new);
+        let new_at = divider + self.gutter + 2;
+        self.indicator(new_at, y, new_change, new.tint, painted.continuation);
+        self.text(new_at + self.marker, y, &painted.new, new);
     }
 
     fn unified_row(&mut self, y: u16, painted: &ScreenRow, row: &Row, cursor: Option<Side>) {
@@ -1142,8 +1169,15 @@ impl Screen<'_> {
             cursor == Some(Side::New),
         );
 
+        let change = match row.kind {
+            RowKind::Equal => None,
+            RowKind::Delete | RowKind::Replace => Some(Side::Old),
+            RowKind::Insert => Some(Side::New),
+        };
         let side = if row.old.line.is_some() { &painted.old } else { &painted.new };
-        self.text(self.left + 2 * (self.gutter + 1), y, side, wash);
+        let at = self.left + 2 * (self.gutter + 1);
+        self.indicator(at, y, change, wash.tint, painted.continuation);
+        self.text(at + self.marker, y, side, wash);
     }
 
     fn plain_row(&mut self, y: u16, painted: &ScreenRow, row: &Row, cursor: Option<Side>) {
@@ -1167,8 +1201,8 @@ impl Screen<'_> {
     fn split_washes(&self, kind: RowKind) -> (Wash, Wash) {
         let plain = Wash { tint: self.tints.background, emphasis: self.tints.background };
         let filler = Wash { tint: self.tints.filler, emphasis: self.tints.filler };
-        let removed = Wash { tint: self.tints.removed, emphasis: self.tints.removed_emphasis };
-        let added = Wash { tint: self.tints.added, emphasis: self.tints.added_emphasis };
+        let removed = self.changed(self.tints.removed, self.tints.removed_emphasis);
+        let added = self.changed(self.tints.added, self.tints.added_emphasis);
 
         match kind {
             RowKind::Equal => (plain, plain),
@@ -1182,14 +1216,21 @@ impl Screen<'_> {
         match kind {
             RowKind::Equal => Wash { tint: self.tints.background, emphasis: self.tints.background },
             RowKind::Delete | RowKind::Replace => {
-                Wash { tint: self.tints.removed, emphasis: self.tints.removed_emphasis }
+                self.changed(self.tints.removed, self.tints.removed_emphasis)
             }
-            RowKind::Insert => Wash { tint: self.tints.added, emphasis: self.tints.added_emphasis },
+            RowKind::Insert => self.changed(self.tints.added, self.tints.added_emphasis),
         }
     }
 
+    fn changed(&self, tint: Rgb, emphasis: Rgb) -> Wash {
+        let tint = if self.backgrounds { tint } else { self.tints.background };
+        Wash { tint, emphasis }
+    }
+
     fn number(&mut self, at: u16, y: u16, line: Option<usize>, tint: Rgb, cursor: bool) {
-        let number = line.map_or_else(String::new, |line| (line + 1).to_string());
+        let number = line
+            .filter(|_| self.line_numbers)
+            .map_or_else(String::new, |line| (line + 1).to_string());
         let gutter = usize::from(self.gutter);
         let foreground = if cursor { self.tints.attention } else { self.tints.gutter };
         self.buffer.set_stringn(
@@ -1197,6 +1238,29 @@ impl Screen<'_> {
             y,
             format!("{number:>gutter$} "),
             gutter + 1,
+            Style::new().fg(Color::from(foreground)).bg(Color::from(tint)),
+        );
+    }
+
+    fn indicator(&mut self, at: u16, y: u16, change: Option<Side>, tint: Rgb, continuation: bool) {
+        if self.marker == 0 {
+            return;
+        }
+        let symbol = match (self.indicators, change) {
+            (Indicators::None, _) | (_, None) => " ",
+            (Indicators::Bars, Some(_)) => "▎",
+            (Indicators::Signs, Some(_)) if continuation => " ",
+            (Indicators::Signs, Some(Side::Old)) => "-",
+            (Indicators::Signs, Some(Side::New)) => "+",
+        };
+        let foreground = match change {
+            Some(Side::Old) => self.tints.removed_text,
+            Some(Side::New) | None => self.tints.added_text,
+        };
+        self.buffer.set_string(
+            at,
+            y,
+            symbol,
             Style::new().fg(Color::from(foreground)).bg(Color::from(tint)),
         );
     }
@@ -1260,7 +1324,7 @@ fn distance(lines: &Range<usize>, line: usize) -> usize {
     }
 }
 
-fn foldable(rows: &[Row]) -> Vec<Range<usize>> {
+fn foldable(rows: &[Row], context: usize) -> Vec<Range<usize>> {
     if rows.iter().all(|row| row.kind == RowKind::Equal) {
         return Vec::new();
     }
@@ -1274,8 +1338,8 @@ fn foldable(rows: &[Row]) -> Vec<Range<usize>> {
             continue;
         }
         let end = start + length;
-        let hidden_start = if start == 0 { start } else { start + CONTEXT };
-        let hidden_end = if end == rows.len() { end } else { end.saturating_sub(CONTEXT) };
+        let hidden_start = if start == 0 { start } else { start + context };
+        let hidden_end = if end == rows.len() { end } else { end.saturating_sub(context) };
         if hidden_end > hidden_start + 1 {
             ranges.push(hidden_start..hidden_end);
         }
@@ -1348,11 +1412,4 @@ fn headings(screen: &[Line]) -> Vec<usize> {
 
 fn numbers(painted: &ScreenRow, row: &Row) -> (Option<usize>, Option<usize>) {
     if painted.continuation { (None, None) } else { (row.old.line, row.new.line) }
-}
-
-fn pane_width(area: Rect, gutter: u16, mode: Mode) -> u16 {
-    match mode {
-        Mode::SideBySide => area.width.saturating_sub(2 * gutter + 3) / 2,
-        Mode::Unified => area.width.saturating_sub(2 * gutter + 2),
-    }
 }

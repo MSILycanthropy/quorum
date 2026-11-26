@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use config::Settings;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -75,4 +75,21 @@ fn a_section_that_is_absent_reads_as_no_keys() {
     let section = read::<Example>("base.toml").section("guest");
 
     assert_eq!(section, Settings::default());
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize)]
+struct Given {
+    name: Option<String>,
+    depth: Option<usize>,
+}
+
+#[test]
+fn a_value_layers_over_a_file_with_only_the_fields_it_holds() {
+    let given = Given { name: None, depth: Some(7) };
+    let settings = read::<Example>("base.toml")
+        .over(Settings::serialized(&given).expect("a struct is a table"));
+
+    insta::assert_debug_snapshot!(
+        settings.parse::<Example>().expect("given is part of an example")
+    );
 }

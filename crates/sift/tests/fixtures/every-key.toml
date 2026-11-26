@@ -1,5 +1,10 @@
 layout = "unified"
 wrap = true
 tab-width = 8
+indicators = "signs"
+backgrounds = false
+line-numbers = false
+whitespace = "ignore"
+context = 5
 theme = "tokyo-night"
 syntax-theme = "github_light"

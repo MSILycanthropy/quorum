@@ -91,7 +91,19 @@ pub struct Change {
 }
 
 /// Whether lines that differ only in whitespace count as changed.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Deserialize,
+    serde::Serialize,
+    clap::ValueEnum,
+)]
+#[serde(rename_all = "kebab-case")]
 pub enum Whitespace {
     #[default]
     Compare,

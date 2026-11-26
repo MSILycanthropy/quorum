@@ -29,7 +29,7 @@ use sift::diff::{FileDiff, Source};
 use sift::git::{Comparison, Content, FileChange, Repository, Snapshot, Status, looks_generated};
 use sift::syntax::Syntax;
 use sift::theme::{Scheme, TerminalColors, Theme};
-use sift::ui::{Control, Mode, Opening, Surface};
+use sift::ui::{Control, Opening, Surface};
 
 #[derive(Debug, thiserror::Error)]
 enum Error {
@@ -56,10 +56,6 @@ impl From<sift::git::Error> for Error {
 type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, Parser)]
-#[expect(
-    clippy::struct_excessive_bools,
-    reason = "each bool is an independent command-line switch"
-)]
 #[command(
     version,
     about = "A terminal diff viewer over git.",
@@ -72,7 +68,7 @@ type Result<T> = std::result::Result<T, Error>;
         sift --show HEAD~2    one commit against its parent\n  \
         sift -- src/          only paths under src/\n  \
         sift --watch          follow along while something else edits\n\n\
-        Settings are read from ~/.config/sift/config.toml, and flags override them.\n\
+        Settings are read from ~/.config/sift/config.toml, and their flags override them.\n\
         Press ? inside for every key."
 )]
 struct Arguments {
@@ -86,14 +82,6 @@ struct Arguments {
     show: Option<String>,
     #[arg(long, num_args = 2, help = "Compare two files outside any repository", value_names = ["OLD", "NEW"], conflicts_with_all = ["revisions", "staged", "show"])]
     no_index: Vec<PathBuf>,
-    #[arg(long, overrides_with = "no_wrap", help = "Start with long lines wrapped")]
-    wrap: bool,
-    #[arg(long, overrides_with = "wrap", help = "Start with long lines running off the edge")]
-    no_wrap: bool,
-    #[arg(long, overrides_with = "side_by_side", help = "Start in the unified layout")]
-    unified: bool,
-    #[arg(long, overrides_with = "unified", help = "Start side by side")]
-    side_by_side: bool,
     #[arg(long, help = "Re-read the diff from git whenever it changes")]
     watch: bool,
     #[arg(
@@ -103,33 +91,8 @@ struct Arguments {
         help = "How often --watch checks git"
     )]
     interval: u64,
-    #[arg(long, value_name = "COLUMNS", help = "Columns a tab expands to")]
-    tab_width: Option<usize>,
-    #[arg(long, value_enum, help = "Where the background and diff colours come from")]
-    theme: Option<Tints>,
-    #[arg(
-        long,
-        value_name = "NAME|FILE",
-        help = "A Helix theme for the code: a name from ~/.config/helix/themes or bundled, or a file"
-    )]
-    syntax_theme: Option<String>,
-}
-
-/// Where the background and diff colours come from.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, clap::ValueEnum)]
-enum Tints {
-    #[default]
-    Terminal,
-    TokyoNight,
-}
-
-impl From<Tints> for Scheme {
-    fn from(tints: Tints) -> Self {
-        match tints {
-            Tints::Terminal => Self::Terminal,
-            Tints::TokyoNight => Self::TokyoNight,
-        }
-    }
+    #[command(flatten, next_help_heading = "Settings, also keys in config.toml")]
+    config: Config,
 }
 
 fn main() -> ExitCode {
@@ -155,9 +118,7 @@ fn view(arguments: &Arguments) -> Result<()> {
     let theme = theme(&config)?;
     let subject = Subject::open(arguments)?;
     let opening = Opening {
-        mode: config.layout,
-        wrap: config.wrap,
-        tab_width: config.tab_width,
+        presentation: config.presentation(),
         branch: subject.branch()?,
         comparing: subject.describe(),
         files: subject.files()?,
@@ -227,23 +188,14 @@ fn view(arguments: &Arguments) -> Result<()> {
 }
 
 fn config(arguments: &Arguments) -> Result<Config> {
-    let config: Config = config::Settings::of::<Config>("sift")?.parse()?;
+    let file = config::Settings::of::<Config>("sift")?;
+    let flags = config::Settings::serialized(&arguments.config)?;
 
-    Ok(Config {
-        layout: match (arguments.unified, arguments.side_by_side) {
-            (true, _) => Mode::Unified,
-            (_, true) => Mode::SideBySide,
-            _ => config.layout,
-        },
-        wrap: arguments.wrap || (config.wrap && !arguments.no_wrap),
-        tab_width: arguments.tab_width.unwrap_or(config.tab_width),
-        theme: arguments.theme.map_or(config.theme, Scheme::from),
-        syntax_theme: arguments.syntax_theme.clone().or(config.syntax_theme),
-    })
+    Ok(file.over(flags).parse()?)
 }
 
 fn theme(config: &Config) -> Result<Theme> {
-    let mut theme = match config.theme {
+    let mut theme = match config.theme.unwrap_or_default() {
         Scheme::Terminal => Query::default()
             .ask(TerminalColors::SLOTS)
             .ok()
