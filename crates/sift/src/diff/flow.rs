@@ -2,7 +2,7 @@
 
 use super::align::{Cell, Row, Span};
 use super::model::{FileDiff, Source};
-use crate::color::Rgb;
+use hue::Rgb;
 use std::iter;
 use std::ops::Range;
 use unicode_segmentation::UnicodeSegmentation;

@@ -9,7 +9,6 @@ use ratatui::style::{Color, Style};
 use ratatui::widgets::Widget;
 use unicode_width::UnicodeWidthStr;
 
-use crate::color::Rgb;
 use crate::command::{Binding, Catalog, Category, Command, PaletteEntry, PaletteTarget};
 use crate::git::{Content, FileChange};
 use crate::theme::{Theme, Tints};
@@ -259,9 +258,9 @@ impl Surface {
     }
 
     fn status(&self, buffer: &mut Buffer, area: Rect) {
-        let base = Style::new().bg(color(self.tints.filler));
-        let muted = base.fg(color(self.tints.muted));
-        let key = base.fg(color(self.tints.attention));
+        let base = Style::new().bg(Color::from(self.tints.filler));
+        let muted = base.fg(Color::from(self.tints.muted));
+        let key = base.fg(Color::from(self.tints.attention));
         buffer.set_style(area, base);
 
         let left = self.notice.clone().unwrap_or_else(|| self.summary());
@@ -340,8 +339,4 @@ fn hinted(hints: &[(String, &str)]) -> usize {
         .map(|(keys, hint)| keys.width() + hint.width() + 3)
         .sum::<usize>()
         .saturating_sub(2)
-}
-
-fn color(rgb: Rgb) -> Color {
-    Color::Rgb(rgb.red, rgb.green, rgb.blue)
 }

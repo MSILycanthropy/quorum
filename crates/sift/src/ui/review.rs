@@ -11,13 +11,13 @@ use ratatui::style::{Color, Style};
 use ratatui::widgets::Widget;
 use unicode_width::UnicodeWidthStr;
 
-use crate::color::Rgb;
 use crate::command::Command;
 use crate::diff::{FileDiff, Side, Whitespace};
 use crate::git::{Content, FileChange, Status};
 use crate::theme::Theme;
 use crate::ui::annotation::has_body;
 use crate::ui::{Anchor, Annotation, Control, Error, Landing, Mode, Result, Row, Tree, Viewer};
+use hue::Rgb;
 
 const SIDEBAR: u16 = 34;
 const NARROWEST: u16 = 40;
@@ -123,13 +123,13 @@ impl Review {
             y,
             added,
             usize::MAX,
-            Style::new().fg(color(self.theme.tints.added_text)).bg(color(row)),
+            Style::new().fg(Color::from(self.theme.tints.added_text)).bg(Color::from(row)),
         );
         buffer.set_string(
             x + 1,
             y,
             removed,
-            Style::new().fg(color(self.theme.tints.removed_text)).bg(color(row)),
+            Style::new().fg(Color::from(self.theme.tints.removed_text)).bg(Color::from(row)),
         );
     }
 
@@ -711,7 +711,9 @@ impl Review {
             area.y,
             name,
             usize::from(area.width.saturating_sub(2)),
-            Style::new().fg(color(self.theme.tints.muted)).bg(color(self.theme.tints.filler)),
+            Style::new()
+                .fg(Color::from(self.theme.tints.muted))
+                .bg(Color::from(self.theme.tints.filler)),
         );
     }
 
@@ -775,7 +777,7 @@ impl Review {
 
             buffer.set_style(
                 Rect::new(area.x, area.y + y, area.width, 1),
-                Style::new().bg(color(row)),
+                Style::new().bg(Color::from(row)),
             );
 
             let Some(change) = listed.change.and_then(|change| self.changes.get(change)) else {
@@ -783,14 +785,14 @@ impl Review {
                     area.x + 1 + indent,
                     area.y + y,
                     listed.icon.glyph.to_string(),
-                    Style::new().fg(color(listed.icon.color)).bg(color(row)),
+                    Style::new().fg(Color::from(listed.icon.color)).bg(Color::from(row)),
                 );
                 buffer.set_stringn(
                     area.x + 3 + indent,
                     area.y + y,
                     &listed.label,
                     usize::from(area.width.saturating_sub(4 + indent)),
-                    Style::new().fg(color(self.theme.tints.muted)).bg(color(row)),
+                    Style::new().fg(Color::from(self.theme.tints.muted)).bg(Color::from(row)),
                 );
                 continue;
             };
@@ -800,8 +802,8 @@ impl Review {
                 area.y + y,
                 listed.icon.glyph.to_string(),
                 Style::new()
-                    .fg(color(listed.icon.color))
-                    .bg(color(self.swatch(change.status, selected))),
+                    .fg(Color::from(listed.icon.color))
+                    .bg(Color::from(self.swatch(change.status, selected))),
             );
             let viewed = self.viewed.contains_key(&change.path);
             let label = if viewed { self.theme.tints.muted } else { self.theme.tints.foreground };
@@ -811,14 +813,14 @@ impl Review {
                 area.y + y,
                 &listed.label,
                 usize::from(end.saturating_sub(area.x + 3 + indent)),
-                Style::new().fg(color(label)).bg(color(row)),
+                Style::new().fg(Color::from(label)).bg(Color::from(row)),
             );
             if viewed {
                 buffer.set_string(
                     end,
                     area.y + y,
                     "✓",
-                    Style::new().fg(color(self.theme.tints.muted)).bg(color(row)),
+                    Style::new().fg(Color::from(self.theme.tints.muted)).bg(Color::from(row)),
                 );
             } else {
                 let room = Rect::new(x + 1, area.y + y, end.saturating_sub(x + 1), 1);
@@ -832,8 +834,8 @@ impl Review {
                 area.y + y,
                 "│",
                 Style::new()
-                    .fg(color(self.theme.tints.gutter))
-                    .bg(color(self.theme.tints.background)),
+                    .fg(Color::from(self.theme.tints.gutter))
+                    .bg(Color::from(self.theme.tints.background)),
             );
         }
     }
@@ -859,7 +861,7 @@ impl Widget for &mut Review {
             }
             return;
         }
-        let style = Style::new().bg(color(self.theme.tints.background));
+        let style = Style::new().bg(Color::from(self.theme.tints.background));
         buffer.set_style(area, style);
 
         let titled = match (&self.peek, self.changes.get(self.opened)) {
@@ -874,7 +876,7 @@ impl Widget for &mut Review {
                 None => format!("{} {}", change.status.letter(), change.path.display()),
             },
             (None, None) => {
-                let style = style.fg(color(self.theme.tints.foreground));
+                let style = style.fg(Color::from(self.theme.tints.foreground));
                 buffer.set_stringn(area.x, area.y, "no changes", area.width.into(), style);
                 return;
             }
@@ -886,7 +888,7 @@ impl Widget for &mut Review {
         let (sidebar, body) = self.panes(rest);
         self.listed = sidebar;
 
-        buffer.set_style(header, Style::new().bg(color(self.theme.tints.filler)));
+        buffer.set_style(header, Style::new().bg(Color::from(self.theme.tints.filler)));
 
         let heading = match sidebar {
             Some(sidebar) => {
@@ -916,7 +918,9 @@ impl Widget for &mut Review {
             heading.y,
             titled,
             end.saturating_sub(heading.x + 1).into(),
-            Style::new().fg(color(self.theme.tints.foreground)).bg(color(self.theme.tints.filler)),
+            Style::new()
+                .fg(Color::from(self.theme.tints.foreground))
+                .bg(Color::from(self.theme.tints.filler)),
         );
         if self.peek.is_none()
             && let Some(change) = self.changes.get(self.opened)
@@ -933,7 +937,9 @@ impl Widget for &mut Review {
             heading.y,
             counter,
             room.min(heading.width).into(),
-            Style::new().fg(color(self.theme.tints.gutter)).bg(color(self.theme.tints.filler)),
+            Style::new()
+                .fg(Color::from(self.theme.tints.gutter))
+                .bg(Color::from(self.theme.tints.filler)),
         );
 
         if let Some(sidebar) = sidebar {
@@ -946,8 +952,8 @@ impl Widget for &mut Review {
             viewer.render(body, buffer);
         } else {
             let style = Style::new()
-                .fg(color(self.theme.tints.gutter))
-                .bg(color(self.theme.tints.background));
+                .fg(Color::from(self.theme.tints.gutter))
+                .bg(Color::from(self.theme.tints.background));
             buffer.set_stringn(body.x + 1, body.y, placeholder, body.width.into(), style);
         }
     }
@@ -981,8 +987,4 @@ fn fingerprint(change: &FileChange) -> u64 {
     let mut hasher = DefaultHasher::new();
     change.content.hash(&mut hasher);
     hasher.finish()
-}
-
-fn color(rgb: Rgb) -> Color {
-    Color::Rgb(rgb.red, rgb.green, rgb.blue)
 }

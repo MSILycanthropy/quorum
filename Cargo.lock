@@ -1769,6 +1769,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6dbf3de79e51f3d586ab4cb9d5c3e2c14aa28ed23d180cf89b4df0454a69cc87"
 
 [[package]]
+name = "hue"
+version = "0.1.0"
+dependencies = [
+ "ratatui",
+ "rustix",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "icu_collections"
 version = "2.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2854,10 +2863,10 @@ dependencies = [
  "clap",
  "devicons",
  "gix",
+ "hue",
  "inkjet",
  "insta",
  "ratatui",
- "rustix",
  "similar 3.2.0",
  "thiserror 2.0.20",
  "tree-sitter-embedded-template",

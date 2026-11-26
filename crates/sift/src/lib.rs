@@ -1,6 +1,5 @@
 //! A terminal diff viewer over git.
 
-pub mod color;
 pub mod command;
 pub mod diff;
 pub mod git;

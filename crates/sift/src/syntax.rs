@@ -10,8 +10,8 @@ use inkjet::constants::HIGHLIGHT_NAMES;
 use inkjet::theme::{Theme, vendored};
 use inkjet::tree_sitter_highlight::{self, HighlightConfiguration, HighlightEvent, Highlighter};
 
-use crate::color::Rgb;
 use crate::diff::{Highlight, Highlighting, Source, Span};
+use hue::Rgb;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {

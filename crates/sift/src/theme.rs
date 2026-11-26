@@ -1,8 +1,7 @@
 //! The colours Sift draws with: tints for rows and chrome, and a syntax theme for code.
 
-mod terminal;
+use hue::{Ansi, Palette, Rgb, Slot};
 
-use crate::color::Rgb;
 use crate::syntax::Syntax;
 
 const BACKGROUND: Rgb = Rgb::new(0x1a, 0x1b, 0x26);
@@ -106,6 +105,28 @@ pub struct TerminalColors {
 }
 
 impl TerminalColors {
+    pub const SLOTS: &[Slot] = &[
+        Slot::Background,
+        Slot::Foreground,
+        Slot::Ansi(Ansi::Red),
+        Slot::Ansi(Ansi::Green),
+        Slot::Ansi(Ansi::Yellow),
+    ];
+
+    pub const fn from_palette(palette: &Palette) -> Option<Self> {
+        let (Some(background), Some(foreground), Some(red), Some(green), Some(yellow)) = (
+            palette.background(),
+            palette.foreground(),
+            palette.ansi(Ansi::Red),
+            palette.ansi(Ansi::Green),
+            palette.ansi(Ansi::Yellow),
+        ) else {
+            return None;
+        };
+
+        Some(Self { background, foreground, red, green, yellow })
+    }
+
     pub const fn tints(&self) -> Tints {
         let background = self.background;
         let added = background.blend(self.green, LINE_MIX);

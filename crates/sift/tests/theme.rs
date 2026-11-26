@@ -2,7 +2,7 @@
 
 use std::fmt::Write;
 
-use sift::color::Rgb;
+use hue::{Palette, Rgb, Slot};
 use sift::syntax::Syntax;
 use sift::theme::{TerminalColors, Tints, TokyoNight};
 
@@ -64,7 +64,7 @@ fn emphasis_tints_lean_from_the_line_tint_toward_their_accent() {
 }
 
 #[test]
-fn a_terminal_that_answers_every_query_reports_its_colours() {
+fn a_terminal_that_answers_all_five_colours_sift_reads_gives_them_all() {
     let replies = b"\x1b]10;rgb:c0c0/caca/f5f5\x1b\\\
         \x1b]11;rgb:1a/1b/26\x07\
         \x1b]4;1;rgb:f7f7/7676/8e8e\x1b\\\
@@ -72,24 +72,30 @@ fn a_terminal_that_answers_every_query_reports_its_colours() {
         \x1b]4;3;rgb:e0e0/afaf/6868\x1b\\\
         \x1b[?62;22c";
 
-    assert_eq!(TerminalColors::from_replies(replies), Some(DARK));
+    assert_eq!(TerminalColors::from_palette(&Palette::from_replies(replies)), Some(DARK));
 }
 
 #[test]
-fn channels_of_any_width_scale_to_eight_bits() {
-    let replies = b"\x1b]10;rgb:f/80/fff\x07\x1b]11;rgb:0/0/0\x07\
-        \x1b]4;1;rgb:ffff/0/0\x07\x1b]4;2;rgb:0/ffff/0\x07\x1b]4;3;rgb:ff/ff/0\x07";
-
-    let colors = TerminalColors::from_replies(replies).expect("every colour was answered");
-
-    assert_eq!(colors.foreground.to_string(), "#ff80ff");
-}
-
-#[test]
-fn a_terminal_that_leaves_a_colour_unanswered_reports_nothing() {
+fn a_terminal_that_leaves_one_of_the_five_unanswered_gives_none() {
     let replies = b"\x1b]10;rgb:c0c0/caca/f5f5\x1b\\\x1b]11;rgb:1a1a/1b1b/2626\x1b\\\x1b[?62c";
 
-    assert_eq!(TerminalColors::from_replies(replies), None);
+    assert_eq!(TerminalColors::from_palette(&Palette::from_replies(replies)), None);
+}
+
+#[test]
+fn every_colour_terminal_colours_reads_is_one_it_asks_for() {
+    let mut replies = String::new();
+    for slot in TerminalColors::SLOTS {
+        let written = match slot {
+            Slot::Foreground => write!(replies, "\x1b]10;rgb:80/80/80\x07"),
+            Slot::Background => write!(replies, "\x1b]11;rgb:80/80/80\x07"),
+            Slot::Cursor => write!(replies, "\x1b]12;rgb:80/80/80\x07"),
+            Slot::Ansi(color) => write!(replies, "\x1b]4;{};rgb:80/80/80\x07", *color as usize),
+        };
+        written.expect("writing to a String cannot fail");
+    }
+
+    assert!(TerminalColors::from_palette(&Palette::from_replies(replies.as_bytes())).is_some());
 }
 
 #[test]

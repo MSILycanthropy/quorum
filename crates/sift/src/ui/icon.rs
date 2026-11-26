@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use crate::color::Rgb;
+use hue::Rgb;
 
 /// A glyph and the colour it is drawn in.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]

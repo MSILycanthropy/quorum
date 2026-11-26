@@ -1,0 +1,15 @@
+[package]
+name = "hue"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "The colours a terminal reports of its own theme."
+
+[dependencies]
+ratatui.workspace = true
+rustix = { version = "1.1.4", features = ["termios"] }
+thiserror.workspace = true
+
+[lints]
+workspace = true

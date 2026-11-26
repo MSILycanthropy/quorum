@@ -9,7 +9,6 @@ use ratatui::layout::{Position, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::Widget;
 
-use crate::color::Rgb;
 use crate::command::Command;
 use crate::diff::{
     Align, Cell, Cells, ChangeKind, FileDiff, Highlighting, Layout, Painted, Row, RowKind,
@@ -19,6 +18,7 @@ use crate::syntax::Syntax;
 use crate::theme::{Theme, Tints};
 use crate::ui::annotation::{clean, cut, has_body, heading, wrap};
 use crate::ui::{Annotation, Mode, Result};
+use hue::Rgb;
 
 /// How many rows of context a hunk jump leaves above the hunk, folding leaves
 /// around it, and the cursor keeps from the edges of the screen.
@@ -524,13 +524,13 @@ impl Viewer {
 
         let background =
             if cursor { self.tints.under_cursor(self.tints.filler) } else { self.tints.filler };
-        let base = Style::new().bg(color(background));
+        let base = Style::new().bg(Color::from(background));
         let (marker_color, text_color) = if annotation.faded {
             (self.tints.gutter, self.tints.muted)
         } else {
             (self.tints.attention, self.tints.foreground)
         };
-        let text_style = base.fg(color(text_color));
+        let text_style = base.fg(Color::from(text_color));
 
         Some(Boxed {
             at: self.annotation_at(annotation.anchor.side),
@@ -539,7 +539,7 @@ impl Viewer {
             marker,
             text,
             base,
-            marker_style: base.fg(color(marker_color)),
+            marker_style: base.fg(Color::from(marker_color)),
             text_style: if row == 0 { text_style.add_modifier(Modifier::BOLD) } else { text_style },
         })
     }
@@ -976,7 +976,7 @@ impl Widget for &mut Viewer {
             self.follow();
         }
 
-        buffer.set_style(area, Style::new().bg(color(self.tints.background)));
+        buffer.set_style(area, Style::new().bg(Color::from(self.tints.background)));
         if self.pane() == 0 {
             return;
         }
@@ -1063,7 +1063,7 @@ impl Screen<'_> {
         } else {
             (self.tints.muted, self.tints.filler)
         };
-        let style = Style::new().fg(color(foreground)).bg(color(background));
+        let style = Style::new().fg(Color::from(foreground)).bg(Color::from(background));
         self.buffer.set_style(Rect::new(self.left, y, self.width, 1), style);
         let label = match hidden {
             1 => "⋯ 1 unchanged line".to_owned(),
@@ -1084,7 +1084,9 @@ impl Screen<'_> {
                 divider,
                 y,
                 "│",
-                Style::new().fg(color(self.tints.gutter)).bg(color(self.tints.background)),
+                Style::new()
+                    .fg(Color::from(self.tints.gutter))
+                    .bg(Color::from(self.tints.background)),
             );
         }
         let pane = usize::from(self.pane);
@@ -1117,7 +1119,7 @@ impl Screen<'_> {
             divider,
             y,
             "│",
-            Style::new().fg(color(self.tints.gutter)).bg(color(self.tints.background)),
+            Style::new().fg(Color::from(self.tints.gutter)).bg(Color::from(self.tints.background)),
         );
 
         self.number(divider + 1, y, new_number, new.tint, cursor == Some(Side::New));
@@ -1195,12 +1197,13 @@ impl Screen<'_> {
             y,
             format!("{number:>gutter$} "),
             gutter + 1,
-            Style::new().fg(color(foreground)).bg(color(tint)),
+            Style::new().fg(Color::from(foreground)).bg(Color::from(tint)),
         );
     }
 
     fn text(&mut self, at: u16, y: u16, painted: &Painted, wash: Wash) {
-        self.buffer.set_style(Rect::new(at, y, self.pane, 1), Style::new().bg(color(wash.tint)));
+        self.buffer
+            .set_style(Rect::new(at, y, self.pane, 1), Style::new().bg(Color::from(wash.tint)));
 
         let mut x = at;
         for run in &painted.runs {
@@ -1212,7 +1215,7 @@ impl Screen<'_> {
                 y,
                 &run.text,
                 remaining,
-                Style::new().fg(color(foreground)).bg(color(background)),
+                Style::new().fg(Color::from(foreground)).bg(Color::from(background)),
             );
         }
     }
@@ -1352,8 +1355,4 @@ fn pane_width(area: Rect, gutter: u16, mode: Mode) -> u16 {
         Mode::SideBySide => area.width.saturating_sub(2 * gutter + 3) / 2,
         Mode::Unified => area.width.saturating_sub(2 * gutter + 2),
     }
-}
-
-fn color(rgb: Rgb) -> Color {
-    Color::Rgb(rgb.red, rgb.green, rgb.blue)
 }

@@ -2,6 +2,8 @@
 
 use std::fmt;
 
+use ratatui::style::Color;
+
 /// A colour, in the only form every frontend agrees on.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct Rgb {
@@ -33,6 +35,12 @@ impl Rgb {
 impl fmt::Display for Rgb {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(formatter, "#{:02x}{:02x}{:02x}", self.red, self.green, self.blue)
+    }
+}
+
+impl From<Rgb> for Color {
+    fn from(rgb: Rgb) -> Self {
+        Self::Rgb(rgb.red, rgb.green, rgb.blue)
     }
 }
 

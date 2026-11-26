@@ -3,12 +3,12 @@
 use std::fmt::Write;
 use std::path::PathBuf;
 
+use hue::Rgb;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::buffer::Buffer;
 use ratatui::crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::style::Color;
-use sift::color::Rgb;
 use sift::command::Command;
 use sift::diff::{FileDiff, Side, Source};
 use sift::git::{Content, FileChange, Status};

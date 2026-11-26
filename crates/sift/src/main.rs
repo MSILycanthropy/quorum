@@ -13,6 +13,7 @@ use std::sync::mpsc::{Sender, channel};
 use std::time::Duration;
 
 use clap::Parser;
+use hue::Query;
 use ratatui::DefaultTerminal;
 use ratatui::crossterm::event::{
     self, DisableMouseCapture, EnableMouseCapture, KeyEvent, KeyEventKind,
@@ -214,7 +215,11 @@ fn view(arguments: &Arguments) -> Result<()> {
 
 fn theme(arguments: &Arguments) -> Result<Theme> {
     let mut theme = match arguments.theme {
-        Tints::Terminal => TerminalColors::query(Duration::from_millis(500))
+        Tints::Terminal => Query::default()
+            .ask(TerminalColors::SLOTS)
+            .ok()
+            .as_ref()
+            .and_then(TerminalColors::from_palette)
             .map_or_else(Theme::default, |colors| colors.theme()),
         Tints::TokyoNight => Theme::default(),
     };

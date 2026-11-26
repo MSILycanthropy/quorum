@@ -3,11 +3,11 @@
 use std::fmt::Write;
 use std::path::Path;
 
+use hue::Rgb;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::buffer::Buffer;
 use ratatui::style::Color;
-use sift::color::Rgb;
 use sift::command::Command;
 use sift::diff::{FileDiff, Side, Source};
 use sift::theme::{Theme, TokyoNight};

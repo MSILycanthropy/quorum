@@ -6,7 +6,6 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::{Clear, Widget};
 use unicode_width::UnicodeWidthStr;
 
-use crate::color::Rgb;
 use crate::command::{Binding, Catalog, Category};
 use crate::theme::Tints;
 
@@ -156,12 +155,12 @@ struct Painter {
 
 impl Painter {
     fn base(&self) -> Style {
-        Style::new().bg(color(self.tints.filler)).fg(color(self.tints.foreground))
+        Style::new().bg(Color::from(self.tints.filler)).fg(Color::from(self.tints.foreground))
     }
 
     fn column(&self, buffer: &mut Buffer, x: u16, sections: &[&Section]) {
-        let heading = self.base().fg(color(self.tints.muted)).add_modifier(Modifier::BOLD);
-        let key = self.base().fg(color(self.tints.attention));
+        let heading = self.base().fg(Color::from(self.tints.muted)).add_modifier(Modifier::BOLD);
+        let key = self.base().fg(Color::from(self.tints.attention));
         let bottom = self.popup.y + self.popup.height.saturating_sub(1);
         let label_x = x + u16::try_from(self.keys_width + 2).unwrap_or(u16::MAX);
         let mut y = self.popup.y + 1;
@@ -196,10 +195,6 @@ impl Painter {
         }
         let x = (self.popup.x + self.popup.width).saturating_sub(width);
         let y = self.popup.y + self.popup.height.saturating_sub(1);
-        buffer.set_string(x, y, CLOSING, self.base().fg(color(self.tints.muted)));
+        buffer.set_string(x, y, CLOSING, self.base().fg(Color::from(self.tints.muted)));
     }
-}
-
-fn color(rgb: Rgb) -> Color {
-    Color::Rgb(rgb.red, rgb.green, rgb.blue)
 }

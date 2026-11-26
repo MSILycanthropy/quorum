@@ -7,7 +7,6 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::{Clear, Widget};
 use unicode_width::UnicodeWidthStr;
 
-use crate::color::Rgb;
 use crate::command::{PaletteEntry, PaletteModel, PaletteTarget, located};
 use crate::theme::Tints;
 
@@ -143,7 +142,7 @@ impl Palette {
                 area.x + area.width - keys - 1,
                 area.y,
                 &entry.keys,
-                style.fg(color(self.tints.attention)),
+                style.fg(Color::from(self.tints.attention)),
             );
         }
     }
@@ -163,8 +162,9 @@ impl Widget for &Palette {
         let popup = Rect::new(left, top, width, height);
         Clear.render(popup, buffer);
 
-        let base = Style::new().bg(color(self.tints.filler)).fg(color(self.tints.foreground));
-        let muted = base.fg(color(self.tints.muted));
+        let base =
+            Style::new().bg(Color::from(self.tints.filler)).fg(Color::from(self.tints.foreground));
+        let muted = base.fg(Color::from(self.tints.muted));
         buffer.set_style(popup, base);
         let inner = popup.width.saturating_sub(2);
 
@@ -187,15 +187,11 @@ impl Widget for &Palette {
         for (offset, entry) in ranked.iter().enumerate().skip(first).take(room) {
             let y = popup.y + 1 + u16::try_from(offset - first).unwrap_or(u16::MAX);
             let selected = offset == self.selected;
-            let style = if selected { base.bg(color(self.tints.gutter)) } else { base };
+            let style = if selected { base.bg(Color::from(self.tints.gutter)) } else { base };
             self.row(buffer, Rect::new(popup.x, y, popup.width, 1), entry, style);
         }
         if ranked.is_empty() {
             buffer.set_stringn(popup.x + 1, popup.y + 1, "no matches", usize::from(inner), muted);
         }
     }
-}
-
-fn color(rgb: Rgb) -> Color {
-    Color::Rgb(rgb.red, rgb.green, rgb.blue)
 }
