@@ -68,7 +68,17 @@ fn list(arguments: Arguments) -> Result<()> {
         None => Repository::of(&std::env::current_dir()?)?,
     };
     let client = Client::signed_in()?;
-    let listed = client.pull_requests(&repository, arguments.filter.into())?;
+    let mut listed =
+        client.pull_requests(&repository, arguments.filter.into(), None)?.pull_requests;
+    let ids: Vec<String> = listed.iter().map(|pull_request| pull_request.id.clone()).collect();
+    for answer in client.standings(&ids) {
+        for (id, standing) in answer? {
+            if let Some(pull_request) = listed.iter_mut().find(|pull_request| pull_request.id == id)
+            {
+                pull_request.standing = Some(standing);
+            }
+        }
+    }
 
     println!("{repository}");
     for pull_request in &listed {
@@ -89,12 +99,13 @@ fn row(pull_request: &PullRequest) -> String {
         State::Merged => "merged",
     };
 
+    let size = pull_request
+        .standing
+        .as_ref()
+        .map_or_else(String::new, |standing| format!("+{} −{}", standing.added, standing.removed));
+
     format!(
-        "#{:<5} {state:<7} {:<16} +{:<5} −{:<5} {}",
-        pull_request.number,
-        pull_request.author,
-        pull_request.added,
-        pull_request.removed,
-        pull_request.title
+        "#{:<5} {state:<7} {:<16} {size:<13} {}",
+        pull_request.number, pull_request.author, pull_request.title
     )
 }

@@ -1,28 +1,52 @@
-//! A repository's pull requests that match a filter, as a list shows them.
+//! A page of a repository's pull requests that match a filter, as a list shows them.
 
 use serde::{Deserialize, Serialize};
 
-use crate::github::{Client, Result, timestamp};
-use crate::model::{
-    Branch, CheckState, Filter, Mergeability, PullRequest, Repository, ReviewDecision, State,
-};
+use crate::github::{Client, Result, printable, timestamp};
+use crate::model::{Branch, Filter, PullRequest, Repository, State};
 
 const QUERY: &str = include_str!("pull_requests.graphql");
 
-const PAGE: usize = 50;
+const PAGE: usize = 20;
 const GHOST: &str = "ghost";
 
+/// Where the next page of a listing starts. Only GitHub can make one.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Cursor(String);
+
+/// One page of a listing, and where the next one starts if there is more.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Page {
+    pub pull_requests: Vec<PullRequest>,
+    pub next: Option<Cursor>,
+}
+
 #[derive(Serialize)]
-struct Variables {
+struct Variables<'cursor> {
     owner: String,
     name: String,
     search: String,
     first: usize,
+    after: Option<&'cursor str>,
 }
 
 #[derive(Deserialize)]
 struct Data {
-    search: Nodes<Node>,
+    search: Search,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Search {
+    page_info: PageInfo,
+    nodes: Vec<Node>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PageInfo {
+    has_next_page: bool,
+    end_cursor: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -41,6 +65,7 @@ enum Node {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Found {
+    id: String,
     number: u64,
     title: String,
     author: Option<Login>,
@@ -52,15 +77,8 @@ struct Found {
     head_ref_oid: String,
     created_at: String,
     updated_at: String,
-    review_decision: Option<String>,
-    mergeable: String,
-    additions: usize,
-    deletions: usize,
-    changed_files: usize,
     comments: Count,
     labels: Nodes<Label>,
-    review_requests: Nodes<ReviewRequest>,
-    commits: Nodes<Pushed>,
 }
 
 #[derive(Deserialize)]
@@ -79,28 +97,6 @@ struct Label {
     name: String,
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ReviewRequest {
-    requested_reviewer: Option<Login>,
-}
-
-#[derive(Deserialize)]
-struct Pushed {
-    commit: Rollups,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Rollups {
-    status_check_rollup: Option<Rollup>,
-}
-
-#[derive(Deserialize)]
-struct Rollup {
-    state: String,
-}
-
 impl Client {
     #[expect(
         clippy::missing_errors_doc,
@@ -110,12 +106,17 @@ impl Client {
         &self,
         repository: &Repository,
         filter: Filter,
-    ) -> Result<Vec<PullRequest>> {
-        read(self.query(QUERY, variables(repository, filter))?)
+        after: Option<&Cursor>,
+    ) -> Result<Page> {
+        read(self.query(QUERY, variables(repository, filter, after))?)
     }
 }
 
-fn variables(repository: &Repository, filter: Filter) -> Variables {
+fn variables<'cursor>(
+    repository: &Repository,
+    filter: Filter,
+    after: Option<&'cursor Cursor>,
+) -> Variables<'cursor> {
     let qualifiers = match filter {
         Filter::Open => "is:open",
         Filter::Mine => "is:open author:@me",
@@ -129,18 +130,24 @@ fn variables(repository: &Repository, filter: Filter) -> Variables {
         name: repository.name.clone(),
         search: format!("repo:{repository} is:pr {qualifiers} sort:updated-desc"),
         first: PAGE,
+        after: after.map(|cursor| cursor.0.as_str()),
     }
 }
 
-fn read(data: Data) -> Result<Vec<PullRequest>> {
-    data.search
+fn read(data: Data) -> Result<Page> {
+    let pull_requests = data
+        .search
         .nodes
         .into_iter()
         .filter_map(|node| match node {
             Node::PullRequest(found) => Some(found.into_model()),
             Node::Other => None,
         })
-        .collect()
+        .collect::<Result<_>>()?;
+    let page_info = data.search.page_info;
+    let next = page_info.end_cursor.filter(|_| page_info.has_next_page).map(Cursor);
+
+    Ok(Page { pull_requests, next })
 }
 
 impl Found {
@@ -151,30 +158,9 @@ impl Found {
             (_, true) => State::Draft,
             _ => State::Open,
         };
-        let review_decision = match self.review_decision.as_deref() {
-            Some("APPROVED") => Some(ReviewDecision::Approved),
-            Some("CHANGES_REQUESTED") => Some(ReviewDecision::ChangesRequested),
-            Some("REVIEW_REQUIRED") => Some(ReviewDecision::ReviewRequired),
-            _ => None,
-        };
-        let mergeability = match self.mergeable.as_str() {
-            "MERGEABLE" => Mergeability::Clean,
-            "CONFLICTING" => Mergeability::Conflicting,
-            _ => Mergeability::Unknown,
-        };
-        let checks = self
-            .commits
-            .nodes
-            .into_iter()
-            .next_back()
-            .and_then(|pushed| pushed.commit.status_check_rollup)
-            .map(|rollup| match rollup.state.as_str() {
-                "SUCCESS" => CheckState::Passed,
-                "FAILURE" | "ERROR" => CheckState::Failed,
-                _ => CheckState::Pending,
-            });
 
         Ok(PullRequest {
+            id: self.id,
             number: self.number,
             title: printable(self.title),
             author: self.author.map_or_else(|| GHOST.to_owned(), |author| author.login),
@@ -183,29 +169,9 @@ impl Found {
             head: Branch { name: self.head_ref_name, commit: self.head_ref_oid },
             created: timestamp::parse(&self.created_at)?,
             updated: timestamp::parse(&self.updated_at)?,
-            review_decision,
-            checks,
-            mergeability,
             labels: self.labels.nodes.into_iter().map(|label| printable(label.name)).collect(),
-            requested_reviewers: self
-                .review_requests
-                .nodes
-                .into_iter()
-                .filter_map(|request| request.requested_reviewer)
-                .map(|reviewer| printable(reviewer.login))
-                .collect(),
-            added: self.additions,
-            removed: self.deletions,
-            changed_files: self.changed_files,
             comments: self.comments.total_count,
+            standing: None,
         })
     }
-}
-
-fn printable(text: String) -> String {
-    if text.chars().any(char::is_control) {
-        return text.chars().filter(|character| !character.is_control()).collect();
-    }
-
-    text
 }

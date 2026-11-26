@@ -2912,6 +2912,7 @@ dependencies = [
  "gix",
  "inkjet",
  "ratatui",
+ "rustix",
  "similar 3.2.1",
  "thiserror 2.0.21",
  "tree-sitter-embedded-template",

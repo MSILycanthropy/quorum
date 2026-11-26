@@ -1,0 +1,46 @@
+{
+  "data": {
+    "nodes": [
+      {
+        "id": "PR_sift12",
+        "reviewDecision": "APPROVED",
+        "mergeable": "MERGEABLE",
+        "additions": 412,
+        "deletions": 37,
+        "changedFiles": 9,
+        "reviewRequests": {
+          "nodes": [
+            { "requestedReviewer": { "login": "hubot" } },
+            { "requestedReviewer": { "login": "review\u0000ers" } },
+            { "requestedReviewer": null }
+          ]
+        },
+        "commits": {
+          "nodes": [{ "commit": { "statusCheckRollup": { "state": "SUCCESS" } } }]
+        }
+      },
+      {
+        "id": "PR_sift13",
+        "reviewDecision": null,
+        "mergeable": "UNKNOWN",
+        "additions": 0,
+        "deletions": 0,
+        "changedFiles": 0,
+        "reviewRequests": { "nodes": [] },
+        "commits": { "nodes": [{ "commit": { "statusCheckRollup": null } }] }
+      },
+      {
+        "id": "PR_sift4",
+        "reviewDecision": "CHANGES_REQUESTED",
+        "mergeable": "CONFLICTING",
+        "additions": 68,
+        "deletions": 68,
+        "changedFiles": 17,
+        "reviewRequests": { "nodes": [] },
+        "commits": {
+          "nodes": [{ "commit": { "statusCheckRollup": { "state": "ERROR" } } }]
+        }
+      }
+    ]
+  }
+}

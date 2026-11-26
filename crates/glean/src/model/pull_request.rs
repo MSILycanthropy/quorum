@@ -69,9 +69,11 @@ pub struct Branch {
     pub commit: String,
 }
 
-/// A pull request as a list shows it.
+/// A pull request as a list shows it. Its standing is slow for a forge to work
+/// out, so it arrives after the row, and is `None` until then.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct PullRequest {
+    pub id: String,
     pub number: u64,
     pub title: String,
     pub author: String,
@@ -80,15 +82,21 @@ pub struct PullRequest {
     pub head: Branch,
     pub created: SystemTime,
     pub updated: SystemTime,
+    pub labels: Vec<String>,
+    pub comments: usize,
+    pub standing: Option<Standing>,
+}
+
+/// Where a pull request stands with its reviewers, its checks, and its base.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+pub struct Standing {
     pub review_decision: Option<ReviewDecision>,
     pub checks: Option<CheckState>,
     pub mergeability: Mergeability,
-    pub labels: Vec<String>,
     pub requested_reviewers: Vec<String>,
     pub added: usize,
     pub removed: usize,
     pub changed_files: usize,
-    pub comments: usize,
 }
 
 /// Everything about a pull request beyond its row in a list, loaded when it is opened.

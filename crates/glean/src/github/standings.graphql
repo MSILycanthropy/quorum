@@ -1,0 +1,39 @@
+query Standings($ids: [ID!]!) {
+  nodes(ids: $ids) {
+    ... on PullRequest {
+      id
+      reviewDecision
+      mergeable
+      additions
+      deletions
+      changedFiles
+      reviewRequests(first: 20) {
+        nodes {
+          requestedReviewer {
+            ... on User {
+              login
+            }
+            ... on Bot {
+              login
+            }
+            ... on Mannequin {
+              login
+            }
+            ... on Team {
+              login: name
+            }
+          }
+        }
+      }
+      commits(last: 1) {
+        nodes {
+          commit {
+            statusCheckRollup {
+              state
+            }
+          }
+        }
+      }
+    }
+  }
+}

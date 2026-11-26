@@ -12,7 +12,8 @@ pub use conversation::{
     Activity, Change, ChangeKind, Comment, Commit, Placement, Review, ReviewState, Thread,
 };
 pub use pull_request::{
-    Branch, Details, Filter, MergeMethod, Mergeability, PullRequest, ReviewDecision, State, Verdict,
+    Branch, Details, Filter, MergeMethod, Mergeability, PullRequest, ReviewDecision, Standing,
+    State, Verdict,
 };
 pub use repository::Repository;
 

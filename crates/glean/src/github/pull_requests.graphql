@@ -1,11 +1,16 @@
-query PullRequests($owner: String!, $name: String!, $search: String!, $first: Int!) {
+query PullRequests($owner: String!, $name: String!, $search: String!, $first: Int!, $after: String) {
   repository(owner: $owner, name: $name) {
     id
   }
-  search(query: $search, type: ISSUE, first: $first) {
+  search(query: $search, type: ISSUE, first: $first, after: $after) {
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
     nodes {
       __typename
       ... on PullRequest {
+        id
         number
         title
         author {
@@ -19,44 +24,12 @@ query PullRequests($owner: String!, $name: String!, $search: String!, $first: In
         headRefOid
         createdAt
         updatedAt
-        reviewDecision
-        mergeable
-        additions
-        deletions
-        changedFiles
         comments {
           totalCount
         }
         labels(first: 20) {
           nodes {
             name
-          }
-        }
-        reviewRequests(first: 20) {
-          nodes {
-            requestedReviewer {
-              ... on User {
-                login
-              }
-              ... on Bot {
-                login
-              }
-              ... on Mannequin {
-                login
-              }
-              ... on Team {
-                login: name
-              }
-            }
-          }
-        }
-        commits(last: 1) {
-          nodes {
-            commit {
-              statusCheckRollup {
-                state
-              }
-            }
           }
         }
       }

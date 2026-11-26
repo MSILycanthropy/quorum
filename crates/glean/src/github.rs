@@ -2,9 +2,11 @@
 
 mod client;
 mod pull_requests;
+mod standings;
 mod timestamp;
 
 pub use client::Client;
+pub use pull_requests::{Cursor, Page};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -33,3 +35,11 @@ impl From<ureq::Error> for Error {
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
+
+fn printable(text: String) -> String {
+    if text.chars().any(char::is_control) {
+        return text.chars().filter(|character| !character.is_control()).collect();
+    }
+
+    text
+}
