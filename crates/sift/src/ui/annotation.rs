@@ -1,7 +1,107 @@
-//! Host text made safe to draw, then wrapped into the rows of an annotation.
+//! What an annotation's body is, and plain text made safe to draw as one.
 
+use std::any::Any;
+use std::fmt::Debug;
+use std::hash::{Hash, Hasher};
+use std::sync::Arc;
+
+use ratatui::buffer::Buffer;
+use ratatui::layout::Rect;
+use ratatui::style::Style;
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+
+/// Something the host draws as an annotation's body, as many rows tall as it
+/// needs at the width it is given.
+pub trait Draw {
+    fn height(&self, width: u16) -> u16;
+    fn render(&self, area: Rect, buffer: &mut Buffer);
+}
+
+/// What an annotation shows under its heading: any value that draws itself,
+/// compared and hashed by that value, so handing back an equal body is never
+/// taken for a change.
+#[derive(Clone, Debug)]
+pub struct Body {
+    drawing: Arc<dyn Drawing>,
+}
+
+impl Body {
+    pub fn new(drawing: impl Draw + Debug + Eq + Hash + Send + Sync + 'static) -> Self {
+        Self { drawing: Arc::new(drawing) }
+    }
+}
+
+impl Default for Body {
+    fn default() -> Self {
+        Self::new(Text::default())
+    }
+}
+
+impl PartialEq for Body {
+    fn eq(&self, other: &Self) -> bool {
+        self.drawing.same(other.drawing.as_ref())
+    }
+}
+
+impl Eq for Body {}
+
+impl Hash for Body {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.drawing.digest(state);
+    }
+}
+
+impl Draw for Body {
+    fn height(&self, width: u16) -> u16 {
+        self.drawing.height(width)
+    }
+
+    fn render(&self, area: Rect, buffer: &mut Buffer) {
+        self.drawing.render(area, buffer);
+    }
+}
+
+trait Drawing: Draw + Any + Debug + Send + Sync {
+    fn same(&self, other: &dyn Drawing) -> bool;
+    fn digest(&self, state: &mut dyn Hasher);
+}
+
+impl<T: Draw + Any + Debug + Eq + Hash + Send + Sync> Drawing for T {
+    fn same(&self, other: &dyn Drawing) -> bool {
+        (other as &dyn Any).downcast_ref::<T>().is_some_and(|other| other == self)
+    }
+
+    fn digest(&self, mut state: &mut dyn Hasher) {
+        self.hash(&mut state);
+    }
+}
+
+/// Plain text as a body: tabs expanded, control characters dropped, and
+/// wrapped at words, each wrapped row keeping its line's indentation.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+pub struct Text {
+    text: String,
+}
+
+impl Text {
+    pub fn new(text: &str, tab_width: usize) -> Self {
+        Self { text: clean(text, tab_width) }
+    }
+}
+
+impl Draw for Text {
+    fn height(&self, width: u16) -> u16 {
+        u16::try_from(wrap(&self.text, usize::from(width)).len()).unwrap_or(u16::MAX)
+    }
+
+    fn render(&self, area: Rect, buffer: &mut Buffer) {
+        let rows = wrap(&self.text, usize::from(area.width));
+        for (y, row) in (area.y..area.bottom()).zip(rows) {
+            buffer.set_stringn(area.x, y, row, usize::from(area.width), Style::new());
+        }
+    }
+}
 
 pub fn clean(text: &str, tab_width: usize) -> String {
     let stop = tab_width.max(1);
@@ -41,8 +141,8 @@ pub fn heading(text: &str, tab_width: usize) -> String {
     clean(text, tab_width).replace('\n', " ")
 }
 
-pub fn has_body(body: &str) -> bool {
-    body.chars().any(|character| character == '\t' || !character.is_control())
+pub fn has_body(body: &Body) -> bool {
+    body.height(u16::MAX) > 0
 }
 
 pub fn cut(text: &str, width: usize) -> String {

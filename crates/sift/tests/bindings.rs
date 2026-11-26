@@ -9,7 +9,7 @@ use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use sift::command::{self, Binding, Category, Command, Shortcut};
 use sift::diff::{FileDiff, Side, Source};
 use sift::git::{Content, FileChange, Status};
-use sift::ui::{Anchor, Annotation, Control, Error, Opening, Surface};
+use sift::ui::{Anchor, Annotation, Body, Control, Error, Opening, Surface, Text};
 
 const REVIEW: Category = Category::Host("Review");
 const PULL_REQUEST: Category = Category::Host("Pull request");
@@ -288,7 +288,7 @@ fn a_host_key_on_an_annotation_lets_the_host_read_that_annotation() {
             id: "thread-7".to_owned(),
             anchor: Anchor { path: PathBuf::from("src/total.rs"), side: Side::New, line: 1 },
             heading: "alice".to_owned(),
-            body: "Why 42?".to_owned(),
+            body: Body::new(Text::new("Why 42?", 4)),
             faded: false,
             collapsed: false,
         }])

@@ -8,12 +8,15 @@ use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::buffer::Buffer;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use ratatui::style::Color;
+use ratatui::layout::Rect;
+use ratatui::style::{Color, Modifier, Style};
 use sift::command::Command;
 use sift::diff::{FileDiff, Side, Source};
 use sift::git::{Content, FileChange, Status};
 use sift::theme::{Theme, TokyoNight};
-use sift::ui::{Anchor, Annotation, Error, Mode, Opening, Presentation, Surface, Viewer};
+use sift::ui::{
+    Anchor, Annotation, Body, Draw, Error, Mode, Opening, Presentation, Surface, Text, Viewer,
+};
 
 const OLD: &str = "fn total(cart: &Cart) -> u32 {\n    let total = 1;\n    dead();\n    total\n}\n";
 const NEW: &str = "fn total(cart: &Cart) -> u32 {\n    let total = 42;\n    total\n}\n";
@@ -23,7 +26,7 @@ fn note(id: &str, side: Side, line: usize, heading: &str, body: &str) -> Annotat
         id: id.to_owned(),
         anchor: Anchor { path: PathBuf::from("demo.rs"), side, line },
         heading: heading.to_owned(),
-        body: body.to_owned(),
+        body: Body::new(Text::new(body, 4)),
         faded: false,
         collapsed: false,
     }
@@ -35,6 +38,73 @@ fn on(path: &str, annotation: Annotation) -> Annotation {
 
 fn why() -> Annotation {
     note("why", Side::New, 2, "alice · 1 comment", "Why 42?")
+}
+
+/// A body the host draws itself: one word to a row, in the host's own ink,
+/// on the host's own paper when it names one.
+#[derive(Debug, PartialEq, Eq, Hash)]
+struct Swatch {
+    words: Vec<&'static str>,
+    ink: Rgb,
+    paper: Option<Rgb>,
+}
+
+impl Draw for Swatch {
+    fn height(&self, _width: u16) -> u16 {
+        u16::try_from(self.words.len()).expect("a swatch holds a handful of words")
+    }
+
+    fn render(&self, area: Rect, buffer: &mut Buffer) {
+        let inked = Style::new().fg(Color::from(self.ink));
+        let style = self.paper.map_or(inked, |paper| inked.bg(Color::from(paper)));
+        for (y, word) in (area.y..area.bottom()).zip(&self.words) {
+            buffer.set_stringn(area.x, y, word, usize::from(area.width), style);
+        }
+    }
+}
+
+/// A body that says how wide it was drawn.
+#[derive(Debug, PartialEq, Eq, Hash)]
+struct Measure;
+
+impl Draw for Measure {
+    fn height(&self, _width: u16) -> u16 {
+        1
+    }
+
+    fn render(&self, area: Rect, buffer: &mut Buffer) {
+        let said = format!("{} wide", area.width);
+        buffer.set_stringn(area.x, area.y, said, usize::from(area.width), Style::new());
+    }
+}
+
+/// A body that puts each character of its text straight into a cell,
+/// control characters included.
+#[derive(Debug, PartialEq, Eq, Hash)]
+struct Raw(&'static str);
+
+impl Draw for Raw {
+    fn height(&self, _width: u16) -> u16 {
+        1
+    }
+
+    fn render(&self, area: Rect, buffer: &mut Buffer) {
+        for (x, character) in (area.x..area.right()).zip(self.0.chars()) {
+            buffer[(x, area.y)].set_symbol(character.encode_utf8(&mut [0; 4]));
+        }
+    }
+}
+
+fn drawn_by_host(
+    id: &str,
+    line: usize,
+    body: impl Draw + std::fmt::Debug + Eq + std::hash::Hash + Send + Sync + 'static,
+) -> Annotation {
+    Annotation { id: id.to_owned(), body: Body::new(body), ..note(id, Side::New, line, "host", "") }
+}
+
+fn swatch(ink: Rgb, paper: Option<Rgb>) -> Swatch {
+    Swatch { words: vec!["drawn", "by", "host"], ink, paper }
 }
 
 fn far_apart() -> (String, String) {
@@ -150,6 +220,21 @@ fn background(cell: &ratatui::buffer::Cell) -> char {
     }
 }
 
+fn dimness(cell: &ratatui::buffer::Cell) -> char {
+    match (cell.symbol(), cell.modifier.contains(Modifier::DIM)) {
+        (" ", _) => ' ',
+        (_, true) => 'd',
+        (_, false) => '.',
+    }
+}
+
+fn hashed(annotation: &Annotation) -> u64 {
+    let mut state = std::hash::DefaultHasher::new();
+    std::hash::Hash::hash(annotation, &mut state);
+
+    std::hash::Hasher::finish(&state)
+}
+
 fn foreground(cell: &ratatui::buffer::Cell) -> char {
     let tints = TokyoNight::TINTS;
     if cell.symbol() == " " {
@@ -263,7 +348,7 @@ fn a_collapsed_annotation_is_its_heading_alone() {
 
 #[test]
 fn an_annotation_with_an_empty_body_is_a_heading_alone() {
-    let empty = Annotation { body: String::new(), ..why() };
+    let empty = Annotation { body: Body::default(), ..why() };
 
     insta::assert_snapshot!(Shown::demo(Mode::SideBySide, (64, 8), vec![empty]).text());
 }
@@ -284,6 +369,97 @@ fn carriage_returns_in_a_body_add_no_rows() {
     assert_eq!(
         Shown::demo(Mode::Unified, (44, 10), vec![windows]).text(),
         Shown::demo(Mode::Unified, (44, 10), vec![unix]).text()
+    );
+}
+
+#[test]
+fn annotations_built_twice_from_the_same_text_are_equal_and_hash_alike() {
+    assert_eq!(why(), why());
+    assert_eq!(hashed(&why()), hashed(&why()));
+}
+
+#[test]
+fn bodies_of_different_kinds_are_never_equal() {
+    let empty_swatch = Swatch { words: Vec::new(), ink: TokyoNight::TINTS.foreground, paper: None };
+
+    assert_ne!(Body::new(Text::default()), Body::new(empty_swatch));
+}
+
+#[test]
+fn a_body_the_host_draws_keeps_the_colours_it_chose() {
+    let host = drawn_by_host("host", 2, swatch(TokyoNight::TINTS.attention, None));
+
+    insta::assert_snapshot!(Shown::demo(Mode::Unified, (44, 10), vec![host]).ink());
+}
+
+#[test]
+fn a_faded_body_is_dimmed_only_where_its_host_chose_the_colour() {
+    let host = drawn_by_host("host", 2, swatch(TokyoNight::TINTS.attention, None));
+    let annotations = vec![
+        Annotation { faded: true, ..host },
+        Annotation { faded: true, ..note("plain", Side::New, 3, "bob", "Plain.") },
+    ];
+    let shown = Shown::demo(Mode::Unified, (44, 12), annotations);
+
+    insta::assert_snapshot!(describe(shown.terminal.backend().buffer(), dimness));
+}
+
+#[test]
+fn the_cursor_washes_over_a_body_that_paints_its_own_background() {
+    let tints = TokyoNight::TINTS;
+    let host = drawn_by_host("host", 2, swatch(tints.foreground, Some(tints.added)));
+    let mut shown = Shown::demo(Mode::Unified, (44, 10), vec![host]);
+    shown.run(&[Command::NextAnnotation, Command::NextLine]);
+
+    insta::assert_snapshot!(shown.text());
+}
+
+#[test]
+fn an_annotation_scrolled_past_its_heading_still_draws_its_lower_rows() {
+    let words = vec!["one", "two", "three", "four", "five", "six", "seven", "eight"];
+    let host =
+        drawn_by_host("host", 2, Swatch { words, ink: TokyoNight::TINTS.foreground, paper: None });
+    let mut shown = Shown::demo(Mode::Unified, (44, 6), vec![host]);
+    shown.run(&[Command::NextAnnotation]);
+    shown.run(&[Command::NextLine; 8]);
+
+    insta::assert_snapshot!(shown.text());
+}
+
+#[test]
+fn a_body_is_drawn_again_at_the_new_width_after_a_resize() {
+    let mut shown = Shown::demo(Mode::Unified, (44, 8), vec![drawn_by_host("width", 2, Measure)]);
+    let before = shown.text();
+    shown.terminal.backend_mut().resize(60, 8);
+    shown.draw();
+
+    insta::assert_snapshot!(format!("{before}\n{}", shown.text()));
+}
+
+#[test]
+fn a_changed_host_body_under_the_same_id_is_redrawn() {
+    let ink = TokyoNight::TINTS.foreground;
+    let mut shown =
+        Shown::demo(Mode::Unified, (44, 10), vec![drawn_by_host("host", 2, swatch(ink, None))]);
+    let changed = Swatch { words: vec!["drawn", "again"], ink, paper: None };
+    shown.annotate(vec![drawn_by_host("host", 2, changed)]);
+
+    insta::assert_snapshot!(shown.text());
+}
+
+#[test]
+fn control_characters_a_host_body_draws_never_reach_the_buffer() {
+    let hostile = drawn_by_host("hostile", 2, Raw("red \x1b[31mtext\x07done"));
+    let shown = Shown::demo(Mode::Unified, (44, 8), vec![hostile]);
+
+    assert!(
+        shown
+            .terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .all(|cell| !cell.symbol().contains(char::is_control))
     );
 }
 
@@ -372,7 +548,7 @@ fn enter_on_a_collapsed_annotation_opens_it() {
 
 #[test]
 fn enter_on_an_annotation_with_an_empty_body_changes_nothing() {
-    let empty = || vec![Annotation { body: String::new(), ..why() }];
+    let empty = || vec![Annotation { body: Body::default(), ..why() }];
     let mut entered = Shown::demo(Mode::SideBySide, (64, 8), empty());
     entered.run(&[Command::NextAnnotation, Command::ExpandFold]);
     let mut moved = Shown::demo(Mode::SideBySide, (64, 8), empty());

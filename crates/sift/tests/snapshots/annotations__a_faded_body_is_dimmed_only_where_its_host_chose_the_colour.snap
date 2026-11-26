@@ -1,0 +1,28 @@
+---
+source: crates/sift/tests/annotations.rs
+expression: "describe(shown.terminal.backend().buffer(), dimness)"
+---
+1 1 fn total(cart: &Cart) -> u32 {          
+. . .. ........... ...... .. ... .          
+2       let total = 1;                      
+.       ... ..... . ..                      
+  2     let total = 42;                     
+  .     ... ..... . ...                     
+    ▾ host                                  
+    . ....                                  
+    ▎ drawn                                 
+    . ddddd                                 
+    ▎ by                                    
+    . dd                                    
+    ▎ host                                  
+    . dddd                                  
+3       dead();                             
+.       .......                             
+4 3     total                               
+. .     .....                               
+    ▾ bob                                   
+    . ...                                   
+    ▎ Plain.                                
+    . ......                                
+5 4 }                                       
+. . .

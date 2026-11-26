@@ -9,6 +9,7 @@ mod surface;
 mod tree;
 mod viewer;
 
+pub use annotation::{Body, Draw, Text};
 pub use help::Help;
 pub use icon::Icon;
 pub use palette::{Palette, PaletteAction};
@@ -112,14 +113,14 @@ pub struct Anchor {
     pub line: usize,
 }
 
-/// Text the host anchors under one line of the diff. Sift draws it and never
-/// reads meaning into it.
+/// A heading and a body the host anchors under one line of the diff. Sift
+/// draws them and never reads meaning into them.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct Annotation {
     pub id: String,
     pub anchor: Anchor,
     pub heading: String,
-    pub body: String,
+    pub body: Body,
     pub faded: bool,
     pub collapsed: bool,
 }

@@ -16,8 +16,8 @@ use crate::diff::{
 };
 use crate::syntax::Syntax;
 use crate::theme::{Theme, Tints};
-use crate::ui::annotation::{clean, cut, has_body, heading, wrap};
-use crate::ui::{Annotation, Indicators, Mode, Presentation, Result};
+use crate::ui::annotation::{cut, has_body, heading};
+use crate::ui::{Annotation, Body, Draw, Indicators, Mode, Presentation, Result};
 use hue::Rgb;
 
 /// How many rows a hunk jump leaves above the hunk, and the cursor keeps from
@@ -97,8 +97,8 @@ pub struct Viewer {
     laid_out: Option<Geometry>,
     landing: Option<Landing>,
     annotations: Vec<Annotation>,
-    bodies: Vec<Vec<String>>,
-    bodies_width: Option<usize>,
+    bodies: Vec<Buffer>,
+    bodies_width: Option<u16>,
     headings: Vec<usize>,
 }
 
@@ -502,30 +502,34 @@ impl Viewer {
         })
     }
 
-    fn boxed(&self, index: usize, row: usize, cursor: bool) -> Option<Boxed> {
+    fn boxed(&self, index: usize, row: usize, cursor: bool) -> Option<Boxed<'_>> {
         let annotation = self.annotations.get(index)?;
         let body = self.bodies.get(index)?;
         let width = usize::from(self.pane()).saturating_sub(2);
         let (marker, text) = if row == 0 {
-            let marker = match (body.is_empty(), annotation.collapsed) {
+            let marker = match (body.area.height == 0, annotation.collapsed) {
                 (true, _) => "▎",
                 (false, true) => "▸",
                 (false, false) => "▾",
             };
-            (marker, cut(&heading(&annotation.heading, self.presentation.tab_width), width))
+            let heading = cut(&heading(&annotation.heading, self.presentation.tab_width), width);
+            (marker, Filling::Heading(heading))
         } else {
-            ("▎", body.get(row - 1)?.clone())
+            let row = row - 1;
+            if row >= usize::from(body.area.height) {
+                return None;
+            }
+            let width = usize::from(body.area.width);
+            ("▎", Filling::Body(body.content.get(row * width..(row + 1) * width)?))
         };
 
-        let background =
+        let paper =
             if cursor { self.tints.under_cursor(self.tints.filler) } else { self.tints.filler };
-        let base = Style::new().bg(Color::from(background));
-        let (marker_color, text_color) = if annotation.faded {
+        let (marker_ink, ink) = if annotation.faded {
             (self.tints.gutter, self.tints.muted)
         } else {
             (self.tints.attention, self.tints.foreground)
         };
-        let text_style = base.fg(Color::from(text_color));
 
         Some(Boxed {
             at: self.annotation_at(annotation.anchor.side),
@@ -533,9 +537,11 @@ impl Viewer {
                 .then(|| self.area.x + self.margin() + self.pane()),
             marker,
             text,
-            base,
-            marker_style: base.fg(Color::from(marker_color)),
-            text_style: if row == 0 { text_style.add_modifier(Modifier::BOLD) } else { text_style },
+            paper: Color::from(paper),
+            ink: Color::from(ink),
+            marker_ink: Color::from(marker_ink),
+            cursor,
+            faded: annotation.faded,
         })
     }
 
@@ -803,14 +809,12 @@ impl Viewer {
             return;
         }
         let offset = if self.screen.is_empty() { None } else { self.cursor.checked_sub(self.top) };
-        let text_width = usize::from(pane).saturating_sub(2);
+        let text_width = pane.saturating_sub(2);
         if self.bodies_width != Some(text_width) {
             self.bodies = self
                 .annotations
                 .iter()
-                .map(|annotation| {
-                    wrap(&clean(&annotation.body, self.presentation.tab_width), text_width)
-                })
+                .map(|annotation| drawn(&annotation.body, text_width))
                 .collect();
             self.bodies_width = Some(text_width);
         }
@@ -894,7 +898,7 @@ impl Viewer {
                 let body = if self.annotations[index].collapsed {
                     0
                 } else {
-                    self.bodies.get(index).map_or(0, Vec::len)
+                    self.bodies.get(index).map_or(0, |body| usize::from(body.area.height))
                 };
                 interleaved.extend((0..=body).map(|row| Line::Annotation { index, row, anchored }));
                 next += 1;
@@ -1042,14 +1046,23 @@ impl Line {
 
 /// One row of an annotation, ready to paint: where its box starts, what it
 /// says, and how it is lit.
-struct Boxed {
+struct Boxed<'a> {
     at: u16,
     divider: Option<u16>,
     marker: &'static str,
-    text: String,
-    base: Style,
-    marker_style: Style,
-    text_style: Style,
+    text: Filling<'a>,
+    paper: Color,
+    ink: Color,
+    marker_ink: Color,
+    cursor: bool,
+    faded: bool,
+}
+
+/// What fills an annotation row after its marker: the heading, or one row of
+/// the body as its host drew it.
+enum Filling<'a> {
+    Heading(String),
+    Body(&'a [ratatui::buffer::Cell]),
 }
 
 /// The two backgrounds a row is painted in: its tint, and the stronger tint
@@ -1107,16 +1120,42 @@ impl Screen<'_> {
             );
         }
         let pane = usize::from(self.pane);
+        let base = Style::new().bg(boxed.paper);
 
-        self.buffer.set_style(Rect::new(boxed.at, y, self.pane, 1), boxed.base);
-        self.buffer.set_stringn(boxed.at, y, boxed.marker, pane, boxed.marker_style);
-        self.buffer.set_stringn(
-            boxed.at + 2,
-            y,
-            &boxed.text,
-            pane.saturating_sub(2),
-            boxed.text_style,
-        );
+        self.buffer.set_style(Rect::new(boxed.at, y, self.pane, 1), base);
+        self.buffer.set_stringn(boxed.at, y, boxed.marker, pane, base.fg(boxed.marker_ink));
+        match boxed.text {
+            Filling::Heading(ref heading) => {
+                self.buffer.set_stringn(
+                    boxed.at + 2,
+                    y,
+                    heading,
+                    pane.saturating_sub(2),
+                    base.fg(boxed.ink).add_modifier(Modifier::BOLD),
+                );
+            }
+            Filling::Body(cells) => self.body_row(boxed.at + 2, y, cells, boxed),
+        }
+    }
+
+    fn body_row(&mut self, x: u16, y: u16, cells: &[ratatui::buffer::Cell], boxed: &Boxed) {
+        for (x, cell) in (x..).zip(cells) {
+            let Some(target) = self.buffer.cell_mut((x, y)) else {
+                break;
+            };
+            *target = cell.clone();
+            if target.symbol().contains(char::is_control) {
+                target.set_symbol(" ");
+            }
+            if target.fg == Color::Reset {
+                target.fg = boxed.ink;
+            } else if boxed.faded {
+                target.modifier.insert(Modifier::DIM);
+            }
+            if boxed.cursor || target.bg == Color::Reset {
+                target.bg = boxed.paper;
+            }
+        }
     }
 
     fn split_row(&mut self, y: u16, painted: &ScreenRow, row: &Row, cursor: Option<Side>) {
@@ -1348,6 +1387,14 @@ fn foldable(rows: &[Row], context: usize) -> Vec<Range<usize>> {
     }
 
     ranges
+}
+
+fn drawn(body: &Body, width: u16) -> Buffer {
+    let area = Rect::new(0, 0, width, body.height(width));
+    let mut buffer = Buffer::empty(area);
+    body.render(area, &mut buffer);
+
+    buffer
 }
 
 fn around(range: Range<usize>, annotated: &[usize]) -> Vec<Range<usize>> {
