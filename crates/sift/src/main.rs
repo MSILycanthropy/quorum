@@ -6,6 +6,8 @@
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Sender, channel};
 use std::time::Duration;
 
@@ -116,8 +118,10 @@ fn view(arguments: &Arguments) -> Result<()> {
     };
 
     let (sender, messages) = channel();
+    let pending = Arc::new(AtomicBool::new(false));
     if arguments.watch {
-        tick(sender.clone(), Duration::from_millis(arguments.interval.max(100)));
+        let interval = Duration::from_millis(arguments.interval.max(100));
+        tick(sender.clone(), Arc::clone(&pending), interval);
     }
     let mut session = Session::open(slots, sender)?;
 
@@ -172,6 +176,7 @@ fn view(arguments: &Arguments) -> Result<()> {
             Message::Terminal(Event::Mouse(mouse)) => surface.mouse(mouse)?,
             Message::Terminal(Event::Resize | Event::Paste(_)) => {}
             Message::Tick => {
+                pending.store(false, Ordering::Release);
                 if !reload(&mut surface, &subject, &mut shown).unwrap_or(false) {
                     continue;
                 }
@@ -224,11 +229,14 @@ fn reload(surface: &mut Surface, subject: &Subject, shown: &mut Vec<FileChange>)
     Ok(true)
 }
 
-fn tick(sender: Sender<Message>, interval: Duration) {
+fn tick(sender: Sender<Message>, pending: Arc<AtomicBool>, interval: Duration) {
     std::thread::Builder::new()
         .name("watch".to_owned())
         .spawn(move || {
-            while sender.send(Message::Tick).is_ok() {
+            loop {
+                if !pending.swap(true, Ordering::AcqRel) && sender.send(Message::Tick).is_err() {
+                    return;
+                }
                 std::thread::sleep(interval);
             }
         })
