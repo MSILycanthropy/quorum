@@ -1,11 +1,13 @@
 # AGENTS.md
 
 A Cargo workspace of two terminal tools, each with its own `AGENTS.md`, and the
-colour crate they share:
+crates they share:
 
 - `crates/sift` — Sift, a terminal diff viewer over git.
 - `crates/glean` — Glean, a terminal client for GitHub pull requests, built on Sift.
 - `crates/hue` — `Rgb`, and the palette a terminal reports of its own theme.
+- `crates/host` — the terminal a TUI runs in: raw mode, the alternate screen,
+  input on a thread, the clipboard, and giving it all back on exit or panic.
 - `crates/config` — settings files: where they live, and reading them into each
   tool's own types, so Glean's file can hold Sift's settings.
 

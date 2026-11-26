@@ -1,0 +1,15 @@
+[package]
+name = "host"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "The terminal a TUI runs in: raw mode, the alternate screen, input and the clipboard."
+
+[dependencies]
+hue = { path = "../hue" }
+ratatui.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

@@ -4,26 +4,13 @@
     reason = "gix builds large error types, and every call here is already bound by disk"
 )]
 
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Sender, channel};
 use std::time::Duration;
 
 use clap::Parser;
-use hue::Query;
-use ratatui::DefaultTerminal;
-use ratatui::crossterm::event::{
-    self, DisableMouseCapture, EnableMouseCapture, KeyEvent, KeyEventKind,
-    KeyboardEnhancementFlags, MouseEvent, PopKeyboardEnhancementFlags,
-    PushKeyboardEnhancementFlags,
-};
-use ratatui::crossterm::execute;
-use ratatui::crossterm::terminal::{
-    EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
-};
+use host::{Event, Session};
 use sift::config::Config;
 use sift::diff::{FileDiff, Source};
 use sift::git::{Comparison, Content, FileChange, Repository, Snapshot, Status, looks_generated};
@@ -41,6 +28,8 @@ enum Error {
     Syntax(#[from] sift::syntax::Error),
     #[error(transparent)]
     Config(#[from] config::Error),
+    #[error(transparent)]
+    Host(#[from] host::Error),
     #[error(transparent)]
     Io(#[from] std::io::Error),
     #[error("{0}")]
@@ -106,17 +95,36 @@ fn main() -> ExitCode {
 }
 
 /// Everything the loop wakes for.
-enum Event {
-    Key(KeyEvent),
-    Mouse(MouseEvent),
-    Redraw,
+enum Message {
+    Terminal(Event),
     Tick,
+}
+
+impl From<Event> for Message {
+    fn from(event: Event) -> Self {
+        Self::Terminal(event)
+    }
 }
 
 fn view(arguments: &Arguments) -> Result<()> {
     let config = config(arguments)?;
-    let theme = theme(&config)?;
+    let syntax = config.syntax_theme.as_deref().map(syntax_theme).transpose()?;
     let subject = Subject::open(arguments)?;
+    let slots = match config.theme.unwrap_or_default() {
+        Scheme::Terminal => TerminalColors::SLOTS,
+        Scheme::TokyoNight => &[],
+    };
+
+    let (sender, messages) = channel();
+    if arguments.watch {
+        tick(sender.clone(), Duration::from_millis(arguments.interval.max(100)));
+    }
+    let mut session = Session::open(slots, sender)?;
+
+    let mut theme = Theme::from_palette(session.palette());
+    if let Some(syntax) = syntax {
+        theme.syntax = syntax;
+    }
     let opening = Opening {
         presentation: config.presentation(),
         branch: subject.branch()?,
@@ -129,62 +137,50 @@ fn view(arguments: &Arguments) -> Result<()> {
     let mut shown = subject.changes()?;
     let mut surface = opening.surface(shown.clone())?;
 
-    let (sender, events) = channel();
-    let paused = Arc::new(AtomicBool::new(false));
-    if arguments.watch {
-        tick(sender.clone(), Duration::from_millis(arguments.interval.max(100)));
-    }
-    watch(sender, Arc::clone(&paused));
+    session.draw(|frame| frame.render_widget(&mut surface, frame.area()))?;
 
-    ratatui::run(|terminal| -> Result<()> {
-        let _reporting = Reporting::on()?;
-        terminal.draw(|frame| frame.render_widget(&mut surface, frame.area()))?;
-
-        while let Ok(event) = events.recv() {
-            match event {
-                Event::Key(key) => match surface.key(key)? {
-                    Control::Continue
-                    | Control::Host(_)
-                    | Control::Viewed(_)
-                    | Control::Unviewed(_) => {}
-                    Control::Quit => return Ok(()),
-                    Control::Reload => {
-                        reload(&mut surface, &subject, &mut shown)?;
-                        surface.notify("reloaded");
-                    }
-                    Control::Open { path, line } => match subject.file(&path) {
-                        Ok(content) => surface.peek(path, &content, line)?,
-                        Err(error) => surface.notify(error.to_string()),
-                    },
-                    Control::Copy(text) => {
-                        copy(&text)?;
-                        surface.notify(format!("copied {text}"));
-                    }
-                    Control::Edit { path, line } => {
-                        let root = subject.root();
-                        let outcome =
-                            suspended(terminal, &paused, || edit(&root.join(&path), line));
-                        match outcome? {
-                            Ok(()) => {
-                                reload(&mut surface, &subject, &mut shown)?;
-                            }
-                            Err(error) => surface.notify(error),
-                        }
-                    }
+    while let Ok(message) = messages.recv() {
+        match message {
+            Message::Terminal(Event::Key(key)) => match surface.key(key)? {
+                Control::Continue
+                | Control::Host(_)
+                | Control::Viewed(_)
+                | Control::Unviewed(_) => {}
+                Control::Quit => return Ok(()),
+                Control::Reload => {
+                    reload(&mut surface, &subject, &mut shown)?;
+                    surface.notify("reloaded");
+                }
+                Control::Open { path, line } => match subject.file(&path) {
+                    Ok(content) => surface.peek(path, &content, line)?,
+                    Err(error) => surface.notify(error.to_string()),
                 },
-                Event::Mouse(mouse) => surface.mouse(mouse)?,
-                Event::Redraw => {}
-                Event::Tick => {
-                    if !reload(&mut surface, &subject, &mut shown).unwrap_or(false) {
-                        continue;
+                Control::Copy(text) => match session.copy(&text) {
+                    Ok(()) => surface.notify(format!("copied {text}")),
+                    Err(error) => surface.notify(error.to_string()),
+                },
+                Control::Edit { path, line } => {
+                    let root = subject.root();
+                    match session.suspended(|| edit(&root.join(&path), line))? {
+                        Ok(()) => {
+                            reload(&mut surface, &subject, &mut shown)?;
+                        }
+                        Err(error) => surface.notify(error),
                     }
                 }
+            },
+            Message::Terminal(Event::Mouse(mouse)) => surface.mouse(mouse)?,
+            Message::Terminal(Event::Resize | Event::Paste(_)) => {}
+            Message::Tick => {
+                if !reload(&mut surface, &subject, &mut shown).unwrap_or(false) {
+                    continue;
+                }
             }
-            terminal.draw(|frame| frame.render_widget(&mut surface, frame.area()))?;
         }
+        session.draw(|frame| frame.render_widget(&mut surface, frame.area()))?;
+    }
 
-        Ok(())
-    })
+    Ok(())
 }
 
 fn config(arguments: &Arguments) -> Result<Config> {
@@ -192,23 +188,6 @@ fn config(arguments: &Arguments) -> Result<Config> {
     let flags = config::Settings::serialized(&arguments.config)?;
 
     Ok(file.over(flags).parse()?)
-}
-
-fn theme(config: &Config) -> Result<Theme> {
-    let mut theme = match config.theme.unwrap_or_default() {
-        Scheme::Terminal => Query::default()
-            .ask(TerminalColors::SLOTS)
-            .ok()
-            .as_ref()
-            .and_then(TerminalColors::from_palette)
-            .map_or_else(Theme::default, |colors| colors.theme()),
-        Scheme::TokyoNight => Theme::default(),
-    };
-    if let Some(syntax) = &config.syntax_theme {
-        theme.syntax = syntax_theme(syntax)?;
-    }
-
-    Ok(theme)
 }
 
 fn syntax_theme(name: &str) -> Result<Syntax> {
@@ -245,75 +224,15 @@ fn reload(surface: &mut Surface, subject: &Subject, shown: &mut Vec<FileChange>)
     Ok(true)
 }
 
-fn tick(sender: Sender<Event>, interval: Duration) {
+fn tick(sender: Sender<Message>, interval: Duration) {
     std::thread::Builder::new()
         .name("watch".to_owned())
         .spawn(move || {
-            while sender.send(Event::Tick).is_ok() {
+            while sender.send(Message::Tick).is_ok() {
                 std::thread::sleep(interval);
             }
         })
         .expect("the watch thread cannot fail to start");
-}
-
-fn watch(sender: Sender<Event>, paused: Arc<AtomicBool>) {
-    std::thread::Builder::new()
-        .name("terminal".to_owned())
-        .spawn(move || {
-            loop {
-                if paused.load(Ordering::Acquire) {
-                    std::thread::sleep(Duration::from_millis(20));
-                    continue;
-                }
-                match event::poll(Duration::from_millis(20)) {
-                    Ok(true) => {}
-                    Ok(false) => continue,
-                    Err(_) => return,
-                }
-                if paused.load(Ordering::Acquire) {
-                    continue;
-                }
-                let Ok(event) = event::read() else {
-                    return;
-                };
-                let event = match event {
-                    event::Event::Key(key) if key.kind == KeyEventKind::Press => Event::Key(key),
-                    event::Event::Mouse(mouse) => Event::Mouse(mouse),
-                    event::Event::Resize(_, _) => Event::Redraw,
-                    _ => continue,
-                };
-                if sender.send(event).is_err() {
-                    return;
-                }
-            }
-        })
-        .expect("the terminal reader thread cannot fail to start");
-}
-
-fn suspended<T>(
-    terminal: &mut DefaultTerminal,
-    paused: &AtomicBool,
-    work: impl FnOnce() -> T,
-) -> Result<T> {
-    paused.store(true, Ordering::Release);
-    std::thread::sleep(Duration::from_millis(30));
-    execute!(
-        std::io::stdout(),
-        PopKeyboardEnhancementFlags,
-        DisableMouseCapture,
-        LeaveAlternateScreen
-    )?;
-    disable_raw_mode()?;
-
-    let outcome = work();
-
-    enable_raw_mode()?;
-    execute!(std::io::stdout(), EnterAlternateScreen)?;
-    Reporting::switch_on()?;
-    terminal.clear()?;
-    paused.store(false, Ordering::Release);
-
-    Ok(outcome)
 }
 
 fn edit(path: &Path, line: Option<usize>) -> std::result::Result<(), String> {
@@ -340,74 +259,6 @@ fn edit(path: &Path, line: Option<usize>) -> std::result::Result<(), String> {
         Ok(status) if status.success() => Ok(()),
         Ok(status) => Err(format!("{program} exited with {status}")),
         Err(error) => Err(format!("could not start {program}: {error}")),
-    }
-}
-
-fn copy(text: &str) -> Result<()> {
-    let mut stdout = std::io::stdout();
-    write!(stdout, "\x1b]52;c;{}\x07", base64(text.as_bytes()))?;
-    stdout.flush()?;
-
-    if cfg!(target_os = "macos")
-        && let Ok(mut child) =
-            std::process::Command::new("pbcopy").stdin(std::process::Stdio::piped()).spawn()
-    {
-        if let Some(stdin) = child.stdin.as_mut() {
-            stdin.write_all(text.as_bytes())?;
-        }
-        child.wait()?;
-    }
-
-    Ok(())
-}
-
-fn base64(bytes: &[u8]) -> String {
-    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut encoded = String::with_capacity(bytes.len().div_ceil(3) * 4);
-
-    for chunk in bytes.chunks(3) {
-        let triple = chunk
-            .iter()
-            .enumerate()
-            .fold(0u32, |triple, (index, byte)| triple | u32::from(*byte) << (16 - 8 * index));
-        for position in 0..4 {
-            if position <= chunk.len() {
-                let index = (triple >> (18 - 6 * position)) & 0x3f;
-                encoded.push(char::from(ALPHABET[index as usize]));
-            } else {
-                encoded.push('=');
-            }
-        }
-    }
-
-    encoded
-}
-
-/// Mouse and key reporting, switched back off when this is dropped, so an
-/// unwind cannot leave the terminal capturing.
-struct Reporting;
-
-impl Reporting {
-    fn on() -> Result<Self> {
-        Self::switch_on()?;
-
-        Ok(Self)
-    }
-
-    fn switch_on() -> Result<()> {
-        execute!(
-            std::io::stdout(),
-            EnableMouseCapture,
-            PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)
-        )?;
-
-        Ok(())
-    }
-}
-
-impl Drop for Reporting {
-    fn drop(&mut self) {
-        let _ = execute!(std::io::stdout(), PopKeyboardEnhancementFlags, DisableMouseCapture);
     }
 }
 
