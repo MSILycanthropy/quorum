@@ -1,58 +1,20 @@
-[package]
-name = "sift"
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.96"
 license = "MIT OR Apache-2.0"
-description = "A terminal diff viewer over git."
 
-[dependencies]
+# Versions every crate that uses them must agree on. Sift and Glean share
+# ratatui's types across the Surface boundary, so it is pinned here once.
+[workspace.dependencies]
 clap = { version = "4.6.6", features = ["derive"] }
-devicons = "0.6.13"
-gix = { version = "0.87.1", default-features = false, features = ["status", "merge", "parallel", "sha1", "revision", "blob-diff", "index"] }
-inkjet = { version = "0.11.1", default-features = false, features = [
-    "theme",
-    "language-bash",
-    "language-c",
-    "language-cpp",
-    "language-css",
-    "language-diff",
-    "language-dockerfile",
-    "language-eex",
-    "language-elixir",
-    "language-go",
-    "language-hcl",
-    "language-heex",
-    "language-html",
-    "language-ini",
-    "language-java",
-    "language-javascript",
-    "language-json",
-    "language-jsx",
-    "language-lua",
-    "language-make",
-    "language-nix",
-    "language-php",
-    "language-proto",
-    "language-python",
-    "language-regex",
-    "language-ruby",
-    "language-rust",
-    "language-scss",
-    "language-sql",
-    "language-toml",
-    "language-tsx",
-    "language-typescript",
-    "language-yaml",
-    "language-zig",
-] }
+insta = "1.48.0"
 ratatui = "0.30"
-rustix = { version = "1.1.4", features = ["event"] }
-similar = { version = "3", features = ["unicode"] }
 thiserror = "2"
-tree-sitter-embedded-template = "0.23"
-unicode-segmentation = "1.13.3"
-unicode-width = "0.2.2"
 
 # Shared profile tuning. Split debuginfo keeps incremental link times down,
 # which matters most in the terminal frontend where the edit-run loop is tightest.
@@ -68,13 +30,10 @@ strip = true
 lto = "thin"
 codegen-units = 1
 
-[dev-dependencies]
-insta = "1.48.0"
-
-[lints.rust]
+[workspace.lints.rust]
 unsafe_code = "forbid"
 
-[lints.clippy]
+[workspace.lints.clippy]
 pedantic = { level = "warn", priority = -1 }
 unwrap_used = "deny"
 must_use_candidate = "allow"

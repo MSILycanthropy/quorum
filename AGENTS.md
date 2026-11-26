@@ -1,8 +1,12 @@
 # AGENTS.md
 
-Sift — a terminal diff viewer over git. One crate: `src/diff` is the diff
-model, `src/git.rs` the git plumbing, `src/command.rs` the key catalog every
-surface reads from, `src/ui` the terminal surfaces.
+A Cargo workspace of two terminal tools, each with its own `AGENTS.md`:
+
+- `crates/sift` — Sift, a terminal diff viewer over git.
+- `crates/glean` — Glean, a terminal client for GitHub pull requests, built on Sift.
+
+Sift stays a pure git tool: nothing about GitHub goes into Sift. Glean depends
+on Sift as a library, never the other way round.
 
 ## Read first
 
@@ -10,12 +14,16 @@ Code style is @STYLE.md. It is not advisory.
 
 ## Commands
 
+From the root, for every crate:
+
 ```
 cargo fmt
 cargo clippy --all-targets -- -D warnings
 cargo test
 cargo insta review
 ```
+
+`-p sift` or `-p glean` narrows any of them to one crate.
 
 ## Before reporting work as done
 
@@ -29,18 +37,21 @@ tests — a backstop, not the gate. Once, after cloning:
 
 ## Dependencies
 
-Ask before adding a crate to `Cargo.toml`.
+Ask before adding a crate to any `Cargo.toml`. A dependency more than one crate
+uses goes in `[workspace.dependencies]` at the root, so its version is chosen
+once.
 
 ## Commits
 
 Do not commit unless asked.
 
-When asked: Conventional Commits. A body only when the choice was non-obvious —
-say what you rejected and why. There are no ADRs and no rationale in the code,
-so that body is the only record.
+When asked: Conventional Commits, scoped by crate when a change touches only
+one (`feat(glean): ...`, `fix(sift/theme): ...`). A body only when the choice
+was non-obvious — say what you rejected and why. There are no ADRs and no
+rationale in the code, so that body is the only record.
 
 ```
-feat(align): pair by similarity, not position
+feat(sift/align): pair by similarity, not position
 
 Myers minimises edit count, so on source it anchors hunks on braces.
 Histogram anchors on rare lines instead.
