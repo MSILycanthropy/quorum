@@ -188,3 +188,11 @@ fn words_keep_two_changes_apart_when_more_than_a_character_separates_them() {
 fn characters_pick_out_only_the_characters_that_changed() {
     insta::assert_snapshot!(every_emphasis("    let totals = 0x40;\n", "    let total = 0x48;\n",));
 }
+
+#[test]
+fn a_field_that_changed_is_picked_out_apart_from_the_value_it_belongs_to() {
+    insta::assert_snapshot!(every_emphasis(
+        "    let label = user.name.trim().to_owned();\n",
+        "    let label = user.title.trim().to_owned();\n",
+    ));
+}

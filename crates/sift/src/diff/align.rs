@@ -1,7 +1,7 @@
 //! Which old line sits across from which new line.
 
 use super::model::{Change, ChangeKind, FileDiff};
-use similar::{Algorithm, DiffOp, TextDiff};
+use gix::diff::blob::{Algorithm, Diff, InternedInput};
 use std::cmp::Ordering;
 use std::ops::Range;
 use unicode_segmentation::UnicodeSegmentation;
@@ -338,56 +338,93 @@ impl Bigrams<'_> {
 fn emphasized(emphasis: Emphasis, old: &str, new: &str) -> (Vec<Span>, Vec<Span>) {
     match emphasis {
         Emphasis::Words => {
-            let (old_spans, new_spans) = word_spans(old, new);
+            let (old_spans, new_spans) = changed(&words(old), &words(new));
             (close_gaps(old, old_spans), close_gaps(new, new_spans))
         }
-        Emphasis::EachWord => word_spans(old, new),
+        Emphasis::EachWord => changed(&words(old), &words(new)),
         Emphasis::Characters => {
-            spans(&TextDiff::configure().algorithm(Algorithm::Myers).diff_graphemes(old, new))
+            let old: Vec<&str> = old.graphemes(true).collect();
+            let new: Vec<&str> = new.graphemes(true).collect();
+            changed(&old, &new)
         }
         Emphasis::None => (Vec::new(), Vec::new()),
     }
 }
 
-fn word_spans(old: &str, new: &str) -> (Vec<Span>, Vec<Span>) {
-    spans(&TextDiff::configure().algorithm(Algorithm::Patience).diff_unicode_words(old, new))
+/// What a grapheme is to the word around it: part of an identifier, part of a
+/// run of whitespace, or a token on its own.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+enum Class {
+    Identifier,
+    Space,
+    Lone,
 }
 
-fn spans(diff: &TextDiff<'_, '_, str>) -> (Vec<Span>, Vec<Span>) {
-    let old_offsets = word_offsets(diff.iter_old_slices());
-    let new_offsets = word_offsets(diff.iter_new_slices());
-
-    let (mut old_spans, mut new_spans) = (Vec::new(), Vec::new());
-    for operation in diff.ops() {
-        match *operation {
-            DiffOp::Equal { .. } => {}
-            DiffOp::Delete { old_index, old_len, .. } => {
-                old_spans.push(span(&old_offsets, old_index, old_len));
-            }
-            DiffOp::Insert { new_index, new_len, .. } => {
-                new_spans.push(span(&new_offsets, new_index, new_len));
-            }
-            DiffOp::Replace { old_index, old_len, new_index, new_len } => {
-                old_spans.push(span(&old_offsets, old_index, old_len));
-                new_spans.push(span(&new_offsets, new_index, new_len));
-            }
+impl Class {
+    fn of(grapheme: &str) -> Self {
+        match grapheme.chars().next() {
+            Some(first) if unicode_ident::is_xid_continue(first) => Self::Identifier,
+            Some(first) if first.is_whitespace() => Self::Space,
+            _ => Self::Lone,
         }
     }
-    (merge_touching(old_spans), merge_touching(new_spans))
 }
 
-fn word_offsets<'a>(slices: impl Iterator<Item = &'a str>) -> Vec<usize> {
-    let mut offsets = vec![0];
+fn words(line: &str) -> Vec<&str> {
+    let mut words = Vec::new();
+    let mut start = 0;
+    let mut previous = None;
+    for (at, grapheme) in line.grapheme_indices(true) {
+        let class = Class::of(grapheme);
+        if at > start && (previous != Some(class) || class == Class::Lone) {
+            words.push(&line[start..at]);
+            start = at;
+        }
+        previous = Some(class);
+    }
+    if start < line.len() {
+        words.push(&line[start..]);
+    }
+
+    words
+}
+
+fn changed(old: &[&str], new: &[&str]) -> (Vec<Span>, Vec<Span>) {
+    let mut input = InternedInput::default();
+    input.update_before(old.iter().copied());
+    input.update_after(new.iter().copied());
+    let mut diff = Diff::compute(Algorithm::Myers, &input);
+    diff.postprocess_no_heuristic(&input);
+
+    let (old_offsets, new_offsets) = (offsets(old), offsets(new));
+    let (mut old_spans, mut new_spans) = (Vec::new(), Vec::new());
+    for hunk in diff.hunks() {
+        if let Some(span) = span(&old_offsets, &hunk.before) {
+            old_spans.push(span);
+        }
+        if let Some(span) = span(&new_offsets, &hunk.after) {
+            new_spans.push(span);
+        }
+    }
+
+    (old_spans, new_spans)
+}
+
+fn offsets(tokens: &[&str]) -> Vec<usize> {
+    let mut offsets = Vec::with_capacity(tokens.len() + 1);
     let mut total = 0;
-    for slice in slices {
-        total += slice.len();
+    offsets.push(total);
+    for token in tokens {
+        total += token.len();
         offsets.push(total);
     }
+
     offsets
 }
 
-fn span(offsets: &[usize], index: usize, len: usize) -> Span {
-    Span { start: offsets[index], end: offsets[index + len] }
+fn span(offsets: &[usize], tokens: &Range<u32>) -> Option<Span> {
+    (!tokens.is_empty())
+        .then(|| Span { start: offsets[tokens.start as usize], end: offsets[tokens.end as usize] })
 }
 
 fn close_gaps(line: &str, spans: Vec<Span>) -> Vec<Span> {
@@ -401,15 +438,4 @@ fn close_gaps(line: &str, spans: Vec<Span>) -> Vec<Span> {
         }
     }
     closed
-}
-
-fn merge_touching(spans: Vec<Span>) -> Vec<Span> {
-    let mut merged: Vec<Span> = Vec::with_capacity(spans.len());
-    for span in spans {
-        match merged.last_mut() {
-            Some(last) if last.end == span.start => last.end = span.end,
-            _ => merged.push(span),
-        }
-    }
-    merged
 }

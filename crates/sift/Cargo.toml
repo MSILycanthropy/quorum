@@ -54,6 +54,7 @@ similar = { version = "3", features = ["unicode"] }
 thiserror.workspace = true
 tree-sitter-embedded-template = "0.23"
 config = { path = "../config" }
+unicode-ident = "1.0.24"
 unicode-segmentation = "1.13.3"
 unicode-width = "0.2.2"
 
