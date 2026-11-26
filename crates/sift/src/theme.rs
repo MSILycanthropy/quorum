@@ -183,6 +183,12 @@ pub struct Theme {
     pub syntax: Syntax,
 }
 
+impl Theme {
+    pub fn from_palette(palette: &Palette) -> Self {
+        TerminalColors::from_palette(palette).map_or_else(Self::default, |colors| colors.theme())
+    }
+}
+
 /// Where the tints come from: the terminal's own colours, or a bundled theme.
 #[derive(
     Clone,

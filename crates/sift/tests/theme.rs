@@ -4,7 +4,7 @@ use std::fmt::Write;
 
 use hue::{Palette, Rgb, Slot};
 use sift::syntax::Syntax;
-use sift::theme::{TerminalColors, Tints, TokyoNight};
+use sift::theme::{TerminalColors, Theme, Tints, TokyoNight};
 
 const DARK: TerminalColors = TerminalColors {
     background: Rgb::new(0x1a, 0x1b, 0x26),
@@ -96,6 +96,30 @@ fn every_colour_terminal_colours_reads_is_one_it_asks_for() {
     }
 
     assert!(TerminalColors::from_palette(&Palette::from_replies(replies.as_bytes())).is_some());
+}
+
+#[test]
+fn a_terminal_that_answers_all_five_colours_is_drawn_in_them() {
+    let replies = b"\x1b]10;rgb:c0c0/caca/f5f5\x07\
+        \x1b]11;rgb:1a1a/1b1b/2626\x07\
+        \x1b]4;1;rgb:f7f7/7676/8e8e\x07\
+        \x1b]4;2;rgb:9e9e/cece/6a6a\x07\
+        \x1b]4;3;rgb:e0e0/afaf/6868\x07\
+        \x1b[?62c";
+
+    assert_eq!(Theme::from_palette(&Palette::from_replies(replies)), DARK.theme());
+}
+
+#[test]
+fn a_terminal_that_leaves_one_of_the_five_unanswered_is_drawn_in_tokyo_night() {
+    let replies = b"\x1b]10;rgb:ffff/ffff/ffff\x07\x1b]11;rgb:0000/0000/0000\x07\x1b[?62c";
+
+    assert_eq!(Theme::from_palette(&Palette::from_replies(replies)), Theme::default());
+}
+
+#[test]
+fn a_terminal_that_answers_nothing_is_drawn_in_tokyo_night() {
+    assert_eq!(Theme::from_palette(&Palette::default()).tints, TokyoNight::TINTS);
 }
 
 #[test]
