@@ -1,3 +1,5 @@
+use std::fmt::Write;
+use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -40,6 +42,13 @@ fn committed(name: &str, path: &str, bytes: impl AsRef<[u8]>) -> PathBuf {
 
 fn against(revision: &str) -> Comparison {
     Comparison { old: revision.to_owned(), new: Snapshot::Worktree }
+}
+
+fn numbered(lines: Range<usize>) -> String {
+    lines.fold(String::new(), |mut text, line| {
+        writeln!(text, "line {line}").expect("writing to a String cannot fail");
+        text
+    })
 }
 
 fn seen(changes: &[FileChange]) -> Vec<(Status, PathBuf)> {
@@ -409,6 +418,21 @@ fn a_moved_and_edited_file_is_one_rename() {
     assert_eq!(seen(&changes), vec![(Status::Renamed, PathBuf::from("new.rs"))]);
     assert_eq!(changes[0].previous, Some(PathBuf::from("old.rs")));
     assert_eq!(sides(&changes[0]), (body, body.replace("six", "seven").as_str()));
+}
+
+#[test]
+fn a_moved_file_that_grew_to_three_times_its_size_is_an_addition_and_a_deletion_as_git_says() {
+    let root = committed("grown_file", "old.rs", numbered(0..100));
+    git(&root, &["mv", "old.rs", "new.rs"]);
+    write(&root, "new.rs", numbered(0..300));
+
+    let repository = Repository::discover(&root).expect("the fixture is a repository");
+    let changes = repository.changes(&against("HEAD")).expect("the snapshots are readable");
+
+    assert_eq!(
+        seen(&changes),
+        vec![(Status::Added, PathBuf::from("new.rs")), (Status::Deleted, PathBuf::from("old.rs"))]
+    );
 }
 
 #[test]

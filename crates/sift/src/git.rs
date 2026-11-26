@@ -4,6 +4,7 @@
     reason = "gix builds large error types, and every call here is already bound by disk"
 )]
 
+use gix::diff::blob::{Algorithm, Diff, InternedInput};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
@@ -522,6 +523,22 @@ const RENAMED: f32 = 0.5;
 /// Past this many deleted-added pairs, only identical files are paired.
 const COMPARED: usize = 10_000;
 
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "a similarity is a ratio of two file sizes, and f32 holds it to well past the threshold's precision"
+)]
+fn similarity(old: &str, new: &str) -> f32 {
+    let input = InternedInput::new(old.as_bytes(), new.as_bytes());
+    let diff = Diff::compute(Algorithm::Histogram, &input);
+    let removed: usize = diff
+        .hunks()
+        .flat_map(|hunk| &input.before[hunk.before.start as usize..hunk.before.end as usize])
+        .map(|&token| input.interner[token].len())
+        .sum();
+
+    (old.len() - removed) as f32 / old.len().max(new.len()).max(1) as f32
+}
+
 fn renamed(mut changes: Vec<FileChange>) -> Vec<FileChange> {
     let deleted: Vec<usize> =
         (0..changes.len()).filter(|&index| changes[index].status == Status::Deleted).collect();
@@ -545,7 +562,7 @@ fn renamed(mut changes: Vec<FileChange>) -> Vec<FileChange> {
                 let similarity = if old.old.text() == new.new.text() {
                     1.0
                 } else if thorough {
-                    similar::TextDiff::from_lines(old.old.text(), new.new.text()).ratio()
+                    similarity(old.old.text(), new.new.text())
                 } else {
                     0.0
                 };
