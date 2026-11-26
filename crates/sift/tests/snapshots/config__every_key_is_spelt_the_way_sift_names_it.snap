@@ -1,0 +1,13 @@
+---
+source: crates/sift/tests/config.rs
+expression: "settings.parse::<Config>().expect(\"every value is known\")"
+---
+Config {
+    layout: Unified,
+    wrap: true,
+    tab_width: 8,
+    theme: TokyoNight,
+    syntax_theme: Some(
+        "github_light",
+    ),
+}

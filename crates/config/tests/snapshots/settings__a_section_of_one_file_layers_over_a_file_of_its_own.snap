@@ -1,0 +1,12 @@
+---
+source: crates/config/tests/settings.rs
+expression: "guest.parse::<Example>().expect(\"both are examples\")"
+---
+Example {
+    name: "base",
+    depth: 9,
+    nested: Nested {
+        colour: "blue",
+        size: 1,
+    },
+}

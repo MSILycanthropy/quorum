@@ -182,3 +182,12 @@ pub struct Theme {
     pub tints: Tints,
     pub syntax: Syntax,
 }
+
+/// Where the tints come from: the terminal's own colours, or a bundled theme.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Scheme {
+    #[default]
+    Terminal,
+    TokyoNight,
+}

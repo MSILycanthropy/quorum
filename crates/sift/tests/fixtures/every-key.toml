@@ -1,0 +1,5 @@
+layout = "unified"
+wrap = true
+tab-width = 8
+theme = "tokyo-night"
+syntax-theme = "github_light"

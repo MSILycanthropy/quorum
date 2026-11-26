@@ -1,0 +1,6 @@
+name = "base"
+depth = 2
+
+[nested]
+colour = "red"
+size = 1

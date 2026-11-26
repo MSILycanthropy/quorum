@@ -1,0 +1,9 @@
+---
+source: crates/sift/tests/config.rs
+expression: "error.to_string().replace(env!(\"CARGO_MANIFEST_DIR\"), \"[crate]\")"
+---
+[crate]/tests/fixtures/split.toml: TOML parse error at line 1, column 10
+  |
+1 | layout = "split"
+  |          ^^^^^^^
+unknown variant `split`, expected `side-by-side` or `unified`

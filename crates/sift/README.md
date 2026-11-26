@@ -44,6 +44,23 @@ the view together, and `g`/`G` jump to either end. Side by side, `H`/`L` or
 scroll sideways.
 After `e` the diff reloads, so you see your edit straight away.
 
+## Settings
+
+Sift reads its settings from `~/.config/sift/config.toml`, or from
+`$XDG_CONFIG_HOME/sift` if that's set. It's the same path on macOS. Every key is
+optional, so the file only needs the ones you change:
+
+```toml
+layout = "unified"         # or "side-by-side"
+wrap = true
+tab-width = 2
+theme = "tokyo-night"      # or "terminal"
+syntax-theme = "catppuccin_mocha"
+```
+
+Flags win over the file. `--side-by-side` and `--no-wrap` undo a setting for
+one run. A key Sift doesn't know is an error, with the line it's on.
+
 ## Layout
 
     src/command.rs   every command and the keys bound to it

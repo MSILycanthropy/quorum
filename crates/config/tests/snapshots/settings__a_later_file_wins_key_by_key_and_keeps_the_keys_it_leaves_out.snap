@@ -1,0 +1,12 @@
+---
+source: crates/config/tests/settings.rs
+expression: "settings.parse::<Example>().expect(\"both files are examples\")"
+---
+Example {
+    name: "base",
+    depth: 5,
+    nested: Nested {
+        colour: "red",
+        size: 3,
+    },
+}

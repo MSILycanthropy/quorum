@@ -32,7 +32,8 @@ pub enum Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Two panes against each other, or one column with deletions above insertions.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum Mode {
     #[default]
     SideBySide,

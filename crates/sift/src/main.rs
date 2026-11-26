@@ -24,10 +24,11 @@ use ratatui::crossterm::execute;
 use ratatui::crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
+use sift::config::Config;
 use sift::diff::{FileDiff, Source};
 use sift::git::{Comparison, Content, FileChange, Repository, Snapshot, Status, looks_generated};
 use sift::syntax::Syntax;
-use sift::theme::{TerminalColors, Theme};
+use sift::theme::{Scheme, TerminalColors, Theme};
 use sift::ui::{Control, Mode, Opening, Surface};
 
 #[derive(Debug, thiserror::Error)]
@@ -38,6 +39,8 @@ enum Error {
     Ui(#[from] sift::ui::Error),
     #[error(transparent)]
     Syntax(#[from] sift::syntax::Error),
+    #[error(transparent)]
+    Config(#[from] config::Error),
     #[error(transparent)]
     Io(#[from] std::io::Error),
     #[error("{0}")]
@@ -69,6 +72,7 @@ type Result<T> = std::result::Result<T, Error>;
         sift --show HEAD~2    one commit against its parent\n  \
         sift -- src/          only paths under src/\n  \
         sift --watch          follow along while something else edits\n\n\
+        Settings are read from ~/.config/sift/config.toml, and flags override them.\n\
         Press ? inside for every key."
 )]
 struct Arguments {
@@ -82,10 +86,14 @@ struct Arguments {
     show: Option<String>,
     #[arg(long, num_args = 2, help = "Compare two files outside any repository", value_names = ["OLD", "NEW"], conflicts_with_all = ["revisions", "staged", "show"])]
     no_index: Vec<PathBuf>,
-    #[arg(long, help = "Start with long lines wrapped")]
+    #[arg(long, overrides_with = "no_wrap", help = "Start with long lines wrapped")]
     wrap: bool,
-    #[arg(long, help = "Start in the unified layout")]
+    #[arg(long, overrides_with = "wrap", help = "Start with long lines running off the edge")]
+    no_wrap: bool,
+    #[arg(long, overrides_with = "side_by_side", help = "Start in the unified layout")]
     unified: bool,
+    #[arg(long, overrides_with = "unified", help = "Start side by side")]
+    side_by_side: bool,
     #[arg(long, help = "Re-read the diff from git whenever it changes")]
     watch: bool,
     #[arg(
@@ -95,15 +103,10 @@ struct Arguments {
         help = "How often --watch checks git"
     )]
     interval: u64,
-    #[arg(long, default_value_t = 4, help = "Columns a tab expands to")]
-    tab_width: usize,
-    #[arg(
-        long,
-        value_enum,
-        default_value_t = Tints::Terminal,
-        help = "Where the background and diff colours come from"
-    )]
-    theme: Tints,
+    #[arg(long, value_name = "COLUMNS", help = "Columns a tab expands to")]
+    tab_width: Option<usize>,
+    #[arg(long, value_enum, help = "Where the background and diff colours come from")]
+    theme: Option<Tints>,
     #[arg(
         long,
         value_name = "NAME|FILE",
@@ -118,6 +121,15 @@ enum Tints {
     #[default]
     Terminal,
     TokyoNight,
+}
+
+impl From<Tints> for Scheme {
+    fn from(tints: Tints) -> Self {
+        match tints {
+            Tints::Terminal => Self::Terminal,
+            Tints::TokyoNight => Self::TokyoNight,
+        }
+    }
 }
 
 fn main() -> ExitCode {
@@ -139,12 +151,13 @@ enum Event {
 }
 
 fn view(arguments: &Arguments) -> Result<()> {
-    let theme = theme(arguments)?;
+    let config = config(arguments)?;
+    let theme = theme(&config)?;
     let subject = Subject::open(arguments)?;
     let opening = Opening {
-        mode: if arguments.unified { Mode::Unified } else { Mode::SideBySide },
-        wrap: arguments.wrap,
-        tab_width: arguments.tab_width,
+        mode: config.layout,
+        wrap: config.wrap,
+        tab_width: config.tab_width,
         branch: subject.branch()?,
         comparing: subject.describe(),
         files: subject.files()?,
@@ -213,17 +226,33 @@ fn view(arguments: &Arguments) -> Result<()> {
     })
 }
 
-fn theme(arguments: &Arguments) -> Result<Theme> {
-    let mut theme = match arguments.theme {
-        Tints::Terminal => Query::default()
+fn config(arguments: &Arguments) -> Result<Config> {
+    let config: Config = config::Settings::of::<Config>("sift")?.parse()?;
+
+    Ok(Config {
+        layout: match (arguments.unified, arguments.side_by_side) {
+            (true, _) => Mode::Unified,
+            (_, true) => Mode::SideBySide,
+            _ => config.layout,
+        },
+        wrap: arguments.wrap || (config.wrap && !arguments.no_wrap),
+        tab_width: arguments.tab_width.unwrap_or(config.tab_width),
+        theme: arguments.theme.map_or(config.theme, Scheme::from),
+        syntax_theme: arguments.syntax_theme.clone().or(config.syntax_theme),
+    })
+}
+
+fn theme(config: &Config) -> Result<Theme> {
+    let mut theme = match config.theme {
+        Scheme::Terminal => Query::default()
             .ask(TerminalColors::SLOTS)
             .ok()
             .as_ref()
             .and_then(TerminalColors::from_palette)
             .map_or_else(Theme::default, |colors| colors.theme()),
-        Tints::TokyoNight => Theme::default(),
+        Scheme::TokyoNight => Theme::default(),
     };
-    if let Some(syntax) = &arguments.syntax_theme {
+    if let Some(syntax) = &config.syntax_theme {
         theme.syntax = syntax_theme(syntax)?;
     }
 
@@ -238,11 +267,8 @@ fn syntax_theme(name: &str) -> Result<Syntax> {
         return Ok(Syntax::from_helix(&std::fs::read_to_string(path)?)?);
     }
 
-    let configuration = std::env::var_os("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".config")));
-    let installed =
-        configuration.map(|directory| directory.join("helix/themes").join(format!("{name}.toml")));
+    let installed = config::directory("helix")
+        .map(|directory| directory.join("themes").join(format!("{name}.toml")));
     match installed.and_then(|path| std::fs::read_to_string(path).ok()) {
         Some(theme) => Ok(Syntax::from_helix(&theme)?),
         None => Ok(Syntax::named(name)?),

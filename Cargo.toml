@@ -14,7 +14,9 @@ license = "MIT OR Apache-2.0"
 clap = { version = "4.6.6", features = ["derive"] }
 insta = "1.48.0"
 ratatui = "0.30"
+serde = { version = "1.0.229", features = ["derive"] }
 thiserror = "2"
+toml = "1.2.3"
 
 # Shared profile tuning. Split debuginfo keeps incremental link times down,
 # which matters most in the terminal frontend where the edit-run loop is tightest.

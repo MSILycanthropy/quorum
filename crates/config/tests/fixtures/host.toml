@@ -1,0 +1,7 @@
+title = "host"
+
+[guest]
+depth = 9
+
+[guest.nested]
+colour = "blue"

@@ -1,0 +1,9 @@
+---
+source: crates/config/tests/settings.rs
+expression: "refusal::<Example>(\"misspelt.toml\")"
+---
+[crate]/tests/fixtures/misspelt.toml: TOML parse error at line 2, column 1
+  |
+2 | dept = 3
+  | ^^^^
+unknown field `dept`, expected one of `name`, `depth`, `nested`
