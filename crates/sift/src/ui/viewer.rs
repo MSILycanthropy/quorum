@@ -125,10 +125,6 @@ struct Geometry {
 }
 
 impl Viewer {
-    #[expect(
-        clippy::missing_errors_doc,
-        reason = "the Error enum names the only failures, reading the file and highlighting it"
-    )]
     pub fn new(
         diff: FileDiff,
         path: &Path,
@@ -208,10 +204,6 @@ impl Viewer {
         self.cursor = self.resolve();
     }
 
-    #[expect(
-        clippy::missing_errors_doc,
-        reason = "the Error enum names the only failure, highlighting the fold landed in"
-    )]
     pub fn land_on(&mut self, landing: Landing) -> Result<()> {
         let wanted = match &landing {
             Landing::Line(line) => Some(*line),
@@ -234,10 +226,6 @@ impl Viewer {
         }
     }
 
-    #[expect(
-        clippy::missing_errors_doc,
-        reason = "the Error enum names the only failure, highlighting the lines unfolded"
-    )]
     pub fn run(&mut self, command: Command) -> Result<()> {
         let page = self.height.max(2);
         match command {
@@ -327,10 +315,6 @@ impl Viewer {
         Ok(())
     }
 
-    #[expect(
-        clippy::missing_errors_doc,
-        reason = "the Error enum names the only failure, highlighting the fold clicked open"
-    )]
     pub fn click(&mut self, column: u16, row: u16) -> Result<()> {
         if !self.area.contains(Position::new(column, row)) {
             return Ok(());
@@ -536,10 +520,6 @@ impl Viewer {
         (current.map(|index| index + 1), self.headings.len())
     }
 
-    #[expect(
-        clippy::missing_errors_doc,
-        reason = "the Error enum names the only failure, highlighting lines a fold gives up"
-    )]
     pub fn annotate(&mut self, annotations: Vec<Annotation>) -> Result<()> {
         let annotations: Vec<Annotation> = annotations
             .into_iter()

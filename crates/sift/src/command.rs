@@ -305,10 +305,6 @@ impl Catalog {
         &self.bindings
     }
 
-    #[expect(
-        clippy::missing_errors_doc,
-        reason = "the Error enum names each way an unbinding is refused"
-    )]
     pub fn unbind(mut self, commands: &[Command]) -> Result<Self> {
         for command in commands {
             if let Command::Host(name) = command {
@@ -325,10 +321,6 @@ impl Catalog {
         Ok(self)
     }
 
-    #[expect(
-        clippy::missing_errors_doc,
-        reason = "the Error enum names each way a host binding is refused"
-    )]
     pub fn with(mut self, bindings: Vec<Binding>) -> Result<Self> {
         for binding in bindings {
             let (Command::Host(name), Category::Host(_)) = (binding.command, binding.category)

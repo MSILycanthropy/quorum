@@ -98,10 +98,6 @@ struct Label {
 }
 
 impl Client {
-    #[expect(
-        clippy::missing_errors_doc,
-        reason = "the Error enum names every failure, from the connection to the answer's shape"
-    )]
     pub fn pull_requests(
         &self,
         repository: &Repository,

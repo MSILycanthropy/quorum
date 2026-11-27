@@ -147,10 +147,6 @@ impl Syntax {
         THEMES.iter().map(|(name, _)| *name)
     }
 
-    #[expect(
-        clippy::missing_errors_doc,
-        reason = "the Error enum names the only failure, a name no bundled theme has"
-    )]
     pub fn named(name: &str) -> Result<Self> {
         let (_, theme) = THEMES
             .iter()
@@ -160,10 +156,6 @@ impl Syntax {
         Self::from_helix(theme)
     }
 
-    #[expect(
-        clippy::missing_errors_doc,
-        reason = "the Error enum names the only failure, a theme that is not Helix's TOML"
-    )]
     pub fn from_helix(theme: &str) -> Result<Self> {
         let theme = Theme::from_helix(theme)?;
         let foreground = rgb(theme.fg);
@@ -175,18 +167,10 @@ impl Syntax {
         Ok(Self { colors, foreground })
     }
 
-    #[expect(
-        clippy::missing_errors_doc,
-        reason = "the Error enum names the only failure, which is a grammar rejecting the source"
-    )]
     pub fn highlight(&self, source: &Source, path: &Path) -> Result<Highlighting> {
         self.stretches(source, path, std::slice::from_ref(&(0..source.len())))
     }
 
-    #[expect(
-        clippy::missing_errors_doc,
-        reason = "the Error enum names the only failure, which is a grammar rejecting the source"
-    )]
     pub fn highlight_lines(
         &self,
         source: &Source,

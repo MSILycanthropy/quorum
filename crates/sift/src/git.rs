@@ -139,10 +139,6 @@ pub struct Repository {
 }
 
 impl Repository {
-    #[expect(
-        clippy::missing_errors_doc,
-        reason = "the Error enum names the only failures, an unreadable or bare repository"
-    )]
     pub fn discover(path: &Path) -> Result<Self> {
         let parent = path.parent().filter(|parent| !parent.as_os_str().is_empty());
         let start = if path.is_dir() { path } else { parent.unwrap_or(Path::new(".")) };
@@ -159,10 +155,6 @@ impl Repository {
         &self.workdir
     }
 
-    #[expect(
-        clippy::missing_errors_doc,
-        reason = "the Error enum names the only failure, a path outside the worktree"
-    )]
     pub fn relative_path(&self, path: &Path) -> Result<PathBuf> {
         let absolute = if path.is_absolute() {
             path.to_path_buf()
@@ -183,28 +175,16 @@ impl Repository {
             .map_err(|_| Error::OutsideRepository(path.to_path_buf()))
     }
 
-    #[expect(
-        clippy::missing_errors_doc,
-        reason = "the Error enum names the only failure, an unreadable HEAD"
-    )]
     pub fn branch(&self) -> Result<Option<String>> {
         Ok(self.inner.head_name()?.map(|name| name.shorten().to_string()))
     }
 
-    #[expect(
-        clippy::missing_errors_doc,
-        reason = "the Error enum names the only failures, a missing revision or a path in neither side"
-    )]
     pub fn change(&self, comparison: &Comparison, path: &Path) -> Result<FileChange> {
         let relative = self.relative_path(path)?;
 
         Reader::new(self, comparison)?.change(&relative)
     }
 
-    #[expect(
-        clippy::missing_errors_doc,
-        reason = "the Error enum names the only failures, a missing revision or an unreadable snapshot"
-    )]
     pub fn changes(&self, comparison: &Comparison) -> Result<Vec<FileChange>> {
         let mut reader = Reader::new(self, comparison)?;
         let paths = reader.changed_paths()?;
@@ -229,10 +209,6 @@ impl Repository {
         Ok(changes)
     }
 
-    #[expect(
-        clippy::missing_errors_doc,
-        reason = "the Error enum names the only failures, a missing revision or an unreadable snapshot"
-    )]
     pub fn files(&self, comparison: &Comparison) -> Result<Vec<PathBuf>> {
         let mut paths = match &comparison.new {
             Snapshot::Worktree | Snapshot::Index => {
@@ -260,10 +236,6 @@ impl Repository {
         Ok(paths)
     }
 
-    #[expect(
-        clippy::missing_errors_doc,
-        reason = "the Error enum names the only failures, a missing revision or a path in neither side"
-    )]
     pub fn file(&self, comparison: &Comparison, path: &Path) -> Result<Content> {
         let mut reader = Reader::new(self, comparison)?;
         let Some(bytes) = reader.current(path)? else {
@@ -278,10 +250,6 @@ impl Repository {
         })
     }
 
-    #[expect(
-        clippy::missing_errors_doc,
-        reason = "the Error enum names the only failures, a missing revision or unrelated histories"
-    )]
     pub fn merge_base(&self, one: &str, two: &str) -> Result<String> {
         let one = self.inner.rev_parse_single(one)?.detach();
         let two = self.inner.rev_parse_single(two)?.detach();
@@ -289,10 +257,6 @@ impl Repository {
         Ok(self.inner.merge_base(one, two)?.detach().to_string())
     }
 
-    #[expect(
-        clippy::missing_errors_doc,
-        reason = "the Error enum names the only failures, a missing revision or one that is not a commit"
-    )]
     pub fn parent(&self, revision: &str) -> Result<String> {
         let commit = self.inner.rev_parse_single(revision)?.object()?.peel_to_commit()?;
 

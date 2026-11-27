@@ -28,10 +28,6 @@ impl Repository {
         path.parse().ok()
     }
 
-    #[expect(
-        clippy::missing_errors_doc,
-        reason = "the Error enum names every failure: no repository, no GitHub remote, git not running"
-    )]
     pub fn of(directory: &Path) -> Result<Self> {
         let inside = git(directory, &["rev-parse", "--git-dir"])?;
         if inside.is_none() {

@@ -59,10 +59,6 @@ impl Client {
         Self { agent, endpoint: endpoint.into(), token }
     }
 
-    #[expect(
-        clippy::missing_errors_doc,
-        reason = "the Error enum names the only failure, finding no token"
-    )]
     pub fn signed_in() -> Result<Self> {
         Ok(Self::at(ENDPOINT, token()?))
     }

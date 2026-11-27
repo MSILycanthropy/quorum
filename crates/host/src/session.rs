@@ -45,10 +45,6 @@ pub struct Session {
 }
 
 impl Session {
-    #[expect(
-        clippy::missing_errors_doc,
-        reason = "the Error enum names the failures, no terminal or one that cannot be set up"
-    )]
     pub fn open<E>(slots: &[Slot], sender: Sender<E>) -> Result<Self>
     where
         E: From<Event> + Send + 'static,
@@ -79,30 +75,18 @@ impl Session {
         &self.palette
     }
 
-    #[expect(
-        clippy::missing_errors_doc,
-        reason = "the Error enum names the failure, the terminal refusing the write"
-    )]
     pub fn draw(&mut self, render: impl FnOnce(&mut Frame)) -> Result<()> {
         self.terminal.draw(render)?;
 
         Ok(())
     }
 
-    #[expect(
-        clippy::missing_errors_doc,
-        reason = "the Error enum names the failure, the terminal or pbcopy refusing the write"
-    )]
     pub fn copy(&mut self, text: &str) -> Result<()> {
         clipboard::copy(self.terminal.backend_mut(), text)?;
 
         Ok(())
     }
 
-    #[expect(
-        clippy::missing_errors_doc,
-        reason = "the Error enum names the failure, the terminal refusing to be released or taken back"
-    )]
     pub fn suspended<T>(&mut self, work: impl FnOnce() -> T) -> Result<T> {
         self.reader.pause();
         if let Err(error) = self.phase.suspend() {

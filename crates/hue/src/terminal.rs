@@ -40,10 +40,6 @@ impl Default for Query {
 }
 
 impl Query {
-    #[expect(
-        clippy::missing_errors_doc,
-        reason = "the Error enum names the failures, an unknown or unanswering terminal and the tty itself"
-    )]
     pub fn ask(&self, slots: &[Slot]) -> Result<Palette> {
         supported()?;
         let terminal = Raw::open()?;

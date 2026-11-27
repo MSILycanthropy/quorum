@@ -46,10 +46,6 @@ pub struct Review {
 }
 
 impl Review {
-    #[expect(
-        clippy::missing_errors_doc,
-        reason = "the Error enum names the only failure, highlighting the selected file"
-    )]
     pub fn new(changes: Vec<FileChange>, presentation: Presentation, theme: Theme) -> Result<Self> {
         let tree = Tree::of(&changes);
         let (selected, opened) = tree
@@ -124,10 +120,6 @@ impl Review {
         );
     }
 
-    #[expect(
-        clippy::missing_errors_doc,
-        reason = "the Error enum names the only failure, highlighting the file moved to"
-    )]
     pub fn run(&mut self, command: Command) -> Result<()> {
         if let Some(peek) = &mut self.peek {
             match command {
@@ -264,10 +256,6 @@ impl Review {
         self.active().is_some_and(Viewer::clear_selection)
     }
 
-    #[expect(
-        clippy::missing_errors_doc,
-        reason = "the Error enum names the failures, a repeated id and highlighting the file on screen"
-    )]
     pub fn annotate(&mut self, annotations: Vec<Annotation>) -> Result<()> {
         let mut seen = HashSet::new();
         if let Some(repeated) = annotations.iter().find(|annotation| !seen.insert(&annotation.id)) {
@@ -316,10 +304,6 @@ impl Review {
             .collect()
     }
 
-    #[expect(
-        clippy::missing_errors_doc,
-        reason = "the Error enum names the only failure, highlighting the file moved to"
-    )]
     pub fn go_to_annotation(&mut self, id: &str) -> Result<bool> {
         let Some(annotation) = self.annotations.iter().find(|annotation| annotation.id == id)
         else {
@@ -409,10 +393,6 @@ impl Review {
         self.viewed.contains_key(path)
     }
 
-    #[expect(
-        clippy::missing_errors_doc,
-        reason = "the Error enum names the only failure, highlighting the file moved to"
-    )]
     pub fn toggle_viewed(&mut self) -> Result<Control> {
         self.peek = None;
         let Some(change) = self.changes.get(self.opened) else {
@@ -463,10 +443,6 @@ impl Review {
         self.peek.as_ref().map(|peek| peek.path.as_path())
     }
 
-    #[expect(
-        clippy::missing_errors_doc,
-        reason = "the Error enum names the only failure, highlighting the file opened"
-    )]
     pub fn peek(&mut self, path: PathBuf, content: &Content, line: Option<usize>) -> Result<()> {
         let place = self
             .peek
@@ -525,10 +501,6 @@ impl Review {
         }
     }
 
-    #[expect(
-        clippy::missing_errors_doc,
-        reason = "the Error enum names the only failure, highlighting the file clicked on"
-    )]
     pub fn mouse(&mut self, mouse: MouseEvent) -> Result<()> {
         let at = Position::new(mouse.column, mouse.row);
         let listed = self.listed.filter(|area| area.contains(at));
@@ -589,10 +561,6 @@ impl Review {
         Ok(())
     }
 
-    #[expect(
-        clippy::missing_errors_doc,
-        reason = "the Error enum names the only failure, highlighting the file left selected"
-    )]
     pub fn refresh(&mut self, changes: Vec<FileChange>) -> Result<()> {
         let reading = self.changes.get(self.opened).map(|change| change.path.clone());
         let place = self.viewer.as_ref().map(Viewer::place);
@@ -754,10 +722,6 @@ impl Review {
         self.changes.iter().map(|change| change.path.clone()).collect()
     }
 
-    #[expect(
-        clippy::missing_errors_doc,
-        reason = "the Error enum names the only failure, selecting a changed file"
-    )]
     pub fn select_path(&mut self, path: &Path, line: Option<usize>) -> Result<()> {
         let Some(index) = self.tree.row_of(path) else {
             return Ok(());

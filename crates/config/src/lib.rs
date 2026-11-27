@@ -33,10 +33,6 @@ pub struct Settings {
 }
 
 impl Settings {
-    #[expect(
-        clippy::missing_errors_doc,
-        reason = "the Error enum names the failures, a file that cannot be read or does not parse as T"
-    )]
     pub fn of<T: DeserializeOwned>(application: &str) -> Result<Self> {
         match directory(application) {
             Some(directory) => Self::read::<T>(&directory.join("config.toml")),
@@ -44,10 +40,6 @@ impl Settings {
         }
     }
 
-    #[expect(
-        clippy::missing_errors_doc,
-        reason = "the Error enum names the failures, a file that cannot be read or does not parse as T"
-    )]
     pub fn read<T: DeserializeOwned>(path: &Path) -> Result<Self> {
         let text = match std::fs::read_to_string(path) {
             Ok(text) => text,
@@ -62,10 +54,6 @@ impl Settings {
         Ok(Self { table: toml::from_str(&text).map_err(parse)? })
     }
 
-    #[expect(
-        clippy::missing_errors_doc,
-        reason = "the Error enum names the only failure, a value TOML has no table for"
-    )]
     pub fn serialized<T: Serialize>(value: &T) -> Result<Self> {
         Ok(Self { table: Table::try_from(value)? })
     }
@@ -83,10 +71,6 @@ impl Settings {
         }
     }
 
-    #[expect(
-        clippy::missing_errors_doc,
-        reason = "the Error enum names the only failure, layers that each parse but not together"
-    )]
     pub fn parse<T: DeserializeOwned>(self) -> Result<T> {
         Ok(self.table.try_into()?)
     }

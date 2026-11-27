@@ -30,10 +30,6 @@ pub struct Opening {
 }
 
 impl Opening {
-    #[expect(
-        clippy::missing_errors_doc,
-        reason = "the Error enum names the failures, a refused unbinding or host binding and highlighting the selected file"
-    )]
     pub fn surface(self, changes: Vec<FileChange>) -> Result<Surface> {
         Ok(Surface {
             catalog: Catalog::default().unbind(&self.unbound)?.with(self.bindings)?,
@@ -67,10 +63,6 @@ pub struct Surface {
 }
 
 impl Surface {
-    #[expect(
-        clippy::missing_errors_doc,
-        reason = "the Error enum names the only failure, highlighting the file moved to"
-    )]
     pub fn key(&mut self, key: KeyEvent) -> Result<Control> {
         self.notice = None;
 
@@ -99,10 +91,6 @@ impl Surface {
         }
     }
 
-    #[expect(
-        clippy::missing_errors_doc,
-        reason = "the Error enum names the only failure, highlighting the file clicked on"
-    )]
     pub fn mouse(&mut self, mouse: MouseEvent) -> Result<()> {
         let outside = !self.area.contains(Position::new(mouse.column, mouse.row));
         if outside || self.help.is_open() || self.palette.is_open() {
@@ -112,10 +100,6 @@ impl Surface {
         self.review.mouse(mouse)
     }
 
-    #[expect(
-        clippy::missing_errors_doc,
-        reason = "the Error enum names the only failure, highlighting the file left selected"
-    )]
     pub fn refresh(&mut self, changes: Vec<FileChange>) -> Result<()> {
         self.review.refresh(changes)
     }
@@ -128,10 +112,6 @@ impl Surface {
         self.review.replace_viewed(paths);
     }
 
-    #[expect(
-        clippy::missing_errors_doc,
-        reason = "the Error enum names the only failure, highlighting the file opened"
-    )]
     pub fn peek(&mut self, path: PathBuf, content: &Content, line: Option<usize>) -> Result<()> {
         self.review.peek(path, content, line)
     }
@@ -144,10 +124,6 @@ impl Surface {
         self.notice = Some(notice.into());
     }
 
-    #[expect(
-        clippy::missing_errors_doc,
-        reason = "the Error enum names the only failure, highlighting the file moved to"
-    )]
     pub fn run(&mut self, command: Command) -> Result<Control> {
         match command {
             Command::Quit => return Ok(Control::Quit),
@@ -216,10 +192,6 @@ impl Surface {
         self.review.selection()
     }
 
-    #[expect(
-        clippy::missing_errors_doc,
-        reason = "the Error enum names the failures, a repeated id and highlighting the file on screen"
-    )]
     pub fn annotate(&mut self, annotations: Vec<Annotation>) -> Result<()> {
         self.review.annotate(annotations)?;
         self.annotating = true;
@@ -235,10 +207,6 @@ impl Surface {
         self.review.unplaced()
     }
 
-    #[expect(
-        clippy::missing_errors_doc,
-        reason = "the Error enum names the only failure, highlighting the file moved to"
-    )]
     pub fn go_to_annotation(&mut self, id: &str) -> Result<bool> {
         self.review.go_to_annotation(id)
     }
