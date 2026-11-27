@@ -351,7 +351,7 @@ fn theme(config: &Config, palette: &Palette) -> Result<Theme> {
         Scheme::TokyoNight => Theme::default(),
     };
     if let Some(name) = config.syntax_theme.as_deref().filter(|name| !name.is_empty()) {
-        theme.syntax = syntax_theme(name)?;
+        theme.syntax = Syntax::named(name)?;
     }
 
     Ok(theme)
@@ -363,22 +363,6 @@ fn config(arguments: &Arguments) -> Result<File> {
         config::Settings::serialized(&File { diff: arguments.config.clone(), ..File::default() })?;
 
     Ok(file.over(flags).parse()?)
-}
-
-fn syntax_theme(name: &str) -> Result<Syntax> {
-    let path = Path::new(name);
-    if path.extension().is_some_and(|extension| extension == "toml")
-        || path.components().count() > 1
-    {
-        return Ok(Syntax::from_helix(&std::fs::read_to_string(path)?)?);
-    }
-
-    let installed = config::directory("helix")
-        .map(|directory| directory.join("themes").join(format!("{name}.toml")));
-    match installed.and_then(|path| std::fs::read_to_string(path).ok()) {
-        Some(theme) => Ok(Syntax::from_helix(&theme)?),
-        None => Ok(Syntax::named(name)?),
-    }
 }
 
 fn reload(surface: &mut Surface, subject: &Subject, shown: &mut Vec<FileChange>) -> Result<bool> {

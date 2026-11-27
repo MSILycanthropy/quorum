@@ -61,7 +61,7 @@ pub struct Config {
     #[arg(
         long,
         value_name = "NAME|FILE",
-        help = "A Helix theme for the code: one in ~/.config/helix/themes, one built in, or a file"
+        help = "The colours for the code, from the themes built into Sift"
     )]
     pub syntax_theme: Option<String>,
 }

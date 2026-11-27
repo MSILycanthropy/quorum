@@ -152,11 +152,6 @@ impl Syntax {
             .iter()
             .find(|(candidate, _)| *candidate == name)
             .ok_or_else(|| Error::UnknownTheme(name.to_owned()))?;
-
-        Self::from_helix(theme)
-    }
-
-    pub fn from_helix(theme: &str) -> Result<Self> {
         let theme = Theme::from_helix(theme)?;
         let foreground = rgb(theme.fg);
         let colors = HIGHLIGHT_NAMES
