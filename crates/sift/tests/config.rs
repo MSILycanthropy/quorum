@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 
 use clap::Parser;
 use config::Settings;
+use keys::Sequence;
 use sift::config::Config;
 use sift::ui::Presentation;
 
@@ -66,4 +67,15 @@ fn a_wrap_flag_takes_its_value_only_after_an_equals_sign() {
 #[test]
 fn nothing_set_presents_the_defaults() {
     assert_eq!(Config::default().presentation(), Presentation::default());
+}
+
+#[test]
+fn a_command_in_a_later_files_keys_replaces_its_keys_and_leaves_the_rest() {
+    let under = Settings::read::<Config>(&fixture("keys-under.toml")).expect("the keys are known");
+    let over = Settings::read::<Config>(&fixture("keys-over.toml")).expect("the keys are known");
+
+    let keys = under.over(over).parse::<Config>().expect("both are configs").keys;
+
+    assert_eq!(keys.commands["quit"], Sequence::all(&["ZZ"]).expect("ZZ is spelt right"));
+    assert_eq!(keys.commands["reload"], Sequence::all(&["R"]).expect("R is spelt right"));
 }

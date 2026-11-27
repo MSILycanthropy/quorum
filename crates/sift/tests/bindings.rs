@@ -1,7 +1,10 @@
 //! That a host adds its own keys to the catalog, and hears when one is pressed.
 
+use std::collections::BTreeMap;
 use std::fmt::Write;
 use std::path::PathBuf;
+
+use keys::{Rebindings, Sequence};
 
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
@@ -32,7 +35,7 @@ fn glean() -> Vec<Binding> {
     vec![
         host("comment", "Comment on this line", 'c', REVIEW, Some("comment")),
         host("reply", "Reply to this thread", 'R', REVIEW, Some("reply")),
-        host("resolve", "Resolve or unresolve", 'x', REVIEW, None),
+        host("resolve", "Resolve or unresolve", 'X', REVIEW, None),
         host("approve", "Approve", 'A', PULL_REQUEST, None),
         host("merge", "Merge", 'M', PULL_REQUEST, Some("merge")),
     ]
@@ -69,6 +72,31 @@ fn unbinding(unbound: Vec<Command>, bindings: Vec<Binding>) -> sift::ui::Result<
     };
 
     opening.surface(changes())
+}
+
+fn rebinding(entries: &[(&str, &[&str])]) -> Rebindings {
+    let commands: BTreeMap<String, Vec<Sequence>> = entries
+        .iter()
+        .map(|(name, keys)| {
+            ((*name).to_owned(), Sequence::all(keys).expect("the keys are spelt right"))
+        })
+        .collect();
+
+    Rebindings { commands }
+}
+
+fn rebound(keys: Rebindings) -> sift::ui::Result<Surface> {
+    let opening = Opening { keys, bindings: glean(), ..Opening::default() };
+
+    opening.surface(changes())
+}
+
+fn refused_rebinding(keys: Rebindings) -> command::Error {
+    match rebound(keys) {
+        Err(Error::Binding(error)) => error,
+        Err(error) => panic!("refused for the wrong reason: {error}"),
+        Ok(_) => panic!("the rebinding was accepted"),
+    }
 }
 
 fn without_edit() -> Surface {
@@ -310,7 +338,7 @@ fn help_lists_host_sections_after_sifts_own() {
     let mut surface = surface();
     typed(&mut surface, &[press(KeyCode::Char('?'))]);
 
-    insta::assert_snapshot!(screen(&mut surface, 70, 52));
+    insta::assert_snapshot!(screen(&mut surface, 100, 52));
 }
 
 #[test]
@@ -345,7 +373,7 @@ fn an_unbound_command_leaves_help() {
     let mut surface = without_edit();
     typed(&mut surface, &[press(KeyCode::Char('?'))]);
 
-    insta::assert_snapshot!(screen(&mut surface, 70, 53));
+    insta::assert_snapshot!(screen(&mut surface, 100, 52));
 }
 
 #[test]
@@ -404,4 +432,99 @@ fn unbinding_a_host_command_is_refused() {
     let error = refused_unbinding(vec![Command::Host("comment")]);
 
     assert!(matches!(error, command::Error::NotSift("comment")));
+}
+
+#[test]
+fn a_rebound_command_answers_its_new_key_and_not_its_old_one() {
+    let mut surface = rebound(rebinding(&[("quit", &["Q"])])).expect("Q is free");
+
+    let controls = typed(&mut surface, &[press(KeyCode::Char('q')), press(KeyCode::Char('Q'))]);
+
+    assert_eq!(controls, vec![Control::Continue, Control::Quit]);
+}
+
+#[test]
+fn a_command_rebound_to_no_keys_leaves_help_but_stays_in_the_palette() {
+    let mut surface = rebound(rebinding(&[("edit", &[])])).expect("edit can lose its keys");
+    typed(&mut surface, &[press(KeyCode::Char('?'))]);
+    let help = screen(&mut surface, 100, 52);
+    typed(&mut surface, &[press(KeyCode::Esc), press(KeyCode::Char(':'))]);
+    for character in "editor".chars() {
+        typed(&mut surface, &[press(KeyCode::Char(character))]);
+    }
+    let palette = screen(&mut surface, 100, 8);
+
+    assert!(!help.contains("Open in $EDITOR"), "{help}");
+    assert!(palette.contains("Open in $EDITOR"), "{palette}");
+}
+
+#[test]
+fn rebinding_quit_to_no_keys_is_refused() {
+    let error = refused_rebinding(rebinding(&[("quit", &[])]));
+
+    assert!(matches!(error, command::Error::Required("Quit")));
+}
+
+#[test]
+fn rebinding_onto_a_hosts_key_is_refused_under_the_name_written() {
+    let error = refused_rebinding(rebinding(&[("reload", &["c"])]));
+
+    assert_eq!(
+        error.to_string(),
+        "keys.reload: c is bound to both Reload from git and Comment on this line"
+    );
+}
+
+#[test]
+fn a_host_can_rebind_its_own_commands_by_name() {
+    let mut surface = rebound(rebinding(&[("comment", &["C"])])).expect("C is free");
+
+    let controls = typed(&mut surface, &[press(KeyCode::Char('C'))]);
+
+    assert_eq!(controls, vec![Control::Host("comment")]);
+}
+
+#[test]
+fn the_names_a_surface_knows_include_the_hosts() {
+    let names = surface().names();
+
+    assert!(names.contains(&"next-hunk") && names.contains(&"comment"), "{names:?}");
+}
+
+#[test]
+fn pending_keys_show_in_the_status_line_with_what_can_follow() {
+    let mut surface = surface();
+    typed(&mut surface, &[press(KeyCode::Char(']'))]);
+
+    insta::assert_snapshot!(screen(&mut surface, 100, 2));
+}
+
+#[test]
+fn finishing_a_sequence_runs_its_command_and_clears_the_status_line() {
+    let mut surface = surface();
+    let before = screen(&mut surface, 100, 2);
+
+    let controls = typed(&mut surface, &[press(KeyCode::Char(']')), press(KeyCode::Char('f'))]);
+
+    assert_eq!(controls, vec![Control::Continue, Control::Continue]);
+    assert_ne!(screen(&mut surface, 100, 2), before);
+}
+
+#[test]
+fn escape_clears_pending_keys_and_leaves_the_surface_as_it_was() {
+    let mut surface = surface();
+    let before = screen(&mut surface, 100, 2);
+
+    let controls = typed(&mut surface, &[press(KeyCode::Char(']')), press(KeyCode::Esc)]);
+
+    assert_eq!(controls, vec![Control::Continue, Control::Continue]);
+    assert_eq!(screen(&mut surface, 100, 2), before);
+}
+
+#[test]
+fn a_count_shows_in_the_status_line_while_it_waits() {
+    let mut surface = surface();
+    typed(&mut surface, &[press(KeyCode::Char('1')), press(KeyCode::Char('2'))]);
+
+    insta::assert_snapshot!(screen(&mut surface, 100, 2));
 }

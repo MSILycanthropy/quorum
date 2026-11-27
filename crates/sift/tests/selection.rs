@@ -356,7 +356,7 @@ fn typed(surface: &mut sift::ui::Surface, keys: &str) -> Vec<Control> {
 #[test]
 fn copying_a_selection_copies_its_range() {
     let mut surface = surface();
-    let controls = typed(&mut surface, "gVjjY");
+    let controls = typed(&mut surface, "ggVjjY");
 
     assert_eq!(controls.last(), Some(&Control::Copy(format!("{PATH}:1-3"))));
 }
@@ -364,7 +364,7 @@ fn copying_a_selection_copies_its_range() {
 #[test]
 fn copying_without_a_selection_still_copies_one_line() {
     let mut surface = surface();
-    let controls = typed(&mut surface, "gjY");
+    let controls = typed(&mut surface, "ggjY");
 
     assert_eq!(controls.last(), Some(&Control::Copy(format!("{PATH}:2"))));
 }
@@ -380,7 +380,7 @@ fn the_editor_opens_at_the_first_line_selected() {
 #[test]
 fn escape_lets_go_of_the_selection_before_it_quits() {
     let mut surface = surface();
-    typed(&mut surface, "gVj");
+    typed(&mut surface, "ggVj");
     let esc = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
 
     assert_eq!(surface.key(esc).expect("the fixtures highlight"), Control::Continue);
@@ -391,7 +391,7 @@ fn escape_lets_go_of_the_selection_before_it_quits() {
 #[test]
 fn the_status_line_counts_the_lines_selected() {
     let mut surface = surface();
-    typed(&mut surface, "gVjj");
+    typed(&mut surface, "ggVjj");
 
     let status = drawn(&mut surface).lines().last().unwrap_or_default().to_owned();
     assert!(status.contains("lines 1–3"), "{status}");

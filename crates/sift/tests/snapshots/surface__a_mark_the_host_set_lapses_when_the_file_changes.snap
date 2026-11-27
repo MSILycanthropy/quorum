@@ -1,6 +1,5 @@
 ---
 source: tests/surface.rs
-assertion_line: 360
 expression: "screen(&mut surface, 100, 6)"
 ---
  CHANGES                           M src/other.rs  +1 −1                                        1/2
@@ -8,4 +7,4 @@ expression: "screen(&mut surface, 100, 6)"
     other.rs              +1 −1 │2 two                           │2 four
     total.rs                   ✓│3                               │3
                                  │
-  main · HEAD → worktree · 2 files · 1 viewed · 1 hunks · side by side      n hunk  ] file  ? help
+  main · HEAD → worktree · 2 files · 1 viewed · 1 hunks · side by side    n hunk  Tab file  ? help

@@ -13,6 +13,7 @@ use std::time::Duration;
 
 use clap::Parser;
 use host::{Event, Session};
+use sift::command::Catalog;
 use sift::config::Config;
 use sift::diff::{FileDiff, Source};
 use sift::git::{Comparison, Content, FileChange, Repository, Snapshot, Status, looks_generated};
@@ -30,6 +31,10 @@ enum Error {
     Syntax(#[from] sift::syntax::Error),
     #[error(transparent)]
     Config(#[from] config::Error),
+    #[error(transparent)]
+    Keys(#[from] keys::Error),
+    #[error(transparent)]
+    Binding(#[from] sift::command::Error),
     #[error(transparent)]
     Host(#[from] host::Error),
     #[error(transparent)]
@@ -110,6 +115,8 @@ impl From<Event> for Message {
 
 fn view(arguments: &Arguments) -> Result<()> {
     let config = config(arguments)?;
+    let catalog = Catalog::default().rebound(&config.keys)?;
+    config.keys.unknown(catalog.names())?;
     let syntax = config.syntax_theme.as_deref().map(syntax_theme).transpose()?;
     let subject = Subject::open(arguments)?;
     let slots = match config.theme.unwrap_or_default() {
@@ -136,6 +143,7 @@ fn view(arguments: &Arguments) -> Result<()> {
         files: subject.files()?,
         bindings: Vec::new(),
         unbound: Vec::new(),
+        keys: config.keys.clone(),
         theme,
     };
     let mut shown = subject.changes()?;

@@ -409,11 +409,11 @@ fn expanding_opens_the_first_fold_on_screen() {
 }
 
 #[test]
-fn folding_can_be_turned_off_for_the_whole_file() {
+fn opening_everything_unfolds_the_whole_file() {
     let middle = || vec![middling("src/middle.rs")];
 
     assert_eq!(
-        shown(middle(), 90, 40, &[Command::ToggleFolds]),
+        shown(middle(), 90, 40, &[Command::OpenEverything]),
         shown(middle(), 90, 40, &[Command::ExpandFold, Command::ExpandFold]),
     );
 }

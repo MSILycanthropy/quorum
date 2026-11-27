@@ -42,7 +42,7 @@ const HIGHEST_FUNCTION_KEY: u8 = 24;
 
 /// One key as the terminal reports it. Shift is folded into the character it
 /// produces, so `G` is `G`, and `ctrl-shift-c` is Control with `C`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Key {
     code: KeyCode,
     modifiers: KeyModifiers,
@@ -119,6 +119,12 @@ impl fmt::Display for Key {
         };
 
         formatter.write_str(&spelt(code, modifiers))
+    }
+}
+
+impl fmt::Debug for Key {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.debug_tuple("Key").field(&self.to_string()).finish()
     }
 }
 
@@ -218,7 +224,7 @@ fn word(written: &str) -> Result<Vec<Key>> {
 
 /// Keys pressed one after another to reach a command, like `gg` or `]c`. Never
 /// empty, and Esc can only come first.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Sequence(Vec<Key>);
 
 impl Sequence {
@@ -265,6 +271,12 @@ impl FromStr for Sequence {
 impl fmt::Display for Sequence {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(&shown(&self.0))
+    }
+}
+
+impl fmt::Debug for Sequence {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.debug_tuple("Sequence").field(&self.to_string()).finish()
     }
 }
 

@@ -43,6 +43,14 @@ impl Section<'_> {
     }
 }
 
+/// One row of a help column: a section's title, a binding, or the gap between sections.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+enum Entry<'catalog> {
+    Heading(&'static str),
+    Binding(&'catalog Binding),
+    Gap,
+}
+
 impl Help {
     pub fn is_open(&self) -> bool {
         self.open
@@ -69,7 +77,7 @@ impl Help {
                 bindings: catalog
                     .bindings()
                     .iter()
-                    .filter(|binding| binding.section == title)
+                    .filter(|binding| binding.section == title && !binding.keys.is_empty())
                     .collect(),
             })
             .filter(|section| !section.bindings.is_empty())
@@ -88,13 +96,19 @@ impl Help {
         let room_wide = usize::from(area.width.saturating_sub(4));
         let room_tall = usize::from(area.height.saturating_sub(4));
         let most_columns = ((room_wide + GAP) / (column_width + GAP)).max(1);
-        let columns = (1..=most_columns)
+        let whole = (1..=most_columns)
             .map(|count| flow(&sections, count))
-            .find(|columns| tallest(columns) <= room_tall)
-            .unwrap_or_else(|| flow(&sections, most_columns));
+            .find(|columns| tallest(columns) <= room_tall);
+        let columns = if let Some(columns) = whole {
+            columns.into_iter().map(|column| entries(&column)).collect()
+        } else {
+            let mut columns = spilled(&sections, room_tall);
+            columns.truncate(most_columns);
+            columns
+        };
 
         let width = columns.len() * column_width + (columns.len() - 1) * GAP + 2;
-        let height = tallest(&columns) + 2;
+        let height = columns.iter().map(Vec::len).max().unwrap_or(0) + 2;
         let width = u16::try_from(width).unwrap_or(u16::MAX).min(area.width);
         let height = u16::try_from(height).unwrap_or(u16::MAX).min(area.height);
         let popup = Rect::new(
@@ -138,6 +152,50 @@ fn flow<'section, 'catalog>(
     columns
 }
 
+fn entries<'catalog>(column: &[&Section<'catalog>]) -> Vec<Entry<'catalog>> {
+    let mut entries = Vec::new();
+    for section in column {
+        if !entries.is_empty() {
+            entries.push(Entry::Gap);
+        }
+        entries.push(Entry::Heading(section.title));
+        entries.extend(section.bindings.iter().map(|binding| Entry::Binding(binding)));
+    }
+
+    entries
+}
+
+fn spilled<'catalog>(sections: &[Section<'catalog>], limit: usize) -> Vec<Vec<Entry<'catalog>>> {
+    let limit = limit.max(2);
+    let mut columns: Vec<Vec<Entry>> = vec![Vec::new()];
+
+    for section in sections {
+        let used = columns.last().map_or(0, Vec::len);
+        let room = limit.saturating_sub(used);
+        let cramped = room < section.height() + 1 && (section.height() <= limit || room < 3);
+        if used > 0 && cramped {
+            columns.push(Vec::new());
+        } else if used > 0 {
+            columns.last_mut().expect("columns starts with one column").push(Entry::Gap);
+        }
+        columns
+            .last_mut()
+            .expect("columns starts with one column")
+            .push(Entry::Heading(section.title));
+        for binding in &section.bindings {
+            if columns.last().map_or(0, Vec::len) >= limit {
+                columns.push(vec![Entry::Heading(section.title)]);
+            }
+            columns
+                .last_mut()
+                .expect("columns starts with one column")
+                .push(Entry::Binding(binding));
+        }
+    }
+
+    columns
+}
+
 fn tallest(columns: &[Vec<&Section>]) -> usize {
     columns
         .iter()
@@ -158,28 +216,21 @@ impl Painter {
         Style::new().bg(Color::from(self.tints.filler)).fg(Color::from(self.tints.foreground))
     }
 
-    fn column(&self, buffer: &mut Buffer, x: u16, sections: &[&Section]) {
+    fn column(&self, buffer: &mut Buffer, x: u16, entries: &[Entry]) {
         let heading = self.base().fg(Color::from(self.tints.muted)).add_modifier(Modifier::BOLD);
         let key = self.base().fg(Color::from(self.tints.attention));
         let bottom = self.popup.y + self.popup.height.saturating_sub(1);
         let label_x = x + u16::try_from(self.keys_width + 2).unwrap_or(u16::MAX);
-        let mut y = self.popup.y + 1;
 
-        for section in sections {
-            if y >= bottom {
-                return;
-            }
-            self.put(buffer, x, y, section.title, self.label_width, heading);
-            y += 1;
-            for binding in &section.bindings {
-                if y >= bottom {
-                    return;
+        for (y, entry) in (self.popup.y + 1..bottom).zip(entries) {
+            match entry {
+                Entry::Heading(title) => self.put(buffer, x, y, title, self.label_width, heading),
+                Entry::Binding(binding) => {
+                    self.put(buffer, x, y, &binding.shown(), self.keys_width, key);
+                    self.put(buffer, label_x, y, binding.label, self.label_width, self.base());
                 }
-                self.put(buffer, x, y, &binding.shown(), self.keys_width, key);
-                self.put(buffer, label_x, y, binding.label, self.label_width, self.base());
-                y += 1;
+                Entry::Gap => {}
             }
-            y += 1;
         }
     }
 

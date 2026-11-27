@@ -9,3 +9,7 @@ context = 5
 emphasis = "characters"
 theme = "tokyo-night"
 syntax-theme = "github_light"
+
+[keys]
+next-hunk = ["J", "]c"]
+copy-path = []

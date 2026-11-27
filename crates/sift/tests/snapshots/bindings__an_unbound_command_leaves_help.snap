@@ -1,57 +1,56 @@
 ---
 source: tests/bindings.rs
-expression: "screen(&mut surface, 70, 53)"
+expression: "screen(&mut surface, 100, 52)"
 ---
- M src/other                                                      1/2
-1 one        General
-2 two        ?               Show every key
-3            : C-p           Command palette
-             r               Reload from git
-             q C-c           Quit
-             Esc             Back, or quit
+ CHANGES                           M src/other.rs  +1 −1                                        1/2
+  src                           │1 one                           │1 one
+    other.rs              +1 −1 │2 two                           │2 three
 
-             Files
-             ] Tab           Next file
-             [ S-Tab         Previous file
-             /               Find file
-             C-b f           Toggle file list
-             y               Copy path
-             Y               Copy path:line or lines
-             V               Select lines
-             v               Mark viewed, go to next
-             u               Next unviewed file
+  General                                          Diff
+  ?               Show every key                   n ]c F7         Next hunk
+  : C-t           Command palette                  N [c S-F7       Previous hunk
+  r F5            Reload from git                  j ↓             Down a line
+  q ZZ ZQ C-c     Quit                             k ↑             Up a line
+  Esc             Back, or quit                    C-e C-↓         Scroll down a line
+                                                   C-y C-↑         Scroll up a line
+  Files                                            C-d             Down half a page
+  Tab ]f          Next file                        C-u             Up half a page
+  S-Tab [f        Previous file                    PgDn Space      Down a page
+  / C-f C-p       Find file                        PgUp            Up a page
+  f C-b           Toggle file list                 gg Home C-Home  Top, or the line counted
+  yy C-S-c        Copy the line                    G End C-End     Bottom, or the line counted
+  y C-c C-S-c     Copy the selected lines          C-g             Go to a line
+  yp              Copy path                        zz              Cursor line to the middle
+  yl Y            Copy path:line or lines          zt              Cursor line to the top
+  x               Mark viewed, go to next          zb              Cursor line to the bottom
+  ]u              Next unviewed file               H S-←           Cursor to the old side
+  [u              Previous unviewed file           L S-→           Cursor to the new side
+                                                   h ←             Scroll left
+                                                   l →             Scroll right
+                                                   V v             Select lines
+                                                   S-↓             Select down a line
+                                                   S-↑             Select up a line
+                                                   Enter o zo      Unfold, or toggle annotation
+                                                   zc              Fold back up
+                                                   za              Unfold or fold back up
+                                                   zR              Open every fold and annotation
+                                                   zM              Fold everything up again
 
-             Diff
-             n               Next hunk
-             N p             Previous hunk
-             Enter o         Unfold, or toggle annotation
-             j ↓             Down a line
-             k ↑             Up a line
-             C-d             Down half a page
-             C-u             Up half a page
-             PgDn C-f Space  Down a page
-             PgUp            Up a page
-             g Home          Top of the file
-             G End           Bottom of the file
-             H S-←           Cursor to the old side
-             L S-→           Cursor to the new side
-             h ←             Scroll left
-             l →             Scroll right
+                                                   View
+                                                   s               Split or unified
+                                                   w A-z           Wrap long lines
+                                                   W               Ignore whitespace
 
-             View
-             s               Split or unified
-             w               Wrap long lines
-             z               Fold unchanged lines
-             W               Ignore whitespace
+                                                   Review
+                                                   c               Comment on this line
+                                                   R               Reply to this thread
+                                                   X               Resolve or unresolve
 
-             Review
-             c               Comment on this line
-             R               Reply to this thread
-             x               Resolve or unresolve
-
-             Pull request
-             A               Approve
-             M               Merge
-
-                                           any key closes
-  main · HEAD → worktree · 2 files · 1 hunks · side by side   ? help
+                                                   Pull request
+                                                   A               Approve
+                                                   M               Merge
+                                                                                   any key closes
+                                 │
+                                 │
+                                 │
+  main · HEAD → worktree · 2 files · 1 hunks · side by side    c comment  R reply  M merge  ? help

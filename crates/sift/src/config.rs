@@ -1,5 +1,6 @@
 //! What a person sets for every diff Sift shows, from `config.toml` or a flag of the same name.
 
+use keys::Rebindings;
 use serde::{Deserialize, Serialize};
 
 use crate::diff::{Emphasis, Whitespace};
@@ -67,6 +68,9 @@ pub struct Config {
         help = "A Helix theme for the code: a name from ~/.config/helix/themes or bundled, or a file"
     )]
     pub syntax_theme: Option<String>,
+    #[arg(skip)]
+    #[serde(skip_serializing_if = "Rebindings::is_empty")]
+    pub keys: Rebindings,
 }
 
 impl Config {

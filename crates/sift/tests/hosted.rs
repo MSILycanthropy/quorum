@@ -93,7 +93,8 @@ fn a_click_is_measured_from_where_the_surface_was_drawn() {
     surface
         .mouse(at(MouseEventKind::Down(MouseButton::Left), GIVEN.x + 6, GIVEN.y + 3))
         .expect("the fixtures highlight");
-    let controls = surface.key(press(KeyCode::Char('y'))).expect("the fixtures highlight");
+    surface.key(press(KeyCode::Char('y'))).expect("the fixtures highlight");
+    let controls = surface.key(press(KeyCode::Char('p'))).expect("the fixtures highlight");
 
     assert_eq!(controls, Control::Copy("src/total.rs".to_owned()));
 }

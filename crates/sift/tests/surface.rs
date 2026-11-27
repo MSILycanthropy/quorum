@@ -62,12 +62,12 @@ fn screen(surface: &mut Surface, width: u16, height: u16) -> String {
 }
 
 #[test]
-fn no_key_is_bound_to_two_commands() {
+fn no_key_is_bound_to_two_commands_under_one_condition() {
     let mut seen = HashSet::new();
 
     for binding in Catalog::default().bindings() {
         for sequence in &binding.keys {
-            assert!(seen.insert(sequence.clone()), "{sequence} is bound twice");
+            assert!(seen.insert((binding.when, sequence.clone())), "{sequence} is bound twice");
         }
     }
 }
@@ -79,6 +79,7 @@ fn shift_is_folded_into_the_character_it_produces() {
         catalog.press(
             &mut Pending::default(),
             KeyEvent::new(KeyCode::Char(character), KeyModifiers::SHIFT),
+            &[],
         )
     };
 
@@ -96,7 +97,7 @@ fn question_mark_lists_every_key() {
     let mut surface = surface();
     typed(&mut surface, &[press(KeyCode::Char('?'))]);
 
-    insta::assert_snapshot!(screen(&mut surface, 70, 45));
+    insta::assert_snapshot!(screen(&mut surface, 100, 45));
 }
 
 #[test]
@@ -124,9 +125,9 @@ fn finding_a_file_by_name_opens_it() {
         ],
     );
 
-    let controls = typed(&mut surface, &[press(KeyCode::Char('y'))]);
+    let controls = typed(&mut surface, &[press(KeyCode::Char('y')), press(KeyCode::Char('p'))]);
 
-    assert_eq!(controls, vec![Control::Copy("src/total.rs".to_owned())]);
+    assert_eq!(controls.last(), Some(&Control::Copy("src/total.rs".to_owned())));
 }
 
 #[test]
@@ -176,7 +177,7 @@ fn a_file_whose_name_starts_with_the_query_outranks_one_that_merely_contains_it(
         .expect("the fixtures highlight");
     let mut keys = vec![press(KeyCode::Char('/'))];
     keys.extend("view".chars().map(|character| press(KeyCode::Char(character))));
-    keys.extend([press(KeyCode::Enter), press(KeyCode::Char('y'))]);
+    keys.extend([press(KeyCode::Enter), press(KeyCode::Char('y')), press(KeyCode::Char('p'))]);
 
     let controls = typed(&mut surface, &keys);
 
@@ -230,9 +231,9 @@ fn finding_lists_changed_files_before_unchanged_ones() {
     let mut surface = knowing(&["src/a.rs", "src/total.rs"]);
     typed(&mut surface, &[press(KeyCode::Char('/')), press(KeyCode::Enter)]);
 
-    let controls = typed(&mut surface, &[press(KeyCode::Char('y'))]);
+    let controls = typed(&mut surface, &[press(KeyCode::Char('y')), press(KeyCode::Char('p'))]);
 
-    assert_eq!(controls, vec![Control::Copy("src/total.rs".to_owned())]);
+    assert_eq!(controls.last(), Some(&Control::Copy("src/total.rs".to_owned())));
 }
 
 #[test]
@@ -315,7 +316,7 @@ fn shifted_arrows_switch_the_cursors_side_too() {
 fn marking_a_file_viewed_reports_it_to_the_host() {
     let mut surface = surface();
 
-    let controls = typing(&mut surface, "vv");
+    let controls = typing(&mut surface, "xx");
 
     assert_eq!(
         controls,
@@ -331,7 +332,7 @@ fn unmarking_a_file_the_host_marked_viewed_reports_it_to_the_host() {
     let mut surface = surface();
     surface.replace_viewed(vec![PathBuf::from("src/other.rs")]);
 
-    let controls = typing(&mut surface, "v");
+    let controls = typing(&mut surface, "x");
 
     assert_eq!(controls, vec![Control::Unviewed(PathBuf::from("src/other.rs"))]);
 }
@@ -339,7 +340,7 @@ fn unmarking_a_file_the_host_marked_viewed_reports_it_to_the_host() {
 #[test]
 fn the_host_replaces_every_viewed_mark_and_names_only_changed_files() {
     let mut surface = surface();
-    typing(&mut surface, "v");
+    typing(&mut surface, "x");
 
     surface.replace_viewed(vec![PathBuf::from("src/total.rs"), PathBuf::from("src/gone.rs")]);
 

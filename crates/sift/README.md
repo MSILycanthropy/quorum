@@ -21,30 +21,35 @@ sift -- src/          # only paths under src/
 
 ## Keys
 
-Press `?` for every key. The status line shows the ones you'll use most. These
-are the main ones:
+Press `?` for every key. Sift takes vim's keys and the ones you'd reach for
+with arrows and Ctrl, so most commands have both: `j` and `↓`, `gg` and
+`Home`, `]c` and `F7`. These are the main ones:
 
 ```
-n / N       next / previous hunk, carrying on into the next file
-] / [       next / previous file
-/           find a file by name
-:  ctrl-p   run any command by name
-e           open $EDITOR at the cursor's line
-V           select lines, from here to wherever the cursor goes
-y  Y        copy the file's path, or path:line (path:10-20 for a selection)
-s           side by side or unified
-w           wrap long lines
-ctrl-b  f   show or hide the file list
-r           reload from git
-q           quit
+n  ]c  F7       next hunk, carrying on into the next file (N  [c  S-F7 back)
+Tab  ]f         next file (S-Tab  [f back)
+/  C-f  C-p     find a file by name
+:  C-t          run any command by name, or :42 to go to line 42
+e               open $EDITOR at the cursor's line
+V  v  S-↓       select lines, or drag with the mouse
+yy  C-S-c       copy the code (y or C-c while selecting)
+yp  yl          copy the path, or path:line (path:10-20 for a selection)
+x               mark viewed and go to the next file
+s               side by side or unified
+w               wrap long lines
+f  C-b          show or hide the file list
+zR  zM          open or fold everything
+r  F5           reload from git
+q  ZZ           quit
 ```
 
-`j`/`k` move the cursor a line, `ctrl-d`/`ctrl-u` and the page keys move it and
-the view together, and `g`/`G` jump to either end. Side by side, `H`/`L` or
-`shift-←`/`shift-→` put the cursor on the old or new side. `h`/`l` and `←`/`→`
-scroll sideways.
+Counts work the way they do in vim, so `5j` moves five lines and `42G` goes
+to line 42. A key that starts a longer one, like `]` or `g`, waits for the
+next key, and the status line lists what can follow. `Esc` cancels it.
+
+A selection made with `V` or `v` keeps growing with every move until `Esc`.
+One made with Shift or the mouse ends on the next move without Shift.
 After `e` the diff reloads, so you see your edit straight away.
-Dragging with the mouse selects lines too, and `Esc` lets go of a selection.
 
 ## Settings
 
@@ -70,6 +75,33 @@ Every key is also a flag with the same name, and a flag wins over the file for
 that run. So `sift --layout side-by-side` undoes `layout = "unified"`, and
 `--wrap=false` undoes `wrap = true`. A key Sift doesn't know is an error, with
 the line it's on.
+
+A `[keys]` table gives a command new keys in place of the ones it came with:
+
+```toml
+[keys]
+toggle-viewed = ["v"]
+next-hunk = ["]c", "F7"]
+copy-path = []            # no key, but it's still in the palette
+```
+
+Keys are written the way help shows them. `C-d` and `ctrl-d` are the same,
+and so are `S-Tab` and `shift-Tab`. `]c` is `]` then `c`, and `"C-x C-s"` is
+two keys in a row. These are the names:
+
+```
+help  palette  reload  quit  back
+next-file  previous-file  find-file  toggle-file-list  edit  copy
+copy-selection  copy-path  copy-location  toggle-viewed  next-unviewed
+previous-unviewed
+next-hunk  previous-hunk  next-line  previous-line  scroll-line-down
+scroll-line-up  half-page-down  half-page-up  page-down  page-up  top  bottom
+go-to-line  cursor-line-to-middle  cursor-line-to-top  cursor-line-to-bottom
+old-side  new-side  scroll-left  scroll-right  select  select-down  select-up
+expand-fold  close-fold  toggle-fold  open-everything  fold-everything
+toggle-layout  toggle-wrapping  toggle-whitespace
+next-annotation  previous-annotation
+```
 
 ## Layout
 

@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-use keys::{Pending, Pressed};
+use keys::{Pending, Pressed, Rebindings};
 use ratatui::buffer::Buffer;
 use ratatui::crossterm::event::{KeyEvent, MouseEvent};
 use ratatui::layout::{Position, Rect};
@@ -18,6 +18,8 @@ use crate::ui::{
     Selection,
 };
 
+const MOST_REPEATS: usize = 10_000;
+
 /// What the surface is opened with, beyond its changes.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct Opening {
@@ -27,13 +29,17 @@ pub struct Opening {
     pub files: Vec<PathBuf>,
     pub bindings: Vec<Binding>,
     pub unbound: Vec<Command>,
+    pub keys: Rebindings,
     pub theme: Theme,
 }
 
 impl Opening {
     pub fn surface(self, changes: Vec<FileChange>) -> Result<Surface> {
         Ok(Surface {
-            catalog: Catalog::default().unbind(&self.unbound)?.with(self.bindings)?,
+            catalog: Catalog::default()
+                .unbind(&self.unbound)?
+                .with(self.bindings)?
+                .rebound(&self.keys)?,
             pending: Pending::default(),
             review: Review::new(changes, self.presentation, self.theme.clone())?,
             palette: Palette::new(self.theme.tints),
@@ -77,6 +83,11 @@ impl Surface {
         if self.palette.is_open() {
             return match self.palette.key(key) {
                 PaletteAction::Execute(PaletteTarget::Command(command)) => self.run(command),
+                PaletteAction::Execute(PaletteTarget::Line(line)) => {
+                    self.review.release_shifted();
+                    self.review.go_to_line(line)?;
+                    Ok(Control::Continue)
+                }
                 PaletteAction::Execute(PaletteTarget::File { path, line }) => {
                     if !self.review.is_changed(&path) {
                         return Ok(Control::Open { path, line });
@@ -88,10 +99,36 @@ impl Surface {
             };
         }
 
-        match self.catalog.press(&mut self.pending, key) {
-            Pressed::Command { command, .. } => self.run(command),
+        let holding = self.holding();
+        match self.catalog.press(&mut self.pending, key, holding) {
+            Pressed::Command { command, count } => self.counted(command, count),
             Pressed::Pending | Pressed::Nothing => Ok(Control::Continue),
         }
+    }
+
+    fn counted(&mut self, command: Command, count: Option<usize>) -> Result<Control> {
+        match (command, count) {
+            (Command::Top | Command::Bottom, Some(line)) => {
+                self.review.release_shifted();
+                self.review.go_to_line(line)?;
+                Ok(Control::Continue)
+            }
+            (command, Some(count)) if command.repeats() => {
+                let mut control = Control::Continue;
+                for _ in 0..count.min(MOST_REPEATS) {
+                    control = self.run(command)?;
+                    if control != Control::Continue {
+                        break;
+                    }
+                }
+                Ok(control)
+            }
+            (command, _) => self.run(command),
+        }
+    }
+
+    fn holding(&self) -> &'static [&'static str] {
+        if self.review.selecting() { &["selecting"] } else { &[] }
     }
 
     pub fn mouse(&mut self, mouse: MouseEvent) -> Result<()> {
@@ -129,6 +166,9 @@ impl Surface {
     }
 
     pub fn run(&mut self, command: Command) -> Result<Control> {
+        if command.moves() {
+            self.review.release_shifted();
+        }
         match command {
             Command::Quit => return Ok(Control::Quit),
             Command::Host(name) => return Ok(Control::Host(name)),
@@ -140,6 +180,14 @@ impl Surface {
             Command::Help => self.help.toggle(),
             Command::Palette => {
                 self.palette.open("command", self.shown_catalog().palette_entries());
+            }
+            Command::GoToLine => {
+                self.palette.open("line", self.shown_catalog().palette_entries());
+            }
+            Command::Copy => {
+                if let Some(text) = self.review.text() {
+                    return Ok(Control::Copy(text));
+                }
             }
             Command::FindFile => {
                 let changed = self.review.paths();
@@ -186,12 +234,14 @@ impl Surface {
         self.review.paths()
     }
 
+    pub fn names(&self) -> Vec<&'static str> {
+        self.catalog.names().collect()
+    }
+
     pub fn cursor(&self) -> Option<Anchor> {
         self.review.cursor()
     }
 
-    /// The selected lines, or the cursor's line on its own when nothing is
-    /// selected.
     pub fn selection(&self) -> Option<Selection> {
         self.review.selection()
     }
@@ -225,11 +275,16 @@ impl Surface {
         let key = base.fg(Color::from(self.tints.attention));
         buffer.set_style(area, base);
 
-        let left = self.notice.clone().unwrap_or_else(|| self.summary());
-        let left_style = if self.notice.is_some() { key } else { muted };
+        let (left, left_style) = match &self.notice {
+            _ if !self.pending.is_empty() => (self.pending.to_string(), key),
+            Some(notice) => (notice.clone(), key),
+            None => (self.summary(), muted),
+        };
 
         let room = usize::from(area.width);
-        let mut hints: Vec<(String, &str)> = self.catalog.hints().collect();
+        let following = self.catalog.continuations(&self.pending, self.holding());
+        let mut hints: Vec<(String, &str)> =
+            if following.is_empty() { self.catalog.hints().collect() } else { following };
         while hints.len() > 1 && left.width() + hinted(&hints) + 4 > room {
             let Some(dropped) = hints.iter().rposition(|(_, hint)| *hint != "help") else {
                 break;

@@ -1,14 +1,13 @@
 ---
 source: tests/hosted.rs
-assertion_line: 134
 expression: hosted(&mut surface)
 ---
 HOST BAR · pull request #42
-│ host │ CHANGES                                                                                1/2
-│ host │  src                  General
-│ host │    other.rs           ?               Show every key               e
-│ host │    total.rs           : C-p           Command palette
-│ host │                        r               Reload from git
-│ host │                        q C-c           Quit
-│ host │                        Esc             Back, or quit
-│ host │  main · HEAD → worktr                               any key closes n hunk  ] file  ? help
+│ host │ CHANGES                           M src/other.rs  +1 −1                                1/2
+│ host │  src
+│ host │    other.rs          General
+│ host │    total.rs          ?               Show every key
+│ host │                       : C-t           Command palette
+│ host │                       r F5            Reload from git
+│ host │                                                       any key closes
+│ host │  main · HEAD → worktree · 2 files · 1 hunks · side by side       n hunk  Tab file  ? help

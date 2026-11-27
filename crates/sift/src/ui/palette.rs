@@ -7,7 +7,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::{Clear, Widget};
 use unicode_width::UnicodeWidthStr;
 
-use crate::command::{PaletteEntry, PaletteModel, PaletteTarget, located};
+use crate::command::{PaletteEntry, PaletteModel, PaletteTarget, ex, located};
 use crate::theme::Tints;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -20,6 +20,7 @@ pub enum PaletteAction {
 #[derive(Clone, Debug)]
 pub struct Palette {
     entries: Vec<PaletteEntry>,
+    ex: Option<PaletteEntry>,
     title: &'static str,
     query: String,
     selected: usize,
@@ -37,6 +38,7 @@ impl Palette {
     pub fn new(tints: Tints) -> Self {
         Self {
             entries: Vec::new(),
+            ex: None,
             title: "",
             query: String::new(),
             selected: 0,
@@ -49,6 +51,7 @@ impl Palette {
 impl Palette {
     pub fn open(&mut self, title: &'static str, entries: Vec<PaletteEntry>) {
         self.entries = entries;
+        self.ex = None;
         self.title = title;
         self.query.clear();
         self.selected = 0;
@@ -60,6 +63,7 @@ impl Palette {
 
     pub fn close(&mut self) {
         self.entries.clear();
+        self.ex = None;
         self.query.clear();
         self.selected = 0;
     }
@@ -69,7 +73,7 @@ impl Palette {
     }
 
     pub fn selected(&self) -> Option<&PaletteEntry> {
-        self.model.rank(&self.query, &self.entries).get(self.selected).copied()
+        self.ranked().get(self.selected).copied()
     }
 
     pub fn key(&mut self, key: KeyEvent) -> PaletteAction {
@@ -92,7 +96,7 @@ impl Palette {
                     PaletteTarget::File { path, .. } => {
                         PaletteTarget::File { path: path.clone(), line }
                     }
-                    target @ PaletteTarget::Command(_) => target.clone(),
+                    target @ (PaletteTarget::Command(_) | PaletteTarget::Line(_)) => target.clone(),
                 });
                 self.close();
                 target.map_or(PaletteAction::Close, PaletteAction::Execute)
@@ -115,20 +119,31 @@ impl Palette {
             }
             KeyCode::Backspace => {
                 self.query.pop();
-                self.selected = 0;
+                self.typed();
                 PaletteAction::None
             }
             KeyCode::Char(character) if !control => {
                 self.query.push(character);
-                self.selected = 0;
+                self.typed();
                 PaletteAction::None
             }
             _ => PaletteAction::None,
         }
     }
 
+    fn typed(&mut self) {
+        self.selected = 0;
+        let commands =
+            self.entries.iter().any(|entry| matches!(entry.target, PaletteTarget::Command(_)));
+        self.ex = ex(&self.query).filter(|_| commands);
+    }
+
+    fn ranked(&self) -> Vec<&PaletteEntry> {
+        self.ex.iter().chain(self.model.rank(&self.query, &self.entries)).collect()
+    }
+
     fn down(&mut self) {
-        let count = self.model.rank(&self.query, &self.entries).len();
+        let count = self.ranked().len();
         self.selected = self.selected.saturating_add(1).min(count.saturating_sub(1));
     }
 
@@ -154,7 +169,7 @@ impl Widget for &Palette {
             return;
         }
         let width = area.width.saturating_sub(4).min(80);
-        let ranked = self.model.rank(&self.query, &self.entries);
+        let ranked = self.ranked();
         let wanted = u16::try_from(ranked.len().max(1) + 1).unwrap_or(u16::MAX);
         let height = area.height.saturating_sub(4).min(18).min(wanted);
         let left = area.x + area.width.saturating_sub(width) / 2;

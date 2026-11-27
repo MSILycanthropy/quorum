@@ -203,7 +203,7 @@ fn drawn(
 
 fn far_apart_unfolded(height: u16, commands: &[Command]) -> (Viewer, String) {
     let (old, new) = far_apart();
-    let mut unfolded = vec![Command::ToggleFolds];
+    let mut unfolded = vec![Command::OpenEverything];
     unfolded.extend_from_slice(commands);
 
     drawn((&old, &new), Mode::SideBySide, (48, height), false, &unfolded)

@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use keys::{Key, Keymap, Pending, Pressed};
+use keys::{Key, Keymap, Pending, Pressed, Rebindings};
 use ratatui::crossterm::event::KeyEvent;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -17,23 +17,36 @@ pub enum Command {
     PreviousFile,
     ToggleFileList,
     Edit,
+    Copy,
     CopyPath,
     CopyLocation,
     Select,
+    SelectDown,
+    SelectUp,
     ToggleViewed,
     NextUnviewed,
+    PreviousUnviewed,
     NextHunk,
     PreviousHunk,
     ExpandFold,
-    ToggleFolds,
+    CloseFold,
+    ToggleFold,
+    OpenEverything,
+    FoldEverything,
     NextLine,
     PreviousLine,
+    ScrollLineDown,
+    ScrollLineUp,
     HalfPageDown,
     HalfPageUp,
     PageDown,
     PageUp,
     Top,
     Bottom,
+    GoToLine,
+    CursorLineToMiddle,
+    CursorLineToTop,
+    CursorLineToBottom,
     OldSide,
     NewSide,
     ScrollLeft,
@@ -43,8 +56,58 @@ pub enum Command {
     ToggleWhitespace,
     NextAnnotation,
     PreviousAnnotation,
-    ToggleAnnotations,
     Host(&'static str),
+}
+
+impl Command {
+    pub fn moves(self) -> bool {
+        matches!(
+            self,
+            Self::NextFile
+                | Self::PreviousFile
+                | Self::NextUnviewed
+                | Self::PreviousUnviewed
+                | Self::NextHunk
+                | Self::PreviousHunk
+                | Self::NextLine
+                | Self::PreviousLine
+                | Self::HalfPageDown
+                | Self::HalfPageUp
+                | Self::PageDown
+                | Self::PageUp
+                | Self::Top
+                | Self::Bottom
+                | Self::GoToLine
+                | Self::NextAnnotation
+                | Self::PreviousAnnotation
+        )
+    }
+
+    pub fn repeats(self) -> bool {
+        matches!(
+            self,
+            Self::NextFile
+                | Self::PreviousFile
+                | Self::NextUnviewed
+                | Self::PreviousUnviewed
+                | Self::NextHunk
+                | Self::PreviousHunk
+                | Self::NextLine
+                | Self::PreviousLine
+                | Self::ScrollLineDown
+                | Self::ScrollLineUp
+                | Self::HalfPageDown
+                | Self::HalfPageUp
+                | Self::PageDown
+                | Self::PageUp
+                | Self::SelectDown
+                | Self::SelectUp
+                | Self::ScrollLeft
+                | Self::ScrollRight
+                | Self::NextAnnotation
+                | Self::PreviousAnnotation
+        )
+    }
 }
 
 /// One command, what it is called, and how to reach it.
@@ -82,50 +145,63 @@ impl Default for Catalog {
         let keymap = keys::keymap! {
             "General" {
                 "help" => C::Help, "Show every key", ["?"], hint: "help";
-                "palette" => C::Palette, "Command palette", [":", "C-p"];
-                "reload" => C::Reload, "Reload from git", ["r"];
-                "quit" => C::Quit, "Quit", ["q", "C-c"], hint: "quit";
+                "palette" => C::Palette, "Command palette", [":", "C-t"];
+                "reload" => C::Reload, "Reload from git", ["r", "F5"];
+                "quit" => C::Quit, "Quit", ["q", "ZZ", "ZQ", "C-c"], hint: "quit";
                 "back" => C::Back, "Back, or quit", ["Esc"];
             }
             "Files" {
-                "next-file" => C::NextFile, "Next file", ["]", "Tab"], hint: "file";
-                "previous-file" => C::PreviousFile, "Previous file", ["[", "S-Tab"];
-                "find-file" => C::FindFile, "Find file", ["/"], hint: "find";
-                "toggle-file-list" => C::ToggleFileList, "Toggle file list", ["C-b", "f"], hint: "files";
+                "next-file" => C::NextFile, "Next file", ["Tab", "]f"], hint: "file";
+                "previous-file" => C::PreviousFile, "Previous file", ["S-Tab", "[f"];
+                "find-file" => C::FindFile, "Find file", ["/", "C-f", "C-p"], hint: "find";
+                "toggle-file-list" => C::ToggleFileList, "Toggle file list", ["f", "C-b"], hint: "files";
                 "edit" => C::Edit, "Open in $EDITOR", ["e"], hint: "edit";
-                "copy-path" => C::CopyPath, "Copy path", ["y"];
-                "copy-location" => C::CopyLocation, "Copy path:line or lines", ["Y"];
-                "select" => C::Select, "Select lines", ["V"];
-                "toggle-viewed" => C::ToggleViewed, "Mark viewed, go to next", ["v"], hint: "viewed";
-                "next-unviewed" => C::NextUnviewed, "Next unviewed file", ["u"];
+                "copy" => C::Copy, "Copy the line", ["yy", "C-S-c"];
+                "copy-selection" => C::Copy, "Copy the selected lines", ["y", "C-c", "C-S-c"], when: "selecting";
+                "copy-path" => C::CopyPath, "Copy path", ["yp"];
+                "copy-location" => C::CopyLocation, "Copy path:line or lines", ["yl", "Y"];
+                "toggle-viewed" => C::ToggleViewed, "Mark viewed, go to next", ["x"], hint: "viewed";
+                "next-unviewed" => C::NextUnviewed, "Next unviewed file", ["]u"];
+                "previous-unviewed" => C::PreviousUnviewed, "Previous unviewed file", ["[u"];
             }
             "Diff" {
-                "next-hunk" => C::NextHunk, "Next hunk", ["n"], hint: "hunk";
-                "previous-hunk" => C::PreviousHunk, "Previous hunk", ["N", "p"];
-                "expand-fold" => C::ExpandFold, "Unfold, or toggle annotation", ["Enter", "o"];
+                "next-hunk" => C::NextHunk, "Next hunk", ["n", "]c", "F7"], hint: "hunk";
+                "previous-hunk" => C::PreviousHunk, "Previous hunk", ["N", "[c", "S-F7"];
                 "next-line" => C::NextLine, "Down a line", ["j", "↓"];
                 "previous-line" => C::PreviousLine, "Up a line", ["k", "↑"];
+                "scroll-line-down" => C::ScrollLineDown, "Scroll down a line", ["C-e", "C-↓"];
+                "scroll-line-up" => C::ScrollLineUp, "Scroll up a line", ["C-y", "C-↑"];
                 "half-page-down" => C::HalfPageDown, "Down half a page", ["C-d"];
                 "half-page-up" => C::HalfPageUp, "Up half a page", ["C-u"];
-                "page-down" => C::PageDown, "Down a page", ["PgDn", "C-f", "Space"];
+                "page-down" => C::PageDown, "Down a page", ["PgDn", "Space"];
                 "page-up" => C::PageUp, "Up a page", ["PgUp"];
-                "top" => C::Top, "Top of the file", ["g", "Home"];
-                "bottom" => C::Bottom, "Bottom of the file", ["G", "End"];
+                "top" => C::Top, "Top, or the line counted", ["gg", "Home", "C-Home"];
+                "bottom" => C::Bottom, "Bottom, or the line counted", ["G", "End", "C-End"];
+                "go-to-line" => C::GoToLine, "Go to a line", ["C-g"];
+                "cursor-line-to-middle" => C::CursorLineToMiddle, "Cursor line to the middle", ["zz"];
+                "cursor-line-to-top" => C::CursorLineToTop, "Cursor line to the top", ["zt"];
+                "cursor-line-to-bottom" => C::CursorLineToBottom, "Cursor line to the bottom", ["zb"];
                 "old-side" => C::OldSide, "Cursor to the old side", ["H", "S-←"];
                 "new-side" => C::NewSide, "Cursor to the new side", ["L", "S-→"];
                 "scroll-left" => C::ScrollLeft, "Scroll left", ["h", "←"];
                 "scroll-right" => C::ScrollRight, "Scroll right", ["l", "→"];
+                "select" => C::Select, "Select lines", ["V", "v"];
+                "select-down" => C::SelectDown, "Select down a line", ["S-↓"];
+                "select-up" => C::SelectUp, "Select up a line", ["S-↑"];
+                "expand-fold" => C::ExpandFold, "Unfold, or toggle annotation", ["Enter", "o", "zo"];
+                "close-fold" => C::CloseFold, "Fold back up", ["zc"];
+                "toggle-fold" => C::ToggleFold, "Unfold or fold back up", ["za"];
+                "open-everything" => C::OpenEverything, "Open every fold and annotation", ["zR"];
+                "fold-everything" => C::FoldEverything, "Fold everything up again", ["zM"];
             }
             "View" {
                 "toggle-layout" => C::ToggleLayout, "Split or unified", ["s"], hint: "layout";
-                "toggle-wrapping" => C::ToggleWrapping, "Wrap long lines", ["w"];
-                "toggle-folds" => C::ToggleFolds, "Fold unchanged lines", ["z"];
+                "toggle-wrapping" => C::ToggleWrapping, "Wrap long lines", ["w", "A-z"];
                 "toggle-whitespace" => C::ToggleWhitespace, "Ignore whitespace", ["W"];
             }
             "Annotations" {
-                "next-annotation" => C::NextAnnotation, "Next annotation", ["}"];
-                "previous-annotation" => C::PreviousAnnotation, "Previous annotation", ["{"];
-                "toggle-annotations" => C::ToggleAnnotations, "Collapse every annotation", ["Z"];
+                "next-annotation" => C::NextAnnotation, "Next annotation", ["]d", "F8"];
+                "previous-annotation" => C::PreviousAnnotation, "Previous annotation", ["[d", "S-F8"];
             }
         };
 
@@ -166,6 +242,23 @@ impl Catalog {
         Ok(Self { keymap: self.keymap.with(bindings)? })
     }
 
+    pub fn rebound(self, rebindings: &Rebindings) -> Result<Self> {
+        let keymap = self.keymap.rebound(rebindings)?;
+        let keyless = keymap
+            .bindings()
+            .iter()
+            .find(|binding| REQUIRED.contains(&binding.command) && binding.keys.is_empty());
+        if let Some(binding) = keyless {
+            return Err(Error::Required(binding.label));
+        }
+
+        Ok(Self { keymap })
+    }
+
+    pub fn names(&self) -> impl Iterator<Item = &'static str> + '_ {
+        self.keymap.names()
+    }
+
     pub fn sections(&self) -> Vec<&'static str> {
         let mut sections = SECTIONS.to_vec();
         for binding in self.bindings() {
@@ -182,8 +275,25 @@ impl Catalog {
         Self { keymap: self.keymap.clone().retain(|binding| binding.section != section) }
     }
 
-    pub fn press(&self, pending: &mut Pending, key: KeyEvent) -> Pressed<Command> {
-        self.keymap.press(pending, Key::from(key), &[])
+    pub fn press(
+        &self,
+        pending: &mut Pending,
+        key: KeyEvent,
+        holding: &[&str],
+    ) -> Pressed<Command> {
+        self.keymap.press(pending, Key::from(key), holding)
+    }
+
+    pub fn continuations(
+        &self,
+        pending: &Pending,
+        holding: &[&str],
+    ) -> Vec<(String, &'static str)> {
+        self.keymap
+            .continuations(pending, holding)
+            .into_iter()
+            .map(|continuation| (continuation.keys.to_string(), continuation.label))
+            .collect()
     }
 
     pub fn hints(&self) -> impl Iterator<Item = (String, &'static str)> + '_ {
@@ -204,7 +314,7 @@ impl Catalog {
     pub fn palette_entries(&self) -> Vec<PaletteEntry> {
         self.bindings()
             .iter()
-            .filter(|binding| binding.command != Command::Palette)
+            .filter(|binding| binding.command != Command::Palette && binding.when.is_none())
             .map(|binding| PaletteEntry {
                 target: PaletteTarget::Command(binding.command),
                 label: binding.label.to_owned(),
@@ -232,6 +342,7 @@ const HINTED: [Command; 9] = [
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum PaletteTarget {
     Command(Command),
+    Line(usize),
     File { path: PathBuf, line: Option<usize> },
 }
 
@@ -249,6 +360,28 @@ impl PaletteEntry {
 
         Self { target: PaletteTarget::File { path, line: None }, label, keys: String::new() }
     }
+}
+
+const QUITTING: [&str; 6] = ["q!", "qa", "qa!", "wq", "wqa", "x"];
+
+pub fn ex(query: &str) -> Option<PaletteEntry> {
+    let query = query.trim();
+    if let Ok(line) = query.parse::<usize>()
+        && line > 0
+    {
+        let label = format!("Go to line {line}");
+        return Some(PaletteEntry {
+            target: PaletteTarget::Line(line),
+            label,
+            keys: String::new(),
+        });
+    }
+
+    QUITTING.contains(&query).then(|| PaletteEntry {
+        target: PaletteTarget::Command(Command::Quit),
+        label: "Quit".to_owned(),
+        keys: String::new(),
+    })
 }
 
 pub fn located(query: &str) -> (&str, Option<usize>) {

@@ -15,7 +15,6 @@ use crate::command::Command;
 use crate::diff::{FileDiff, Side, Whitespace};
 use crate::git::{Content, FileChange, Status};
 use crate::theme::Theme;
-use crate::ui::annotation::has_body;
 use crate::ui::{
     Anchor, Annotation, Control, Error, Landing, Mode, Presentation, Result, Row, Selection, Tree,
     Viewer,
@@ -129,6 +128,7 @@ impl Review {
                 | Command::PreviousHunk
                 | Command::ToggleViewed
                 | Command::NextUnviewed
+                | Command::PreviousUnviewed
                 | Command::NextAnnotation
                 | Command::PreviousAnnotation => self.peek = None,
                 Command::ToggleFileList => {}
@@ -155,6 +155,9 @@ impl Review {
             Command::NextUnviewed => {
                 self.next_unviewed()?;
             }
+            Command::PreviousUnviewed => {
+                self.previous_unviewed()?;
+            }
             Command::ToggleWhitespace => {
                 self.presentation.whitespace = match self.presentation.whitespace {
                     Whitespace::Compare => Whitespace::Ignore,
@@ -174,7 +177,9 @@ impl Review {
                 self.open()?;
             }
             Command::ExpandFold => self.expand()?,
-            Command::ToggleAnnotations => self.collapse_every()?,
+            Command::OpenEverything | Command::FoldEverything => {
+                self.collapse_every(command == Command::FoldEverything)?;
+            }
             Command::NextAnnotation => {
                 let moved = self.viewer.as_mut().is_some_and(Viewer::next_annotation);
                 if !moved && self.step_where(Step::Forward, Self::annotated_change)? {
@@ -236,8 +241,6 @@ impl Review {
         Some(Anchor { path: self.path()?.to_path_buf(), side, line })
     }
 
-    /// The selected lines, or the cursor's line on its own when nothing is
-    /// selected.
     pub fn selection(&self) -> Option<Selection> {
         let (side, lines) = self.shown()?.selection()?;
 
@@ -250,6 +253,23 @@ impl Review {
 
     pub fn located(&self) -> Option<std::ops::RangeInclusive<usize>> {
         self.shown()?.located()
+    }
+
+    pub fn release_shifted(&mut self) {
+        if let Some(viewer) = self.active() {
+            viewer.release_shifted();
+        }
+    }
+
+    pub fn text(&self) -> Option<String> {
+        self.shown()?.text()
+    }
+
+    pub fn go_to_line(&mut self, line: usize) -> Result<()> {
+        match self.active() {
+            Some(viewer) => viewer.land_on(Landing::Line(line)),
+            None => Ok(()),
+        }
     }
 
     pub fn clear_selection(&mut self) -> bool {
@@ -343,16 +363,13 @@ impl Review {
         Ok(())
     }
 
-    fn collapse_every(&mut self) -> Result<()> {
-        let collapse = self
-            .group()
-            .iter()
-            .any(|annotation| !annotation.collapsed && has_body(&annotation.body));
+    fn collapse_every(&mut self, collapse: bool) -> Result<()> {
         for annotation in &self.annotations {
             self.overrides.insert(annotation.id.clone(), collapse);
         }
+        let command = if collapse { Command::FoldEverything } else { Command::OpenEverything };
         match &mut self.viewer {
-            Some(viewer) => viewer.run(Command::ToggleAnnotations),
+            Some(viewer) => viewer.run(command),
             None => Ok(()),
         }
     }
@@ -416,6 +433,24 @@ impl Review {
             .filter(|change| paths.contains(&change.path))
             .map(|change| (change.path.clone(), fingerprint(change)))
             .collect();
+    }
+
+    fn previous_unviewed(&mut self) -> Result<bool> {
+        let rows = self.tree.rows();
+        let unviewed = |index: &usize| {
+            rows[*index]
+                .change
+                .and_then(|change| self.changes.get(change))
+                .is_some_and(|change| !self.viewed.contains_key(&change.path))
+        };
+        let before = (0..self.selected).rev().find(unviewed);
+        let Some(index) = before.or_else(|| (self.selected + 1..rows.len()).rev().find(unviewed))
+        else {
+            return Ok(false);
+        };
+        self.select(index)?;
+
+        Ok(true)
     }
 
     fn next_unviewed(&mut self) -> Result<bool> {

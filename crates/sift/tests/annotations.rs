@@ -561,7 +561,7 @@ fn enter_on_an_annotation_with_an_empty_body_changes_nothing() {
 fn collapsing_every_annotation_leaves_one_heading_row_each() {
     let annotations = vec![why(), note("dead", Side::Old, 3, "bob", "Good riddance.\nReally.")];
     let mut shown = Shown::demo(Mode::Unified, (44, 12), annotations);
-    shown.run(&[Command::ToggleAnnotations]);
+    shown.run(&[Command::FoldEverything]);
 
     insta::assert_snapshot!(shown.text());
 }
@@ -1039,7 +1039,7 @@ fn help_lists_the_annotation_keys_only_once_the_surface_is_annotated() {
 
     insta::assert_snapshot!(format!(
         "{}\n{}",
-        words(&mut bare, 120, 30),
-        words(&mut annotated, 120, 30)
+        words(&mut bare, 160, 30),
+        words(&mut annotated, 160, 30)
     ));
 }

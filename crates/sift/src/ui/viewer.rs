@@ -95,6 +95,7 @@ pub struct Viewer {
     cursor: usize,
     mark: Option<Mark>,
     held: Option<Mark>,
+    shifted: bool,
     pressed: Option<Mark>,
     chosen: Side,
     laid_out: Option<Geometry>,
@@ -158,6 +159,7 @@ impl Viewer {
             cursor: 0,
             mark: None,
             held: None,
+            shifted: false,
             pressed: None,
             chosen: Side::New,
             laid_out: None,
@@ -229,85 +231,47 @@ impl Viewer {
     pub fn run(&mut self, command: Command) -> Result<()> {
         let page = self.height.max(2);
         match command {
-            Command::NextLine => {
-                if let Some(next) = self.next_entry(self.cursor) {
-                    self.place_cursor(next);
-                    self.follow();
-                }
-            }
-            Command::PreviousLine => {
-                if let Some(previous) = self.previous_entry(self.cursor) {
-                    self.place_cursor(previous);
-                    self.follow();
-                }
-            }
+            Command::NextLine => self.step(self.next_entry(self.cursor)),
+            Command::PreviousLine => self.step(self.previous_entry(self.cursor)),
             Command::HalfPageDown => self.page_down(page / 2),
             Command::HalfPageUp => self.page_up(page / 2),
             Command::PageDown => self.page_down(page - 1),
             Command::PageUp => self.page_up(page - 1),
-            Command::Top => {
-                self.place_cursor(0);
-                self.follow();
-            }
-            Command::Bottom => {
-                if let Some(last) = self.screen.len().checked_sub(1) {
-                    self.place_cursor(self.entry_containing(last));
-                    self.follow();
-                }
-            }
-            Command::Select => {
-                self.held = match self.held {
-                    Some(_) => None,
-                    None => self.text_mark(self.cursor),
-                };
+            Command::Top => self.step(Some(0)),
+            Command::Bottom => self.step(self.last_entry()),
+            Command::Select => self.toggle_selection(),
+            Command::SelectDown => self.extend(self.next_entry(self.cursor)),
+            Command::SelectUp => self.extend(self.previous_entry(self.cursor)),
+            Command::ScrollLineDown => self.scroll_by(1),
+            Command::ScrollLineUp => self.scroll_by(-1),
+            Command::CursorLineToMiddle => self.top = self.cursor.saturating_sub(self.height / 2),
+            Command::CursorLineToTop => self.top = self.cursor,
+            Command::CursorLineToBottom => {
+                self.top = (self.end_of(self.cursor) + 1).saturating_sub(self.height);
             }
             Command::OldSide => self.choose(Side::Old),
             Command::NewSide => self.choose(Side::New),
             Command::ScrollLeft => self.left = self.left.saturating_sub(4),
             Command::ScrollRight => self.left += 4,
-            Command::ToggleWrapping => {
-                self.presentation.wrap = !self.presentation.wrap;
-                self.left = 0;
-            }
-            Command::ToggleLayout if self.plain => {}
-            Command::ToggleLayout => {
-                self.presentation.mode = match self.presentation.mode {
-                    Mode::SideBySide => Mode::Unified,
-                    Mode::Unified => Mode::SideBySide,
-                };
-            }
+            Command::ToggleWrapping => self.toggle_wrapping(),
+            Command::ToggleLayout => self.toggle_layout(),
             Command::NextHunk => {
                 self.next_hunk();
             }
             Command::PreviousHunk => {
                 self.previous_hunk();
             }
-            Command::ExpandFold if self.annotation().is_some() => {
-                if let Some(Line::Annotation { index, .. }) = self.screen.get(self.cursor) {
-                    self.toggle(*index);
-                }
-            }
-            Command::ToggleAnnotations => self.toggle_every(),
             Command::NextAnnotation => {
                 self.next_annotation();
             }
             Command::PreviousAnnotation => {
                 self.previous_annotation();
             }
-            Command::ExpandFold => {
-                let bottom = (self.top + self.height).min(self.screen.len());
-                let visible = self.screen.get(self.top..bottom).unwrap_or_default();
-                let under = self.screen.get(self.cursor).and_then(Line::fold);
-                if let Some(first) = under.or_else(|| visible.iter().find_map(Line::fold)) {
-                    self.open_fold(first)?;
-                }
-            }
-            Command::ToggleFolds => {
-                self.folding = !self.folding;
-                self.opened.clear();
-                self.laid_out = None;
-                self.highlight()?;
-            }
+            Command::ExpandFold => self.expand()?,
+            Command::ToggleFold => self.toggle_fold()?,
+            Command::CloseFold => self.close_fold()?,
+            Command::OpenEverything => self.fold_everything(false)?,
+            Command::FoldEverything => self.fold_everything(true)?,
             _ => {}
         }
         self.lay_out();
@@ -315,11 +279,89 @@ impl Viewer {
         Ok(())
     }
 
+    fn step(&mut self, target: Option<usize>) {
+        if let Some(target) = target {
+            self.place_cursor(target);
+            self.follow();
+        }
+    }
+
+    fn toggle_selection(&mut self) {
+        self.shifted = false;
+        self.held = match self.held {
+            Some(_) => None,
+            None => self.text_mark(self.cursor),
+        };
+    }
+
+    fn extend(&mut self, target: Option<usize>) {
+        if self.held.is_none() {
+            self.held = self.text_mark(self.cursor);
+            self.shifted = true;
+        }
+        self.step(target);
+    }
+
+    fn toggle_wrapping(&mut self) {
+        self.presentation.wrap = !self.presentation.wrap;
+        self.left = 0;
+    }
+
+    fn toggle_layout(&mut self) {
+        if self.plain {
+            return;
+        }
+        self.presentation.mode = match self.presentation.mode {
+            Mode::SideBySide => Mode::Unified,
+            Mode::Unified => Mode::SideBySide,
+        };
+    }
+
+    fn expand(&mut self) -> Result<()> {
+        if let Some(Line::Annotation { index, .. }) = self.screen.get(self.cursor) {
+            let index = *index;
+            self.toggle(index);
+            return Ok(());
+        }
+        let bottom = (self.top + self.height).min(self.screen.len());
+        let visible = self.screen.get(self.top..bottom).unwrap_or_default();
+        let under = self.screen.get(self.cursor).and_then(Line::fold);
+        match under.or_else(|| visible.iter().find_map(Line::fold)) {
+            Some(first) => self.open_fold(first),
+            None => Ok(()),
+        }
+    }
+
+    fn toggle_fold(&mut self) -> Result<()> {
+        match self.screen.get(self.cursor) {
+            Some(Line::Fold { first, .. }) => {
+                let first = *first;
+                self.open_fold(first)
+            }
+            Some(Line::Annotation { index, .. }) => {
+                let index = *index;
+                self.toggle(index);
+                Ok(())
+            }
+            Some(Line::Text(_)) | None => self.close_fold(),
+        }
+    }
+
+    fn fold_everything(&mut self, folding: bool) -> Result<()> {
+        self.folding = folding;
+        self.opened.clear();
+        self.collapse_every(folding);
+        self.laid_out = None;
+
+        self.highlight()
+    }
+
     pub fn click(&mut self, column: u16, row: u16) -> Result<()> {
         if !self.area.contains(Position::new(column, row)) {
             return Ok(());
         }
         self.held = None;
+        self.shifted = false;
         self.pressed = None;
         let index = self.top + usize::from(row - self.area.y);
         let clicked = match self.screen.get(index) {
@@ -351,9 +393,6 @@ impl Viewer {
         Ok(())
     }
 
-    /// Moves the cursor to the row a drag has reached, holding the selection
-    /// from the row the button went down on. Past either edge, it scrolls a
-    /// row instead.
     pub fn drag_to(&mut self, row: u16) {
         let Some(pressed) = self.pressed.clone() else {
             return;
@@ -377,7 +416,10 @@ impl Viewer {
         if self.held.is_none() && index == self.find(&pressed) {
             return;
         }
-        self.held.get_or_insert(pressed);
+        if self.held.is_none() {
+            self.held = Some(pressed);
+            self.shifted = true;
+        }
         self.place_cursor(index);
     }
 
@@ -385,8 +427,6 @@ impl Viewer {
         self.pressed = None;
     }
 
-    /// Grows the selection from the cursor to the row clicked, or starts one
-    /// there, keeping the side it is on.
     pub fn extend_to(&mut self, column: u16, row: u16) {
         if !self.area.contains(Position::new(column, row)) {
             return;
@@ -397,6 +437,7 @@ impl Viewer {
         }
         if self.held.is_none() {
             self.held = self.text_mark(self.cursor);
+            self.shifted = true;
         }
         if self.held.is_some() {
             self.place_cursor(self.entry_containing(index));
@@ -405,6 +446,7 @@ impl Viewer {
 
     pub fn clear_selection(&mut self) -> bool {
         self.pressed = None;
+        self.shifted = false;
         self.held.take().is_some()
     }
 
@@ -412,8 +454,28 @@ impl Viewer {
         self.held.is_some()
     }
 
-    /// The selected lines of one side, counted from one, or the cursor's line
-    /// on its own when nothing is selected.
+    pub fn release_shifted(&mut self) {
+        if self.shifted {
+            self.held = None;
+            self.shifted = false;
+        }
+    }
+
+    pub fn text(&self) -> Option<String> {
+        let (side, lines) = self.selection()?;
+        let source = match side {
+            Side::Old => &self.diff.old,
+            Side::New => &self.diff.new,
+        };
+        let text: Vec<&str> = lines
+            .filter_map(|line| line.checked_sub(1))
+            .filter(|&index| index < source.len())
+            .map(|index| source.line(index).trim_end_matches('\n'))
+            .collect();
+
+        (!text.is_empty()).then(|| text.join("\n"))
+    }
+
     pub fn selection(&self) -> Option<(Side, RangeInclusive<usize>)> {
         match self.selected() {
             Some((side, indices)) => Some((side, self.lines_on(side, indices)?)),
@@ -421,8 +483,6 @@ impl Viewer {
         }
     }
 
-    /// The newer side's lines the selection covers, counted from one, or the
-    /// newer-side line nearest the cursor.
     pub fn located(&self) -> Option<RangeInclusive<usize>> {
         let newer = self.selected().and_then(|(_, indices)| self.lines_on(Side::New, indices));
 
@@ -577,16 +637,34 @@ impl Viewer {
         self.laid_out = None;
     }
 
-    fn toggle_every(&mut self) {
-        let collapse = self
-            .annotations
-            .iter()
-            .any(|annotation| !annotation.collapsed && has_body(&annotation.body));
+    fn collapse_every(&mut self, collapse: bool) {
         for annotation in &mut self.annotations {
-            annotation.collapsed = collapse;
+            annotation.collapsed = collapse && has_body(&annotation.body);
         }
         self.rest_on_heading();
         self.laid_out = None;
+    }
+
+    fn close_fold(&mut self) -> Result<()> {
+        let Some(Line::Text(painted)) = self.screen.get(self.cursor) else {
+            return Ok(());
+        };
+        let row = painted.row;
+        let rows = self.rows();
+        let annotated: Vec<usize> = self.placed().iter().map(|placement| placement.row).collect();
+        let first = foldable(rows, self.presentation.context)
+            .into_iter()
+            .flat_map(|range| around(range, &annotated))
+            .find(|range| range.contains(&row))
+            .map(|range| first_line(rows, &range));
+        if let Some(first) = first
+            && self.opened.remove(&first)
+        {
+            self.laid_out = None;
+            self.highlight()?;
+        }
+
+        Ok(())
     }
 
     fn rest_on_heading(&mut self) {
@@ -874,6 +952,10 @@ impl Viewer {
 
     fn next_entry(&self, index: usize) -> Option<usize> {
         (index + 1..self.screen.len()).find(|&index| !self.continues(index))
+    }
+
+    fn last_entry(&self) -> Option<usize> {
+        self.screen.len().checked_sub(1).map(|last| self.entry_containing(last))
     }
 
     fn previous_entry(&self, index: usize) -> Option<usize> {

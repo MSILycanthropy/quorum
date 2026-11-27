@@ -1,6 +1,5 @@
 ---
 source: tests/hosted.rs
-assertion_line: 143
 expression: line.trim_end()
 ---
-  main · HEAD → worktree · 2 files · side by side      n hunk  ] file  v viewed  C-b files  ? help
+  main · HEAD → worktree · 2 files · side by side      n hunk  Tab file  x viewed  f files  ? help

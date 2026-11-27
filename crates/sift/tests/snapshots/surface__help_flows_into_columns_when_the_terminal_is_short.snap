@@ -2,27 +2,27 @@
 source: tests/surface.rs
 expression: "screen(&mut surface, 100, 24)"
 ---
- CH                                                                                             1/2
-   General                                        Diff
-    ?               Show every key                 n               Next hunk
-    : C-p           Command palette                N p             Previous hunk
-    r               Reload from git                Enter o         Unfold, or toggle annotation
-    q C-c           Quit                           j ↓             Down a line
-    Esc             Back, or quit                  k ↑             Up a line
-                                                   C-d             Down half a page
-    Files                                          C-u             Up half a page
-    ] Tab           Next file                      PgDn C-f Space  Down a page
-    [ S-Tab         Previous file                  PgUp            Up a page
-    /               Find file                      g Home          Top of the file
-    C-b f           Toggle file list               G End           Bottom of the file
-    e               Open in $EDITOR                H S-←           Cursor to the old side
-    y               Copy path                      L S-→           Cursor to the new side
-    Y               Copy path:line or lines        h ←             Scroll left
-    V               Select lines                   l →             Scroll right
-    v               Mark viewed, go to next
-    u               Next unviewed file             View
-                                                   s               Split or unified
-                                                   w               Wrap long lines
-                                                   z               Fold unchanged lines
-                                                   W               Ignore whitespace
-                                                                                any key closes elp
+ CHANGES                           M src/other.rs  +1 −1                                        1/2
+
+  General                                          Diff
+  ?               Show every key                   n ]c F7         Next hunk
+  : C-t           Command palette                  N [c S-F7       Previous hunk
+  r F5            Reload from git                  j ↓             Down a line
+  q ZZ ZQ C-c     Quit                             k ↑             Up a line
+  Esc             Back, or quit                    C-e C-↓         Scroll down a line
+                                                   C-y C-↑         Scroll up a line
+  Files                                            C-d             Down half a page
+  Tab ]f          Next file                        C-u             Up half a page
+  S-Tab [f        Previous file                    PgDn Space      Down a page
+  / C-f C-p       Find file                        PgUp            Up a page
+  f C-b           Toggle file list                 gg Home C-Home  Top, or the line counted
+  e               Open in $EDITOR                  G End C-End     Bottom, or the line counted
+  yy C-S-c        Copy the line                    C-g             Go to a line
+  y C-c C-S-c     Copy the selected lines          zz              Cursor line to the middle
+  yp              Copy path                        zt              Cursor line to the top
+  yl Y            Copy path:line or lines          zb              Cursor line to the bottom
+  x               Mark viewed, go to next          H S-←           Cursor to the old side
+  ]u              Next unviewed file               L S-→           Cursor to the new side
+  [u              Previous unviewed file           h ←             Scroll left
+                                                                                   any key closes
+  main · HEAD → worktree · 2 files · 1 hunks · side by side     n hunk  Tab file  x viewed  ? help
