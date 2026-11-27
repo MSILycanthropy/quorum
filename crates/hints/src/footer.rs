@@ -12,13 +12,14 @@ const MARGIN: u16 = 1;
 const GAP: usize = 2;
 
 /// The bottom row of a screen: the status on the left and the hints on the
-/// right, or the hints alone from the left when there is no status. Keys
-/// pressed so far take the status's place. Hints are in order of importance,
+/// right, or the hints alone from the left when there is no status. A notice
+/// takes the status's place, and keys pressed so far take the notice's. Hints are in order of importance,
 /// so a row too narrow for all of them drops them from the end, pinned ones
 /// last, and cuts the status short before it drops a pinned one.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct Footer {
     pub status: Line<'static>,
+    pub notice: Option<String>,
     pub pending: String,
     pub hints: Vec<Hint>,
     pub styles: Styles,
@@ -36,9 +37,32 @@ impl Footer {
         Self { pending: pending.to_string(), hints, ..Self::default() }
     }
 
+    pub fn picking<C: Clone>(
+        keymap: &Keymap<C>,
+        pending: &Pending,
+        holding: &[&str],
+        names: &[&str],
+    ) -> Self {
+        let following = keymap.continuations(pending, holding);
+        let hints = if following.is_empty() {
+            names
+                .iter()
+                .filter_map(|name| keymap.bindings().iter().find(|binding| binding.name == *name))
+                .filter_map(|binding| Hint::of(binding, holding))
+                .collect()
+        } else {
+            following.into_iter().map(Hint::from).collect()
+        };
+
+        Self { pending: pending.to_string(), hints, ..Self::default() }
+    }
+
     fn left(&self) -> Line<'_> {
         if !self.pending.is_empty() {
             return Line::styled(self.pending.as_str(), self.styles.key);
+        }
+        if let Some(notice) = &self.notice {
+            return Line::styled(notice.as_str(), self.styles.key);
         }
         let mut status = self.status.clone();
         status.style = self.styles.muted.patch(status.style);

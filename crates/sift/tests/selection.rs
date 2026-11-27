@@ -5,18 +5,19 @@ use std::fmt::Write;
 use std::path::PathBuf;
 
 use hue::Rgb;
+use keys::{Key, Pending, Pressed};
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::buffer::Buffer;
-use ratatui::crossterm::event::{
-    KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
-};
+use ratatui::crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+use ratatui::layout::Rect;
 use ratatui::style::Color;
-use sift::command::Command;
+use ratatui::widgets::Widget;
+use sift::command::{self, Command};
 use sift::diff::{FileDiff, Side, Source};
 use sift::git::{Content, FileChange, Status};
 use sift::theme::{Theme, TokyoNight};
-use sift::ui::{Control, Mode, Opening, Presentation, Review, Selection};
+use sift::ui::{Mode, Presentation, Request, Review, SELECTING, Selection};
 
 const PATH: &str = "src/numbers.rs";
 
@@ -319,80 +320,75 @@ fn a_shift_click_selects_from_the_cursor_to_the_line_clicked() {
     assert_eq!(reviewing.selection(), Some(selected(Side::New, 1..=3)));
 }
 
-fn surface() -> sift::ui::Surface {
-    let mut surface = Opening::default().surface(numbers()).expect("the fixtures highlight");
-    drawn(&mut surface);
+fn keyed() -> Review {
+    let mut review = Review::new(numbers(), Presentation::default(), Theme::default())
+        .expect("the fixtures highlight");
+    drawn(&mut review);
 
-    surface
+    review
 }
 
-fn drawn(surface: &mut sift::ui::Surface) -> String {
-    let mut terminal = Terminal::new(TestBackend::new(120, 12)).expect("test backend starts");
-    terminal.draw(|frame| frame.render_widget(&mut *surface, frame.area())).expect("draw succeeds");
-
-    let buffer = terminal.backend().buffer();
-    let mut out = String::new();
-    for y in 0..buffer.area().height {
-        let line: String =
-            (0..buffer.area().width).map(|x| buffer[(x, y)].symbol().to_owned()).collect();
-        writeln!(out, "{}", line.trim_end()).expect("writing to a String cannot fail");
-    }
-
-    out
+fn drawn(review: &mut Review) {
+    let area = Rect::new(0, 0, 120, 11);
+    review.render(area, &mut Buffer::empty(area));
 }
 
-fn typed(surface: &mut sift::ui::Surface, keys: &str) -> Vec<Control> {
+fn typed(review: &mut Review, keys: &str) -> Vec<Request> {
+    let keymap = command::keymap();
+    let mut pending = Pending::default();
     keys.chars()
-        .map(|key| {
-            let control = surface
-                .key(KeyEvent::new(KeyCode::Char(key), KeyModifiers::NONE))
-                .expect("the fixtures highlight");
-            drawn(surface);
-            control
+        .map(|character| {
+            let key: Key = character.to_string().parse().expect("a character is a key");
+            let request = match keymap.press(&mut pending, key, &review.holding()) {
+                Pressed::Command { command, count } => {
+                    review.repeated(command, count).expect("the fixtures highlight")
+                }
+                Pressed::Pending | Pressed::Nothing => Request::Nothing,
+            };
+            drawn(review);
+            request
         })
         .collect()
 }
 
 #[test]
 fn copying_a_selection_copies_its_range() {
-    let mut surface = surface();
-    let controls = typed(&mut surface, "ggVjjY");
+    let mut review = keyed();
 
-    assert_eq!(controls.last(), Some(&Control::Copy(format!("{PATH}:1-3"))));
+    assert_eq!(typed(&mut review, "ggVjjY").last(), Some(&Request::Copy(format!("{PATH}:1-3"))));
 }
 
 #[test]
 fn copying_without_a_selection_still_copies_one_line() {
-    let mut surface = surface();
-    let controls = typed(&mut surface, "ggjY");
+    let mut review = keyed();
 
-    assert_eq!(controls.last(), Some(&Control::Copy(format!("{PATH}:2"))));
+    assert_eq!(typed(&mut review, "ggjY").last(), Some(&Request::Copy(format!("{PATH}:2"))));
 }
 
 #[test]
-fn the_editor_opens_at_the_first_line_selected() {
-    let mut surface = surface();
-    let controls = typed(&mut surface, "GVkke");
+fn the_location_starts_at_the_first_line_selected() {
+    let mut review = keyed();
+    typed(&mut review, "GVkk");
 
-    assert_eq!(controls.last(), Some(&Control::Edit { path: PathBuf::from(PATH), line: Some(6) }));
+    assert_eq!(review.location().and_then(|location| location.lines), Some(6..=8));
 }
 
 #[test]
-fn escape_lets_go_of_the_selection_before_it_quits() {
-    let mut surface = surface();
-    typed(&mut surface, "ggVj");
-    let esc = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
+fn escape_lets_go_of_the_selection_and_leaves_the_cursor_where_it_was() {
+    let mut review = keyed();
+    typed(&mut review, "ggVj");
+    let held = review.holding();
+    review.run(Command::ClearSelection).expect("the fixtures highlight");
 
-    assert_eq!(surface.key(esc).expect("the fixtures highlight"), Control::Continue);
-    assert_eq!(surface.selection(), Some(selected(Side::New, 2..=2)));
-    assert_eq!(surface.key(esc).expect("the fixtures highlight"), Control::Quit);
+    assert_eq!(held, [SELECTING]);
+    assert_eq!(review.selection(), Some(selected(Side::New, 2..=2)));
+    assert_eq!(review.holding(), Vec::<&str>::new());
 }
 
 #[test]
-fn the_status_line_counts_the_lines_selected() {
-    let mut surface = surface();
-    typed(&mut surface, "ggVjj");
+fn the_status_counts_the_lines_selected() {
+    let mut review = keyed();
+    typed(&mut review, "ggVjj");
 
-    let status = drawn(&mut surface).lines().last().unwrap_or_default().to_owned();
-    assert!(status.contains("lines 1–3"), "{status}");
+    assert!(review.status().contains("lines 1–3"), "{}", review.status());
 }

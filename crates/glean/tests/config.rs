@@ -9,7 +9,7 @@ use keys::Sequence;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use settings::{Page, Styles, Values};
-use sift::command::Catalog;
+use sift::command;
 use sift::ui::Mode;
 
 fn fixture(name: &str) -> PathBuf {
@@ -51,7 +51,7 @@ fn the_settings_page_lists_gleans_settings_then_sifts() {
         effective: Settings::serialized(&effective).expect("a config is a table").table().clone(),
         ..Values::default()
     };
-    let keymap = Catalog::default().keymap().clone();
+    let keymap = command::keymap();
     let mut page =
         Page::new(sections(), values, keymap, keys::Rebindings::default(), Styles::default());
 

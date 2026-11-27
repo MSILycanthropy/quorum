@@ -1,6 +1,6 @@
 ---
-source: tests/hosted.rs
-expression: hosted(&mut surface())
+source: tests/diff.rs
+expression: hosted(&mut driven.review)
 ---
 HOST BAR · pull request #42
 │ host │ CHANGES                           M src/other.rs  +1 −1                                1/2
@@ -10,4 +10,4 @@ HOST BAR · pull request #42
 │ host │                                 │
 │ host │                                 │
 │ host │                                 │
-│ host │  main · HEAD → worktree · 2 files · 1 hunks · side by side       n hunk  C-, keys  q quit
+│ host │                                 │

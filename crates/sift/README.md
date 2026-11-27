@@ -105,28 +105,29 @@ two keys in a row. These are the names:
 palette  settings  reload  quit  back
 next-file  previous-file  find-file  toggle-file-list  edit  copy
 copy-selection  copy-path  copy-location  toggle-viewed  next-unviewed
-previous-unviewed
+previous-unviewed  close-file
 next-hunk  previous-hunk  next-line  previous-line  scroll-line-down
 scroll-line-up  half-page-down  half-page-up  page-down  page-up  top  bottom
 go-to-line  cursor-line-to-middle  cursor-line-to-top  cursor-line-to-bottom
 old-side  new-side  scroll-left  scroll-right  select  select-down  select-up
-expand-fold  close-fold  toggle-fold  open-everything  fold-everything
+clear-selection  expand-fold  close-fold  toggle-fold  open-everything  fold-everything
 toggle-layout  toggle-wrapping  toggle-whitespace
-next-annotation  previous-annotation
 ```
 
 ## Layout
 
-    src/command.rs   every command and the keys bound to it
+    src/command.rs   the diff's commands and the keys they come with
+    src/frame.rs     Sift's own keys, palette rows and status line
     src/diff         diff model, side-by-side alignment, wrapping
     src/git.rs       what changed between a revision and the worktree, index or another revision
-    src/ui           the file list, the diff, the palette over them, and the status line
+    src/ui           the file list and the diff
 
-The key catalog in `command.rs` is the one place a key gets its meaning. The
-palette, the status line hints and the settings page's Keys tab are all drawn
-from it, so they can't drift apart. A program that embeds sift adds its own keys
-to the same catalog through `Opening::bindings`, so they show up in all three,
-and a key that one of sift's commands already uses is refused.
+The library is the diff. `command::keymap()` holds its keys, and
+`frame::keymap()` joins Sift's own (quitting, the palette, finding a file) onto
+them. The palette, the status line hints and the settings page's Keys tab are
+all drawn from that one keymap, so they can't drift apart. A program that embeds
+the diff joins `command::keymap()` into its own the same way, and a key both
+use under the same condition is refused.
 
 ## Requires
 

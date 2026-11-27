@@ -116,3 +116,40 @@ fn hints_written_by_hand_are_a_key_and_its_words_words_alone_or_pinned() {
         ]
     );
 }
+
+#[test]
+fn a_binding_with_no_keys_has_no_hint() {
+    let keymap = keymap! { "General" { "quit" => Command::Quit, "Quit", [], hint: "quit"; } }
+        .expect("one binding cannot clash");
+
+    assert_eq!(Hint::of(&keymap.bindings()[0], &[]), None);
+}
+
+#[test]
+fn picking_names_the_hints_in_the_order_named() {
+    let footer =
+        Footer::picking(&keymap(), &Pending::default(), &[], &["comment", "next-hunk", "top"]);
+
+    assert_eq!(footer.hints, hints!["c" => "comment", "n" => "hunk"]);
+}
+
+#[test]
+fn picking_still_says_what_finishes_pending_keys() {
+    let keymap = keymap();
+    let mut pending = Pending::default();
+    keymap.press(&mut pending, "]".parse::<Key>().expect("] is a key"), &[]);
+
+    assert_eq!(
+        Footer::picking(&keymap, &pending, &[], &["quit"]).hints,
+        hints!["c" => "Next hunk"]
+    );
+}
+
+#[test]
+fn a_notice_takes_the_status_place_and_pending_keys_take_the_notice() {
+    let noticed = Footer { notice: Some("copied".to_owned()), ..status("main · 2 files") };
+    let pending = Footer { pending: "g".to_owned(), ..noticed.clone() };
+
+    assert!(row(&noticed, 60).starts_with(" copied "), "{}", row(&noticed, 60));
+    assert!(row(&pending, 60).starts_with(" g "), "{}", row(&pending, 60));
+}

@@ -272,3 +272,51 @@ fn the_hints_name_the_keys_to_choose_and_close() {
     assert_eq!(picker.hints(), hints!["Enter" => "choose", "Esc" => "close" pinned]);
     assert!(picker.hints().iter().all(|hint| hint != &Hint::new("↑", "up")));
 }
+
+#[test]
+fn an_open_picker_puts_its_own_keys_in_the_footer_and_a_closed_one_leaves_it() {
+    let footer = hints::Footer { hints: hints!["q" => "quit"], ..hints::Footer::default() };
+    let mut picker = Picker::<Pick>::default();
+    let closed = picker.hinting(footer.clone());
+    picker.open("play", tracks());
+
+    assert_eq!(closed.hints, hints!["q" => "quit"]);
+    assert_eq!(picker.hinting(footer).hints, picker.hints());
+}
+
+#[test]
+fn nothing_is_drawn_outside_the_area_however_small_it_is() {
+    let screen = Rect::new(0, 0, 54, 12);
+    for width in 0..=48 {
+        for height in 0..=8 {
+            let given = Rect::new(3, 2, width, height);
+            let mut buffer = Buffer::empty(screen);
+            opened().render(given, &mut buffer);
+
+            for y in 0..screen.height {
+                for x in 0..screen.width {
+                    if !given.contains(ratatui::layout::Position::new(x, y)) {
+                        assert_eq!(
+                            buffer[(x, y)].symbol(),
+                            " ",
+                            "{width}x{height} drew at {x},{y}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn the_picker_opens_over_the_area_it_is_given_not_the_whole_screen() {
+    let mut buffer = Buffer::empty(Rect::new(0, 0, 70, 12));
+    opened().render(Rect::new(10, 2, 50, 8), &mut buffer);
+    let mut out = String::new();
+    for y in 0..12 {
+        let line: String = (0..70).map(|x| buffer[(x, y)].symbol().to_owned()).collect();
+        writeln!(out, "{}", line.trim_end()).expect("writing to a String cannot fail");
+    }
+
+    insta::assert_snapshot!(out);
+}

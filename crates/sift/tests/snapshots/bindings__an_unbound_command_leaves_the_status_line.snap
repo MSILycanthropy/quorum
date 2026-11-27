@@ -1,6 +1,0 @@
----
-source: tests/bindings.rs
-expression: "screen(&mut surface, 200, 2)"
----
- CHANGES                           M src/other.rs  +1 −1                                                                                                                                            1/2
-  main · HEAD → worktree · 2 files · side by side                                                 c comment  R reply  M merge  n hunk  Tab file  x viewed  f files  / find  s layout  C-, keys  q quit

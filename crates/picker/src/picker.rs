@@ -1,6 +1,6 @@
 //! The overlay: what has been typed, and the entries that match it.
 
-use hints::Hint;
+use hints::{Footer, Hint};
 use keys::{Key, Keymap, Pending, Pressed, keymap};
 use ratatui::buffer::Buffer;
 use ratatui::crossterm::event::{KeyCode, KeyModifiers};
@@ -117,6 +117,10 @@ impl<T> Picker<T> {
         self.controls.bindings().iter().filter_map(|binding| Hint::of(binding, &[])).collect()
     }
 
+    pub fn hinting(&self, footer: Footer) -> Footer {
+        if self.open { Footer { hints: self.hints(), ..footer } } else { footer }
+    }
+
     pub fn key(&mut self, key: Key) -> Outcome<T> {
         if !self.open {
             return Outcome::Nothing;
@@ -217,6 +221,9 @@ impl<T> Widget for &Picker<T> {
         let left = area.x + area.width.saturating_sub(width) / 2;
         let top = area.y + area.height.saturating_sub(height) / 3;
         let popup = Rect::new(left, top, width, height);
+        if popup.is_empty() {
+            return;
+        }
         Clear.render(popup, buffer);
 
         let base = self.styles.base;

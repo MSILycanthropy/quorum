@@ -7,16 +7,13 @@ use hue::Rgb;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::buffer::Buffer;
-use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use sift::command::Command;
 use sift::diff::{FileDiff, Side, Source};
 use sift::git::{Content, FileChange, Status};
 use sift::theme::{Theme, TokyoNight};
-use sift::ui::{
-    Anchor, Annotation, Body, Draw, Error, Mode, Opening, Presentation, Surface, Text, Viewer,
-};
+use sift::ui::{Anchor, Annotation, Body, Draw, Error, Mode, Presentation, Review, Text, Viewer};
 
 const OLD: &str = "fn total(cart: &Cart) -> u32 {\n    let total = 1;\n    dead();\n    total\n}\n";
 const NEW: &str = "fn total(cart: &Cart) -> u32 {\n    let total = 42;\n    total\n}\n";
@@ -692,119 +689,100 @@ fn changes() -> Vec<FileChange> {
     ]
 }
 
-fn surface(changes: Vec<FileChange>) -> Surface {
-    let opening = Opening {
-        branch: Some("main".to_owned()),
-        comparing: "main → feature".to_owned(),
-        ..Opening::default()
-    };
-    opening.surface(changes).expect("the fixtures highlight")
+fn review(changes: Vec<FileChange>) -> Review {
+    Review::new(changes, Presentation::default(), Theme::default()).expect("the fixtures highlight")
 }
 
-fn screen(surface: &mut Surface, width: u16, height: u16) -> String {
+fn screen(review: &mut Review, width: u16, height: u16) -> String {
     let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("test backend starts");
-    terminal.draw(|frame| frame.render_widget(&mut *surface, frame.area())).expect("draw succeeds");
+    terminal.draw(|frame| frame.render_widget(&mut *review, frame.area())).expect("draw succeeds");
 
     describe(terminal.backend().buffer(), background)
 }
 
-fn words(surface: &mut Surface, width: u16, height: u16) -> String {
-    let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("test backend starts");
-    terminal.draw(|frame| frame.render_widget(&mut *surface, frame.area())).expect("draw succeeds");
-
-    let buffer = terminal.backend().buffer();
-    let mut out = String::new();
-    for y in 0..buffer.area().height {
-        let line: String =
-            (0..buffer.area().width).map(|x| buffer[(x, y)].symbol().to_owned()).collect();
-        writeln!(out, "{}", line.trim_end()).expect("writing to a String cannot fail");
-    }
-    out
-}
-
-fn steps(surface: &mut Surface, commands: &[Command]) {
+fn steps(review: &mut Review, commands: &[Command]) {
     for command in commands {
-        screen(surface, 90, 12);
-        surface.run(*command).expect("the fixtures highlight");
+        screen(review, 90, 12);
+        review.run(*command).expect("the fixtures highlight");
     }
-    screen(surface, 90, 12);
+    screen(review, 90, 12);
 }
 
-fn reviewed() -> Surface {
-    let mut surface = surface(changes());
-    surface
+fn reviewed() -> Review {
+    let mut review = review(changes());
+    review
         .annotate(vec![
             on("src/a.rs", note("a", Side::New, 2, "alice", "Why 2?\nSpell it out.")),
             on("src/c.rs", note("c", Side::New, 2, "bob", "And 7?")),
         ])
         .expect("the fixtures highlight");
-    screen(&mut surface, 90, 12);
+    screen(&mut review, 90, 12);
 
-    surface
+    review
 }
 
-fn under(surface: &Surface) -> Option<String> {
-    surface.annotation().map(|annotation| annotation.id.clone())
+fn under(review: &Review) -> Option<String> {
+    review.annotation().map(|annotation| annotation.id.clone())
 }
 
 #[test]
-fn an_annotation_reaches_the_screen_through_the_surface() {
+fn an_annotation_reaches_the_screen_through_the_review() {
     insta::assert_snapshot!(screen(&mut reviewed(), 90, 12));
 }
 
 #[test]
 fn the_annotation_under_the_cursor_is_reported_by_id() {
-    let mut surface = reviewed();
-    steps(&mut surface, &[Command::NextAnnotation]);
+    let mut review = reviewed();
+    steps(&mut review, &[Command::NextAnnotation]);
 
-    assert_eq!(under(&surface), Some("a".to_owned()));
+    assert_eq!(under(&review), Some("a".to_owned()));
 }
 
 #[test]
 fn cursor_and_annotation_agree_on_every_row_of_an_annotation() {
-    let mut surface = reviewed();
-    steps(&mut surface, &[Command::NextAnnotation]);
+    let mut review = reviewed();
+    steps(&mut review, &[Command::NextAnnotation]);
     let anchor = Anchor { path: PathBuf::from("src/a.rs"), side: Side::New, line: 2 };
 
     for _ in 0..3 {
-        assert_eq!(under(&surface), Some("a".to_owned()));
-        assert_eq!(surface.cursor(), Some(anchor.clone()));
-        steps(&mut surface, &[Command::NextLine]);
+        assert_eq!(under(&review), Some("a".to_owned()));
+        assert_eq!(review.cursor(), Some(anchor.clone()));
+        steps(&mut review, &[Command::NextLine]);
     }
-    assert_eq!(under(&surface), None);
+    assert_eq!(under(&review), None);
 }
 
 #[test]
 fn two_annotations_with_one_id_are_rejected_and_the_previous_set_is_kept() {
-    let mut surface = reviewed();
+    let mut review = reviewed();
     let repeated = vec![
         on("src/b.rs", note("same", Side::New, 1, "one", "")),
         on("src/b.rs", note("same", Side::New, 2, "two", "")),
     ];
-    let before = screen(&mut surface, 90, 12);
+    let before = screen(&mut review, 90, 12);
 
-    let refused = surface.annotate(repeated);
+    let refused = review.annotate(repeated);
 
     assert!(matches!(refused, Err(Error::DuplicateAnnotation(id)) if id == "same"));
-    assert_eq!(screen(&mut surface, 90, 12), before);
+    assert_eq!(screen(&mut review, 90, 12), before);
 }
 
 fn unplaced_ids(annotations: Vec<Annotation>) -> Vec<String> {
-    let mut surface = surface(changes());
-    surface.annotate(annotations).expect("the fixtures highlight");
+    let mut review = review(changes());
+    review.annotate(annotations).expect("the fixtures highlight");
 
-    surface.unplaced().into_iter().map(|annotation| annotation.id.clone()).collect()
+    review.unplaced().into_iter().map(|annotation| annotation.id.clone()).collect()
 }
 
 #[test]
 fn an_anchor_past_the_end_of_the_file_is_unplaced_and_not_drawn() {
     let past = on("src/a.rs", note("past", Side::New, 40, "alice", "Gone."));
-    let mut surface = surface(changes());
-    let bare = screen(&mut surface, 90, 12);
-    surface.annotate(vec![past.clone()]).expect("the fixtures highlight");
+    let mut review = review(changes());
+    let bare = screen(&mut review, 90, 12);
+    review.annotate(vec![past.clone()]).expect("the fixtures highlight");
 
     assert_eq!(unplaced_ids(vec![past]), ["past"]);
-    assert_eq!(screen(&mut surface, 90, 12), bare);
+    assert_eq!(screen(&mut review, 90, 12), bare);
 }
 
 #[test]
@@ -829,71 +807,71 @@ fn an_anchor_in_a_binary_file_is_unplaced() {
 
 #[test]
 fn the_next_annotation_past_the_last_one_in_a_file_is_the_first_in_the_next_annotated_file() {
-    let mut surface = reviewed();
-    steps(&mut surface, &[Command::NextAnnotation, Command::NextAnnotation]);
+    let mut review = reviewed();
+    steps(&mut review, &[Command::NextAnnotation, Command::NextAnnotation]);
 
-    assert_eq!(under(&surface), Some("c".to_owned()));
+    assert_eq!(under(&review), Some("c".to_owned()));
 }
 
 #[test]
 fn next_annotation_skips_files_without_any() {
-    let mut surface = reviewed();
-    steps(&mut surface, &[Command::NextAnnotation, Command::NextAnnotation]);
+    let mut review = reviewed();
+    steps(&mut review, &[Command::NextAnnotation, Command::NextAnnotation]);
 
-    assert_eq!(surface.cursor().map(|anchor| anchor.path), Some(PathBuf::from("src/c.rs")));
+    assert_eq!(review.cursor().map(|anchor| anchor.path), Some(PathBuf::from("src/c.rs")));
 }
 
 #[test]
 fn the_previous_annotation_before_the_first_is_the_last_in_the_previous_annotated_file() {
-    let mut surface = reviewed();
-    steps(&mut surface, &[Command::NextAnnotation, Command::NextAnnotation]);
-    steps(&mut surface, &[Command::PreviousAnnotation]);
+    let mut review = reviewed();
+    steps(&mut review, &[Command::NextAnnotation, Command::NextAnnotation]);
+    steps(&mut review, &[Command::PreviousAnnotation]);
 
-    assert_eq!(under(&surface), Some("a".to_owned()));
+    assert_eq!(under(&review), Some("a".to_owned()));
 }
 
 #[test]
 fn next_annotation_past_the_last_annotated_file_stays_put() {
-    let mut surface = reviewed();
-    steps(&mut surface, &[Command::NextAnnotation, Command::NextAnnotation]);
-    let before = screen(&mut surface, 90, 12);
-    steps(&mut surface, &[Command::NextAnnotation]);
+    let mut review = reviewed();
+    steps(&mut review, &[Command::NextAnnotation, Command::NextAnnotation]);
+    let before = screen(&mut review, 90, 12);
+    steps(&mut review, &[Command::NextAnnotation]);
 
-    assert_eq!(screen(&mut surface, 90, 12), before);
+    assert_eq!(screen(&mut review, 90, 12), before);
 }
 
 #[test]
 fn going_to_an_annotation_by_id_selects_its_file_and_lands_on_its_heading() {
-    let mut surface = reviewed();
+    let mut review = reviewed();
 
-    assert!(surface.go_to_annotation("c").expect("the fixtures highlight"));
-    insta::assert_snapshot!(screen(&mut surface, 90, 12));
+    assert!(review.go_to_annotation("c").expect("the fixtures highlight"));
+    insta::assert_snapshot!(screen(&mut review, 90, 12));
 }
 
 #[test]
 fn going_to_an_unknown_annotation_changes_nothing() {
-    let mut surface = reviewed();
-    let before = screen(&mut surface, 90, 12);
+    let mut review = reviewed();
+    let before = screen(&mut review, 90, 12);
 
-    assert!(!surface.go_to_annotation("nowhere").expect("the fixtures highlight"));
-    assert_eq!(screen(&mut surface, 90, 12), before);
+    assert!(!review.go_to_annotation("nowhere").expect("the fixtures highlight"));
+    assert_eq!(screen(&mut review, 90, 12), before);
 }
 
 #[test]
 fn an_annotation_the_reader_collapsed_stays_collapsed_after_switching_files_and_back() {
-    let mut surface = reviewed();
-    steps(&mut surface, &[Command::NextAnnotation, Command::ExpandFold]);
-    let collapsed = screen(&mut surface, 90, 12);
-    steps(&mut surface, &[Command::NextFile, Command::PreviousFile, Command::NextAnnotation]);
+    let mut review = reviewed();
+    steps(&mut review, &[Command::NextAnnotation, Command::ExpandFold]);
+    let collapsed = screen(&mut review, 90, 12);
+    steps(&mut review, &[Command::NextFile, Command::PreviousFile, Command::NextAnnotation]);
 
-    assert_eq!(screen(&mut surface, 90, 12), collapsed);
+    assert_eq!(screen(&mut review, 90, 12), collapsed);
 }
 
 #[test]
 fn the_readers_collapse_outlives_reannotation_but_new_ids_take_the_hosts_default() {
-    let mut surface = reviewed();
-    steps(&mut surface, &[Command::NextAnnotation, Command::ExpandFold]);
-    surface
+    let mut review = reviewed();
+    steps(&mut review, &[Command::NextAnnotation, Command::ExpandFold]);
+    review
         .annotate(vec![
             on("src/a.rs", note("a", Side::New, 2, "alice", "Why 2?\nSpell it out.")),
             on(
@@ -903,81 +881,81 @@ fn the_readers_collapse_outlives_reannotation_but_new_ids_take_the_hosts_default
         ])
         .expect("the fixtures highlight");
 
-    insta::assert_snapshot!(screen(&mut surface, 90, 12));
+    insta::assert_snapshot!(screen(&mut review, 90, 12));
 }
 
 #[test]
 fn the_readers_collapse_outlives_the_annotation_leaving_and_coming_back() {
-    let mut surface = reviewed();
-    steps(&mut surface, &[Command::NextAnnotation, Command::ExpandFold]);
-    surface.annotate(Vec::new()).expect("the fixtures highlight");
-    surface
+    let mut review = reviewed();
+    steps(&mut review, &[Command::NextAnnotation, Command::ExpandFold]);
+    review.annotate(Vec::new()).expect("the fixtures highlight");
+    review
         .annotate(vec![
             on("src/a.rs", note("a", Side::New, 2, "alice", "Why 2?\nSpell it out.")),
             on("src/c.rs", note("c", Side::New, 2, "bob", "And 7?")),
         ])
         .expect("the fixtures highlight");
 
-    screen(&mut surface, 90, 12);
+    screen(&mut review, 90, 12);
 
-    assert_eq!(surface.annotation().map(|annotation| annotation.collapsed), Some(true));
+    assert_eq!(review.annotation().map(|annotation| annotation.collapsed), Some(true));
 }
 
 #[test]
 fn the_cursor_on_an_annotation_stays_on_it_when_whitespace_is_ignored() {
-    let mut surface = reviewed();
-    steps(&mut surface, &[Command::NextAnnotation, Command::NextLine, Command::ToggleWhitespace]);
+    let mut review = reviewed();
+    steps(&mut review, &[Command::NextAnnotation, Command::NextLine, Command::ToggleWhitespace]);
 
-    assert_eq!(under(&surface), Some("a".to_owned()));
+    assert_eq!(under(&review), Some("a".to_owned()));
 }
 
 #[test]
 fn the_cursor_on_an_annotation_stays_on_it_across_a_rescan() {
-    let mut surface = reviewed();
-    steps(&mut surface, &[Command::NextAnnotation, Command::NextLine]);
-    let before = screen(&mut surface, 90, 12);
-    surface.refresh(changes()).expect("the fixtures highlight");
+    let mut review = reviewed();
+    steps(&mut review, &[Command::NextAnnotation, Command::NextLine]);
+    let before = screen(&mut review, 90, 12);
+    review.refresh(changes()).expect("the fixtures highlight");
 
-    assert_eq!(screen(&mut surface, 90, 12), before);
+    assert_eq!(screen(&mut review, 90, 12), before);
 }
 
 #[test]
 fn reannotating_without_the_annotation_under_the_cursor_falls_back_to_its_line() {
-    let mut surface = reviewed();
-    steps(&mut surface, &[Command::NextAnnotation]);
-    surface.annotate(Vec::new()).expect("the fixtures highlight");
-    screen(&mut surface, 90, 12);
+    let mut review = reviewed();
+    steps(&mut review, &[Command::NextAnnotation]);
+    review.annotate(Vec::new()).expect("the fixtures highlight");
+    screen(&mut review, 90, 12);
 
     assert_eq!(
-        surface.cursor(),
+        review.cursor(),
         Some(Anchor { path: PathBuf::from("src/a.rs"), side: Side::New, line: 2 })
     );
 }
 
 #[test]
 fn annotating_with_the_same_set_again_keeps_the_cursor_and_the_scroll() {
-    let mut surface = reviewed();
-    steps(&mut surface, &[Command::NextAnnotation, Command::NextLine]);
-    let before = screen(&mut surface, 90, 12);
-    surface
+    let mut review = reviewed();
+    steps(&mut review, &[Command::NextAnnotation, Command::NextLine]);
+    let before = screen(&mut review, 90, 12);
+    review
         .annotate(vec![
             on("src/a.rs", note("a", Side::New, 2, "alice", "Why 2?\nSpell it out.")),
             on("src/c.rs", note("c", Side::New, 2, "bob", "And 7?")),
         ])
         .expect("the fixtures highlight");
 
-    assert_eq!(screen(&mut surface, 90, 12), before);
+    assert_eq!(screen(&mut review, 90, 12), before);
 }
 
 #[test]
 fn a_rescan_that_shortens_the_file_makes_an_annotation_past_its_end_unplaced() {
-    let mut surface = reviewed();
+    let mut review = reviewed();
     let mut shorter = changes();
     shorter[0] = modified("src/a.rs", "one", "1");
-    surface.refresh(shorter).expect("the fixtures highlight");
+    review.refresh(shorter).expect("the fixtures highlight");
 
     let unplaced: Vec<&str> =
-        surface.unplaced().into_iter().map(|annotation| annotation.id.as_str()).collect();
+        review.unplaced().into_iter().map(|annotation| annotation.id.as_str()).collect();
     assert_eq!(unplaced, ["a"]);
 }
 
@@ -985,61 +963,45 @@ fn a_rescan_that_shortens_the_file_makes_an_annotation_past_its_end_unplaced() {
 fn an_annotated_generated_file_is_not_collapsed() {
     let mut lockfile = modified("Cargo.lock", "a = 1\n", "a = 2\n");
     lockfile.generated = true;
-    let mut surface = surface(vec![lockfile]);
-    surface
+    let mut review = review(vec![lockfile]);
+    review
         .annotate(vec![on("Cargo.lock", note("lock", Side::New, 1, "alice", "Why bump?"))])
         .expect("the fixtures highlight");
 
-    insta::assert_snapshot!(screen(&mut surface, 90, 8));
+    insta::assert_snapshot!(screen(&mut review, 90, 8));
 }
 
 #[test]
 fn a_peeked_unchanged_file_shows_no_annotations() {
-    let mut surface = reviewed();
+    let mut review = reviewed();
     let text = "one\ntwo\n";
     let unchanged = Content::Text(FileDiff::compute(Source::new(text), Source::new(text)));
-    surface
+    review
         .annotate(vec![on("src/lib.rs", note("lib", Side::New, 1, "alice", "Hidden."))])
         .expect("the fixtures highlight");
-    surface.peek(PathBuf::from("src/lib.rs"), &unchanged, None).expect("the file highlights");
+    review.peek(PathBuf::from("src/lib.rs"), &unchanged, None).expect("the file highlights");
 
-    insta::assert_snapshot!(screen(&mut surface, 90, 8));
+    insta::assert_snapshot!(screen(&mut review, 90, 8));
 }
 
 #[test]
 fn next_annotation_while_peeking_leaves_the_peek() {
-    let mut surface = reviewed();
+    let mut review = reviewed();
     let text = "one\ntwo\n";
     let unchanged = Content::Text(FileDiff::compute(Source::new(text), Source::new(text)));
-    surface.peek(PathBuf::from("src/lib.rs"), &unchanged, None).expect("the file highlights");
-    steps(&mut surface, &[Command::NextAnnotation]);
+    review.peek(PathBuf::from("src/lib.rs"), &unchanged, None).expect("the file highlights");
+    steps(&mut review, &[Command::NextAnnotation]);
 
-    assert_eq!(surface.peeked(), None);
-    assert_eq!(under(&surface), Some("a".to_owned()));
+    assert_eq!(review.peeked(), None);
+    assert_eq!(under(&review), Some("a".to_owned()));
 }
 
 #[test]
-fn the_status_line_counts_the_annotations_in_the_file_on_screen() {
-    let mut surface = reviewed();
-    let before = words(&mut surface, 120, 12);
-    steps(&mut surface, &[Command::NextAnnotation]);
-    let after = words(&mut surface, 120, 12);
+fn the_status_counts_the_annotations_in_the_file_on_screen() {
+    let mut review = reviewed();
+    let before = review.status();
+    steps(&mut review, &[Command::NextAnnotation]);
 
-    insta::assert_snapshot!(format!("{before}\n{after}"));
-}
-
-#[test]
-fn the_palette_lists_the_annotation_commands_only_once_the_surface_is_annotated() {
-    let mut bare = surface(changes());
-    let mut annotated = surface(changes());
-    annotated.annotate(Vec::new()).expect("the fixtures highlight");
-    for surface in [&mut bare, &mut annotated] {
-        for character in ":annotation".chars() {
-            let key = KeyEvent::new(KeyCode::Char(character), KeyModifiers::NONE);
-            surface.key(key).expect("the fixtures highlight");
-        }
-    }
-
-    assert!(!words(&mut bare, 160, 30).contains("Next annotation"));
-    assert!(words(&mut annotated, 160, 30).contains("Next annotation"));
+    assert_eq!(before, "5 files · 1 hunks · 1 annotation · side by side");
+    assert_eq!(review.status(), "5 files · hunk 1/1 · annotation 1/1 · side by side");
 }

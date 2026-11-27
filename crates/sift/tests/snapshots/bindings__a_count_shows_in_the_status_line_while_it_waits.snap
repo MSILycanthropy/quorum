@@ -1,6 +1,0 @@
----
-source: tests/bindings.rs
-expression: "screen(&mut surface, 100, 2)"
----
- CHANGES                           M src/other.rs  +1 −1                                        1/2
- 12      c comment  R reply  M merge  n hunk  Tab file  x viewed  f files  / find  C-, keys  q quit

@@ -12,17 +12,23 @@ use std::sync::mpsc::{Sender, channel};
 use std::time::Duration;
 
 use clap::Parser;
+use hints::Footer;
 use host::{Event, Session};
 use hue::Palette;
-use keys::{Key, Rebindings};
+use keys::{Key, Keymap, Pending, Pressed, Rebindings};
+use picker::{Outcome, Picker};
+use ratatui::Frame;
+use ratatui::crossterm::event::{KeyEvent, MouseEvent};
+use ratatui::layout::{Constraint, Layout};
+use ratatui::text::Line;
 use settings::{Change, Page, Values};
-use sift::command::{Catalog, Command};
 use sift::config::{Config, File};
 use sift::diff::{FileDiff, Source};
+use sift::frame::{self, Action, Target};
 use sift::git::{Comparison, Content, FileChange, Repository, Snapshot, Status, looks_generated};
 use sift::syntax::Syntax;
-use sift::theme::{Scheme, TerminalColors, Theme};
-use sift::ui::{Control, Opening, Surface};
+use sift::theme::{Scheme, TerminalColors, Theme, Tints};
+use sift::ui::{Request, Review};
 
 #[derive(Debug, thiserror::Error)]
 enum Error {
@@ -37,7 +43,7 @@ enum Error {
     #[error(transparent)]
     Keys(#[from] keys::Error),
     #[error(transparent)]
-    Binding(#[from] sift::command::Error),
+    Frame(#[from] sift::frame::Error),
     #[error(transparent)]
     Host(#[from] host::Error),
     #[error(transparent)]
@@ -68,7 +74,7 @@ type Result<T> = std::result::Result<T, Error>;
         sift -- src/          only paths under src/\n  \
         sift --watch          follow along while something else edits\n\n\
         Settings are read from ~/.config/sift/config.toml, and their flags override them.\n\
-        Press ? inside for every key."
+        Press C-, or type :settings inside for every key."
 )]
 struct Arguments {
     #[arg(num_args = 0..=2, value_name = "REVISION", help = "One revision, A..B, A...B, or two revisions")]
@@ -118,8 +124,9 @@ impl From<Event> for Message {
 
 fn view(arguments: &Arguments) -> Result<()> {
     let File { diff: config, keys } = config(arguments)?;
-    let catalog = Catalog::default().rebound(&keys)?;
-    keys.unknown(catalog.names())?;
+    let base = frame::keymap()?;
+    let keymap = frame::rebound(&base, &keys)?;
+    keys.unknown(keymap.names())?;
     let subject = Subject::open(arguments)?;
     let slots = match config.theme.unwrap_or_default() {
         Scheme::Terminal => TerminalColors::SLOTS,
@@ -135,20 +142,21 @@ fn view(arguments: &Arguments) -> Result<()> {
     let mut session = Session::open(slots, sender)?;
 
     let theme = theme(&config, session.palette())?;
-    let opening = Opening {
-        presentation: config.presentation(),
+    let mut shown = subject.changes()?;
+    let mut screen = Screen {
+        palette: Picker::new(theme.tints.picker()),
+        tints: theme.tints,
+        review: Review::new(shown.clone(), config.presentation(), theme)?,
+        base,
+        keymap,
+        pending: Pending::default(),
+        notice: None,
+        files: subject.files()?,
         branch: subject.branch()?,
         comparing: subject.describe(),
-        files: subject.files()?,
-        bindings: Vec::new(),
-        unbound: Vec::new(),
-        keys,
-        theme,
     };
-    let mut shown = subject.changes()?;
-    let mut surface = opening.surface(shown.clone())?;
 
-    session.draw(|frame| frame.render_widget(&mut surface, frame.area()))?;
+    session.draw(|frame| screen.draw(frame))?;
     let mut settings: Option<Settings> = None;
 
     while let Ok(message) = messages.recv() {
@@ -156,63 +164,209 @@ fn view(arguments: &Arguments) -> Result<()> {
             Message::Terminal(Event::Key(key)) if settings.is_some() => {
                 if let Some(open) = &mut settings
                     && let Some(change) = open.page.key(Key::from(key))
-                    && !open.change(change, arguments, &mut surface, session.palette())?
+                    && !open.change(change, arguments, &mut screen, session.palette())?
                 {
                     settings = None;
                 }
             }
-            Message::Terminal(Event::Key(key)) => match surface.key(key)? {
-                Control::Continue
-                | Control::Host(_)
-                | Control::Viewed(_)
-                | Control::Unviewed(_) => {}
-                Control::Settings => {
-                    settings = Some(Settings::open(arguments, &surface, session.palette())?);
+            Message::Terminal(Event::Key(key)) => match screen.key(key)? {
+                Asked::Nothing
+                | Asked::Action(
+                    Action::Diff(_) | Action::Palette | Action::FindFile | Action::GoToLine,
+                ) => {}
+                Asked::Request(request) => answer(request, &mut screen, &subject, &mut session)?,
+                Asked::Action(Action::Quit) => return Ok(()),
+                Asked::Action(Action::Settings) => {
+                    settings = Some(Settings::open(arguments, &screen, session.palette())?);
                 }
-                Control::Quit => return Ok(()),
-                Control::Reload => {
-                    reload(&mut surface, &subject, &mut shown)?;
-                    surface.notify("reloaded");
+                Asked::Action(Action::Reload) => {
+                    reload(&mut screen, &subject, &mut shown)?;
+                    screen.notice = Some("reloaded".to_owned());
                 }
-                Control::Open { path, line } => match subject.file(&path) {
-                    Ok(content) => surface.peek(path, &content, line)?,
-                    Err(error) => surface.notify(error.to_string()),
-                },
-                Control::Copy(text) => match session.copy(&text) {
-                    Ok(()) => surface.notify(format!("copied {text}")),
-                    Err(error) => surface.notify(error.to_string()),
-                },
-                Control::Edit { path, line } => {
-                    let root = subject.root();
-                    match session.suspended(|| edit(&root.join(&path), line))? {
-                        Ok(()) => {
-                            reload(&mut surface, &subject, &mut shown)?;
+                Asked::Action(Action::Edit) => {
+                    if let Some(location) = screen.review.location() {
+                        let path = subject.root().join(&location.path);
+                        let line = location.lines.map(|lines| *lines.start());
+                        match session.suspended(|| edit(&path, line))? {
+                            Ok(()) => {
+                                reload(&mut screen, &subject, &mut shown)?;
+                            }
+                            Err(error) => screen.notice = Some(error),
                         }
-                        Err(error) => surface.notify(error),
                     }
                 }
             },
             Message::Terminal(Event::Mouse(mouse)) if settings.is_some() => {
                 if let Some(open) = &mut settings
                     && let Some(change) = open.page.mouse(mouse)
-                    && !open.change(change, arguments, &mut surface, session.palette())?
+                    && !open.change(change, arguments, &mut screen, session.palette())?
                 {
                     settings = None;
                 }
             }
-            Message::Terminal(Event::Mouse(mouse)) => surface.mouse(mouse)?,
+            Message::Terminal(Event::Mouse(mouse)) => screen.mouse(mouse)?,
             Message::Terminal(Event::Resize | Event::Paste(_)) => {}
             Message::Tick => {
                 pending.store(false, Ordering::Release);
-                if !reload(&mut surface, &subject, &mut shown).unwrap_or(false) {
+                if !reload(&mut screen, &subject, &mut shown).unwrap_or(false) {
                     continue;
                 }
             }
         }
         session.draw(|frame| match &mut settings {
             Some(open) => frame.render_widget(&mut open.page, frame.area()),
-            None => frame.render_widget(&mut surface, frame.area()),
+            None => screen.draw(frame),
         })?;
+    }
+
+    Ok(())
+}
+
+/// What a key asks of the loop: something the review needs, or one of Sift's
+/// own actions that reaches past the screen.
+enum Asked {
+    Nothing,
+    Request(Request),
+    Action(Action),
+}
+
+/// Everything on screen: the review, the palette over it, the footer under
+/// it, and the keys that reach them.
+struct Screen {
+    review: Review,
+    palette: Picker<Target>,
+    base: Keymap<Action>,
+    keymap: Keymap<Action>,
+    pending: Pending,
+    notice: Option<String>,
+    files: Vec<PathBuf>,
+    branch: Option<String>,
+    comparing: String,
+    tints: Tints,
+}
+
+impl Screen {
+    fn key(&mut self, key: KeyEvent) -> Result<Asked> {
+        self.notice = None;
+        if self.palette.is_open() {
+            return match self.palette.key(Key::from(key)) {
+                Outcome::Typed => {
+                    let query = self.palette.query().to_owned();
+                    self.palette.search(frame::located(&query).0);
+                    self.palette.lead(frame::leading(&query, self.palette.entries()));
+                    Ok(Asked::Nothing)
+                }
+                Outcome::Chosen { target, query } => self.chosen(target, &query),
+                Outcome::Closed | Outcome::Nothing => Ok(Asked::Nothing),
+            };
+        }
+
+        let holding = self.review.holding();
+        match self.keymap.press(&mut self.pending, Key::from(key), &holding) {
+            Pressed::Command { command, count } => self.act(command, count),
+            Pressed::Pending | Pressed::Nothing => Ok(Asked::Nothing),
+        }
+    }
+
+    fn act(&mut self, action: Action, count: Option<usize>) -> Result<Asked> {
+        let holding = self.review.holding();
+        match action {
+            Action::Diff(command) => {
+                return Ok(Asked::Request(self.review.repeated(command, count)?));
+            }
+            Action::Palette => {
+                self.palette.open("command", frame::commands(&self.keymap, &holding));
+            }
+            Action::GoToLine => {
+                self.palette.open("line", frame::commands(&self.keymap, &holding));
+            }
+            Action::FindFile => {
+                self.palette.open("file", frame::files(self.review.paths(), &self.files));
+            }
+            action @ (Action::Quit | Action::Reload | Action::Settings | Action::Edit) => {
+                return Ok(Asked::Action(action));
+            }
+        }
+
+        Ok(Asked::Nothing)
+    }
+
+    fn chosen(&mut self, target: Target, query: &str) -> Result<Asked> {
+        match target {
+            Target::Action(action) => self.act(action, None),
+            Target::Line(line) => {
+                self.review.go_to_line(line)?;
+                Ok(Asked::Nothing)
+            }
+            Target::File(path) => {
+                Ok(Asked::Request(self.review.show(&path, frame::located(query).1)?))
+            }
+        }
+    }
+
+    fn mouse(&mut self, mouse: MouseEvent) -> Result<()> {
+        self.pending.clear();
+        if self.palette.is_open() {
+            return Ok(());
+        }
+
+        Ok(self.review.mouse(mouse)?)
+    }
+
+    fn rebind(&mut self, keys: &Rebindings) -> Result<()> {
+        self.keymap = frame::rebound(&self.base, keys)?;
+        self.pending.clear();
+
+        Ok(())
+    }
+
+    fn retheme(&mut self, theme: Theme) -> Result<()> {
+        self.tints = theme.tints;
+        self.palette = Picker::new(theme.tints.picker());
+
+        Ok(self.review.retheme(theme)?)
+    }
+
+    fn footer(&self) -> Footer {
+        let holding = self.review.holding();
+        let status = frame::status(self.branch.as_deref(), &self.comparing, &self.review.status());
+        let footer = Footer {
+            status: Line::raw(status),
+            notice: self.notice.clone(),
+            styles: self.tints.footer(),
+            ..Footer::picking(&self.keymap, &self.pending, &holding, &frame::HINTED)
+        };
+
+        self.palette.hinting(footer)
+    }
+
+    fn draw(&mut self, frame: &mut Frame) {
+        let [above, bottom] =
+            Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).areas(frame.area());
+        frame.render_widget(&mut self.review, above);
+        frame.render_widget(&self.footer(), bottom);
+        frame.render_widget(&self.palette, frame.area());
+    }
+}
+
+fn answer(
+    request: Request,
+    screen: &mut Screen,
+    subject: &Subject,
+    session: &mut Session,
+) -> Result<()> {
+    match request {
+        Request::Copy(text) => {
+            screen.notice = Some(match session.copy(&text) {
+                Ok(()) => format!("copied {text}"),
+                Err(error) => error.to_string(),
+            });
+        }
+        Request::Open { path, line } => match subject.file(&path) {
+            Ok(content) => screen.review.peek(path, &content, line)?,
+            Err(error) => screen.notice = Some(error.to_string()),
+        },
+        Request::Nothing | Request::Viewed(_) | Request::Unviewed(_) => {}
     }
 
     Ok(())
@@ -221,18 +375,18 @@ fn view(arguments: &Arguments) -> Result<()> {
 /// The settings page while it is open, and the settings last applied to the
 /// diff under it.
 struct Settings {
-    page: Page<Command>,
+    page: Page<Action>,
     applied: File,
 }
 
 impl Settings {
-    fn open(arguments: &Arguments, surface: &Surface, palette: &Palette) -> Result<Self> {
+    fn open(arguments: &Arguments, screen: &Screen, palette: &Palette) -> Result<Self> {
         let applied = config(arguments)?;
         let tints = theme(&applied.diff, palette).unwrap_or_default().tints;
         let page = Page::new(
             vec![sift::config::section()],
             values(arguments)?,
-            surface.keymap().clone(),
+            screen.base.clone(),
             applied.keys.clone(),
             tints.page(),
         );
@@ -244,16 +398,16 @@ impl Settings {
         &mut self,
         change: Change,
         arguments: &Arguments,
-        surface: &mut Surface,
+        screen: &mut Screen,
         palette: &Palette,
     ) -> Result<bool> {
         match change {
             Change::Closed => return Ok(false),
             Change::Setting { path, value } => match written(&path, value.as_ref()) {
-                Ok(()) => self.apply(arguments, surface, palette)?,
+                Ok(()) => self.apply(arguments, screen, palette)?,
                 Err(error) => self.page.notify(error.to_string()),
             },
-            Change::Keys(keys) => match surface.rebind(&keys) {
+            Change::Keys(keys) => match screen.rebind(&keys) {
                 Ok(()) => {
                     if let Err(error) = rebound(&self.applied.keys, &keys) {
                         self.page.notify(error.to_string());
@@ -270,7 +424,7 @@ impl Settings {
     fn apply(
         &mut self,
         arguments: &Arguments,
-        surface: &mut Surface,
+        screen: &mut Screen,
         palette: &Palette,
     ) -> Result<()> {
         let file = match config(arguments) {
@@ -280,11 +434,11 @@ impl Settings {
                 return Ok(());
             }
         };
-        surface.present(file.diff.presentation())?;
+        screen.review.present(file.diff.presentation())?;
         let looks = |config: &Config| (config.theme, config.syntax_theme.clone());
         if looks(&file.diff) != looks(&self.applied.diff) {
             match theme(&file.diff, palette) {
-                Ok(theme) => surface.retheme(theme)?,
+                Ok(theme) => screen.retheme(theme)?,
                 Err(error) => self.page.notify(error.to_string()),
             }
             if file.diff.theme == Some(Scheme::Terminal) && *palette == Palette::default() {
@@ -365,17 +519,17 @@ fn config(arguments: &Arguments) -> Result<File> {
     Ok(file.over(flags).parse()?)
 }
 
-fn reload(surface: &mut Surface, subject: &Subject, shown: &mut Vec<FileChange>) -> Result<bool> {
+fn reload(screen: &mut Screen, subject: &Subject, shown: &mut Vec<FileChange>) -> Result<bool> {
     let changes = subject.changes()?;
     if changes == *shown {
         return Ok(false);
     }
-    surface.refresh(changes.clone())?;
-    surface.replace_files(subject.files()?);
-    if let Some(path) = surface.peeked().map(Path::to_path_buf) {
+    screen.review.refresh(changes.clone())?;
+    screen.files = subject.files()?;
+    if let Some(path) = screen.review.peeked().map(Path::to_path_buf) {
         match subject.file(&path) {
-            Ok(content) => surface.peek(path, &content, None)?,
-            Err(error) => surface.notify(error.to_string()),
+            Ok(content) => screen.review.peek(path, &content, None)?,
+            Err(error) => screen.notice = Some(error.to_string()),
         }
     }
     *shown = changes;

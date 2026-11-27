@@ -1,10 +1,9 @@
 ---
-source: tests/surface.rs
-expression: "screen(&mut surface, 100, 6)"
+source: tests/diff.rs
+expression: driven.screen()
 ---
  CHANGES                           M src/total.rs  +1 −1                                        2/2
   src                           │1 let total = 1;                │1 let total = 42;
     other.rs              +1 −1 │2                               │2
     total.rs                   ✓│
                                  │
-  main · HEAD → worktree · 2 files · 1 viewed · hunk 1/1 · side by side   n hunk  C-, keys  q quit

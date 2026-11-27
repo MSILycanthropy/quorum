@@ -42,7 +42,7 @@ fn key(written: &str) -> Key {
     written.parse().unwrap_or_else(|error| panic!("{written} should read: {error}"))
 }
 
-fn typed(keymap: &Keymap<Command>, keys: &[&str], holding: &[&str]) -> Vec<Pressed<Command>> {
+fn typed<C: Clone>(keymap: &Keymap<C>, keys: &[&str], holding: &[&str]) -> Vec<Pressed<C>> {
     let mut pending = Pending::default();
 
     keys.iter().map(|written| keymap.press(&mut pending, key(written), holding)).collect()
@@ -63,6 +63,10 @@ fn binding(
     keys: &[&str],
 ) -> Binding<Command> {
     Binding::new(command, name, label, "Host", keys).expect("the keys are spelt right")
+}
+
+fn one(binding: Binding<Command>) -> Keymap<Command> {
+    Keymap::new([binding]).expect("one binding cannot clash")
 }
 
 fn rebinding(entries: &[(&str, &[&str])]) -> Rebindings {
@@ -125,7 +129,7 @@ fn zero_does_not_start_a_count() {
 #[test]
 fn a_bound_digit_stays_a_key() {
     let keymap =
-        keymap().with([binding(Command::Five, "five", "Five", &["5"])]).expect("5 is free");
+        keymap().joined(one(binding(Command::Five, "five", "Five", &["5"]))).expect("5 is free");
 
     assert_eq!(typed(&keymap, &["5"], &[]), [command(Command::Five)]);
 }
@@ -152,8 +156,9 @@ fn a_binding_under_a_condition_that_does_not_hold_is_passed_over() {
 
 #[test]
 fn keys_shared_by_two_bindings_are_refused() {
-    let error =
-        keymap().with([binding(Command::Five, "reply", "Reply", &["r"])]).expect_err("r is taken");
+    let error = keymap()
+        .joined(one(binding(Command::Five, "reply", "Reply", &["r"])))
+        .expect_err("r is taken");
 
     assert_eq!(error.to_string(), "r is bound to both Reload and Reply");
 }
@@ -161,7 +166,7 @@ fn keys_shared_by_two_bindings_are_refused() {
 #[test]
 fn a_key_that_starts_another_binding_is_refused() {
     let error =
-        keymap().with([binding(Command::Five, "go", "Go", &["g"])]).expect_err("g starts gg");
+        keymap().joined(one(binding(Command::Five, "go", "Go", &["g"]))).expect_err("g starts gg");
 
     assert!(matches!(error, Error::Prefix { first: "Go", second: "Top of the file", .. }));
     assert_eq!(error.to_string(), "g is Go, so gg for Top of the file can never be reached");
@@ -170,18 +175,20 @@ fn a_key_that_starts_another_binding_is_refused() {
 #[test]
 fn two_bindings_with_one_name_are_refused() {
     let error = keymap()
-        .with([binding(Command::Five, "quit", "Leave", &["Q"])])
+        .joined(one(binding(Command::Five, "quit", "Leave", &["Q"])))
         .expect_err("quit is taken");
 
     assert!(matches!(error, Error::Name("quit")));
 }
 
 #[test]
-fn keys_added_to_a_keymap_may_not_shadow_it_even_under_a_condition() {
+fn a_key_joined_under_a_condition_wins_over_the_same_key_while_it_holds() {
     let added =
         Binding { when: Some("selecting"), ..binding(Command::Five, "five", "Five", &["j"]) };
+    let keymap = keymap().joined(one(added)).expect("j is only taken without a condition");
 
-    assert!(matches!(keymap().with([added]), Err(Error::Shared { first: "Down a line", .. })));
+    assert_eq!(typed(&keymap, &["j"], &["selecting"]), [command(Command::Five)]);
+    assert_eq!(typed(&keymap, &["j"], &[]), [command(Command::Down)]);
 }
 
 #[test]
@@ -276,4 +283,150 @@ fn a_misspelt_key_in_the_macro_names_its_binding() {
     .expect_err("Hlep is no key");
 
     assert_eq!(error.to_string(), "help: no key is called Hlep");
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+enum Action {
+    Diff(Command),
+    Back,
+    Comment,
+}
+
+fn host() -> Keymap<Action> {
+    keymap! {
+        "Review" {
+            "back" => Action::Back, "Back to the list", ["Esc", "ctrl-c"];
+            "comment" => Action::Comment, "Comment", ["c"];
+        }
+    }
+    .expect("the keys do not clash")
+}
+
+fn joined() -> Keymap<Action> {
+    host()
+        .joined(keymap().retain(|binding| binding.command != Command::Quit).map(Action::Diff))
+        .expect("the host's keys keep clear of the ones it keeps")
+}
+
+#[test]
+fn a_mapped_keymap_keeps_every_name_key_and_condition() {
+    let mapped = keymap().map(Action::Diff);
+    let unmapped = keymap();
+
+    for (mapped, unmapped) in mapped.bindings().iter().zip(unmapped.bindings()) {
+        assert_eq!(mapped.command, Action::Diff(unmapped.command));
+        assert_eq!(
+            (mapped.name, mapped.label, mapped.section, &mapped.keys, mapped.hint, mapped.when),
+            (
+                unmapped.name,
+                unmapped.label,
+                unmapped.section,
+                &unmapped.keys,
+                unmapped.hint,
+                unmapped.when
+            )
+        );
+    }
+}
+
+#[test]
+fn a_joined_keymap_answers_the_keys_of_both() {
+    let keymap = joined();
+
+    assert_eq!(
+        typed(&keymap, &["c", "]", "c", "Esc"], &[]),
+        [
+            Pressed::Command { command: Action::Comment, count: None },
+            Pressed::Pending,
+            Pressed::Command { command: Action::Diff(Command::NextHunk), count: None },
+            Pressed::Command { command: Action::Back, count: None },
+        ]
+    );
+}
+
+#[test]
+fn a_key_under_a_condition_may_sit_over_the_same_key_joined_without_one() {
+    let keymap = joined();
+
+    assert_eq!(
+        typed(&keymap, &["ctrl-c"], &["selecting"]),
+        [Pressed::Command { command: Action::Diff(Command::Copy), count: None }]
+    );
+    assert_eq!(
+        typed(&keymap, &["ctrl-c"], &[]),
+        [Pressed::Command { command: Action::Back, count: None }]
+    );
+}
+
+#[test]
+fn a_key_with_no_condition_still_answers_while_a_condition_holds() {
+    assert_eq!(typed(&keymap(), &["j"], &["selecting"]), [command(Command::Down)]);
+}
+
+#[test]
+fn joining_refuses_a_key_both_bind_under_one_condition() {
+    let error = host().joined(keymap().map(Action::Diff)).expect_err("C-c is quit and back");
+
+    assert!(
+        matches!(error, Error::Shared { first: "Back to the list", second: "Quit", .. }),
+        "{error}"
+    );
+}
+
+#[test]
+fn joining_refuses_a_key_that_starts_one_the_other_binds() {
+    let reaching = keymap! { "Review" { "goto" => Action::Comment, "Go to", ["g"]; } }
+        .expect("one binding cannot clash");
+    let error = reaching.joined(keymap().map(Action::Diff)).expect_err("g starts gg");
+
+    assert!(matches!(error, Error::Prefix { .. }), "{error}");
+}
+
+#[test]
+fn joining_refuses_a_name_both_use() {
+    let named =
+        keymap! { "Review" { "reload" => Action::Comment, "Reload the pull request", ["R"]; } }
+            .expect("one binding cannot clash");
+    let error = named.joined(keymap().map(Action::Diff)).expect_err("both say reload");
+
+    assert!(matches!(error, Error::Name("reload")), "{error}");
+}
+
+#[test]
+fn a_joined_keymap_knows_the_names_of_both() {
+    let keymap = joined();
+    let names: Vec<&str> = keymap.names().collect();
+
+    assert!(names.contains(&"comment") && names.contains(&"next-hunk"), "{names:?}");
+}
+
+#[test]
+fn a_rebinding_across_a_join_is_refused_under_the_name_written() {
+    let error = joined().rebound(&rebinding(&[("next-hunk", &["c"])])).expect_err("c is comment's");
+
+    assert!(matches!(error, Error::Rebinding { ref name, .. } if name == "next-hunk"), "{error}");
+}
+
+#[test]
+fn a_binding_left_out_with_retain_frees_its_keys() {
+    let kept = keymap().retain(|binding| binding.command != Command::Reload);
+    let taken = keymap! { "Mine" { "refresh" => Command::Reload, "Refresh", ["r"]; } }
+        .expect("one binding cannot clash");
+
+    assert_eq!(typed(&kept, &["r"], &[]), [Pressed::Nothing]);
+    assert!(kept.joined(taken).is_ok());
+}
+
+#[test]
+fn arranging_puts_the_sections_named_first_and_keeps_the_rest_in_their_order() {
+    let keymap = joined().arranged(&["Copying", "General"]);
+    let sections: Vec<&str> = keymap.bindings().iter().map(|binding| binding.section).collect();
+
+    assert_eq!(
+        sections,
+        [
+            "Copying", "Copying", "General", "Review", "Review", "Moving", "Moving", "Moving",
+            "Moving", "Moving"
+        ]
+    );
 }

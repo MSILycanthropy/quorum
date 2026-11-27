@@ -1,6 +1,6 @@
 ---
 source: tests/annotations.rs
-expression: "screen(&mut surface, 90, 8)"
+expression: "screen(&mut review, 90, 8)"
 ---
  CHANGES                             src/lib.rs                    not changed · Esc back 
                                                                                           
@@ -16,4 +16,5 @@ expression: "screen(&mut surface, 90, 8)"
 ...+......................................................................................
     e.png                       │                                                        
 ..........................................................................................
-  main · main → feature · 5 files · read only         n hunk  Tab file  C-, keys  q quit
+                                 │                                                        
+..........................................................................................

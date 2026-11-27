@@ -14,9 +14,11 @@ only forge for now; Bitbucket may follow, and this is what keeps that a second
 converter rather than a rewrite. There is no forge trait until a second forge
 exists.
 
-Sift is a library dependency (`crates/sift`). Glean talks to Sift through
-`sift::ui::Surface`, its annotations and its host bindings, and colours with
-`sift::theme`. Any crate both use, `ratatui` above all, comes from the
+Sift is a library dependency (`crates/sift`). Glean shows the diff with
+`sift::ui::Review` and its annotations, joins `sift::command::keymap()` into its
+own keymap, and colours with `sift::theme`. The frame around the diff (the
+footer, the palette, quitting) is Glean's own, built from `hints`, `picker` and
+`keys`. Any crate both use, `ratatui` above all, comes from the
 workspace's dependencies, so their types line up.
 
 `src/github` is the only module that knows about HTTP, GraphQL or GitHub's

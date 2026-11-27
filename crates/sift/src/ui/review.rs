@@ -16,13 +16,14 @@ use crate::diff::{FileDiff, Side, Whitespace};
 use crate::git::{Content, FileChange, Status};
 use crate::theme::Theme;
 use crate::ui::{
-    Anchor, Annotation, Control, Error, Landing, Mode, Presentation, Result, Row, Selection, Tree,
-    Viewer,
+    Anchor, Annotation, Error, Landing, Location, Mode, PEEKING, Presentation, Request, Result,
+    Row, SELECTING, Selection, Tree, Viewer,
 };
 use hue::Rgb;
 
 const SIDEBAR: u16 = 34;
 const NARROWEST: u16 = 40;
+const MOST_REPEATS: usize = 10_000;
 
 /// The files under review, and the one on screen.
 pub struct Review {
@@ -42,6 +43,7 @@ pub struct Review {
     annotations: Vec<Annotation>,
     overrides: HashMap<String, bool>,
     theme: Theme,
+    area: Rect,
 }
 
 impl Review {
@@ -70,6 +72,7 @@ impl Review {
             annotations: Vec::new(),
             overrides: HashMap::new(),
             theme,
+            area: Rect::default(),
         };
         review.open()?;
 
@@ -119,26 +122,15 @@ impl Review {
         );
     }
 
-    pub fn run(&mut self, command: Command) -> Result<()> {
-        if let Some(peek) = &mut self.peek {
-            match command {
-                Command::NextFile
-                | Command::PreviousFile
-                | Command::NextHunk
-                | Command::PreviousHunk
-                | Command::ToggleViewed
-                | Command::NextUnviewed
-                | Command::PreviousUnviewed
-                | Command::NextAnnotation
-                | Command::PreviousAnnotation => self.peek = None,
-                Command::ToggleFileList => {}
-                command => {
-                    if let Some(viewer) = &mut peek.viewer {
-                        viewer.run(command)?;
-                    }
-                    return Ok(());
-                }
-            }
+    pub fn run(&mut self, command: Command) -> Result<Request> {
+        if command.moves() {
+            self.release_shifted();
+        }
+        if let Some(request) = self.answer(command)? {
+            return Ok(request);
+        }
+        if self.peeked_run(command)? {
+            return Ok(Request::Nothing);
         }
 
         match command {
@@ -149,9 +141,6 @@ impl Review {
                 self.step(Step::Backward)?;
             }
             Command::ToggleFileList => self.showing = !self.showing,
-            Command::ToggleViewed => {
-                self.toggle_viewed()?;
-            }
             Command::NextUnviewed => {
                 self.next_unviewed()?;
             }
@@ -211,7 +200,131 @@ impl Review {
             }
         }
 
-        Ok(())
+        Ok(Request::Nothing)
+    }
+
+    fn answer(&mut self, command: Command) -> Result<Option<Request>> {
+        let request = match command {
+            Command::Copy => self.text().map_or(Request::Nothing, Request::Copy),
+            Command::CopyPath => {
+                let path = self.path().map(|path| path.display().to_string());
+                path.map_or(Request::Nothing, Request::Copy)
+            }
+            Command::CopyLocation => {
+                let location = self.location().map(|location| location.to_string());
+                location.map_or(Request::Nothing, Request::Copy)
+            }
+            Command::ClearSelection => {
+                self.clear_selection();
+                Request::Nothing
+            }
+            Command::ClosePeek => {
+                self.close_peek();
+                Request::Nothing
+            }
+            Command::ToggleViewed => self.toggle_viewed()?,
+            _ => return Ok(None),
+        };
+
+        Ok(Some(request))
+    }
+
+    fn peeked_run(&mut self, command: Command) -> Result<bool> {
+        let Some(peek) = &mut self.peek else {
+            return Ok(false);
+        };
+        match command {
+            Command::NextFile
+            | Command::PreviousFile
+            | Command::NextHunk
+            | Command::PreviousHunk
+            | Command::NextUnviewed
+            | Command::PreviousUnviewed
+            | Command::NextAnnotation
+            | Command::PreviousAnnotation => self.peek = None,
+            Command::ToggleFileList => {}
+            command => {
+                if let Some(viewer) = &mut peek.viewer {
+                    viewer.run(command)?;
+                }
+                return Ok(true);
+            }
+        }
+
+        Ok(false)
+    }
+
+    pub fn repeated(&mut self, command: Command, count: Option<usize>) -> Result<Request> {
+        match (command, count) {
+            (Command::Top | Command::Bottom, Some(line)) => {
+                self.go_to_line(line)?;
+                Ok(Request::Nothing)
+            }
+            (command, Some(count)) if command.repeats() => {
+                let mut request = Request::Nothing;
+                for _ in 0..count.min(MOST_REPEATS) {
+                    request = self.run(command)?;
+                    if request != Request::Nothing {
+                        break;
+                    }
+                }
+                Ok(request)
+            }
+            (command, _) => self.run(command),
+        }
+    }
+
+    pub fn holding(&self) -> Vec<&'static str> {
+        let mut holding = Vec::new();
+        if self.selecting() {
+            holding.push(SELECTING);
+        }
+        if self.peek.is_some() {
+            holding.push(PEEKING);
+        }
+
+        holding
+    }
+
+    pub fn status(&self) -> String {
+        let mut parts = vec![self.counted()];
+        match self.hunk() {
+            (_, 0) => {}
+            (Some(current), total) => parts.push(format!("hunk {current}/{total}")),
+            (None, total) => parts.push(format!("{total} hunks")),
+        }
+        if self.selecting()
+            && let Some(selection) = self.selection()
+        {
+            let (first, last) = (selection.lines.start(), selection.lines.end());
+            parts.push(if first == last {
+                format!("line {first}")
+            } else {
+                format!("lines {first}–{last}")
+            });
+        }
+        match self.annotated() {
+            (_, 0) => {}
+            (Some(current), total) => parts.push(format!("annotation {current}/{total}")),
+            (None, 1) => parts.push("1 annotation".to_owned()),
+            (None, total) => parts.push(format!("{total} annotations")),
+        }
+        parts.push(self.laid());
+
+        parts.into_iter().filter(|part| !part.is_empty()).collect::<Vec<_>>().join(" · ")
+    }
+
+    pub fn show(&mut self, path: &Path, line: Option<usize>) -> Result<Request> {
+        if !self.is_changed(path) {
+            return Ok(Request::Open { path: path.to_path_buf(), line });
+        }
+        self.select_path(path, line)?;
+
+        Ok(Request::Nothing)
+    }
+
+    pub fn location(&self) -> Option<Location> {
+        Some(Location { path: self.path()?.to_path_buf(), lines: self.located() })
     }
 
     pub fn path(&self) -> Option<&Path> {
@@ -286,6 +399,7 @@ impl Review {
     }
 
     pub fn go_to_line(&mut self, line: usize) -> Result<()> {
+        self.release_shifted();
         match self.active() {
             Some(viewer) => viewer.land_on(Landing::Line(line)),
             None => Ok(()),
@@ -430,19 +544,19 @@ impl Review {
         self.viewed.contains_key(path)
     }
 
-    pub fn toggle_viewed(&mut self) -> Result<Control> {
+    fn toggle_viewed(&mut self) -> Result<Request> {
         self.peek = None;
         let Some(change) = self.changes.get(self.opened) else {
-            return Ok(Control::Continue);
+            return Ok(Request::Nothing);
         };
         let path = change.path.clone();
         if self.viewed.remove(&path).is_some() {
-            return Ok(Control::Unviewed(path));
+            return Ok(Request::Unviewed(path));
         }
         self.viewed.insert(path.clone(), fingerprint(change));
         self.next_unviewed()?;
 
-        Ok(Control::Viewed(path))
+        Ok(Request::Viewed(path))
     }
 
     pub fn replace_viewed(&mut self, paths: Vec<PathBuf>) {
@@ -558,6 +672,13 @@ impl Review {
 
     pub fn mouse(&mut self, mouse: MouseEvent) -> Result<()> {
         let at = Position::new(mouse.column, mouse.row);
+        let pressed = matches!(
+            mouse.kind,
+            MouseEventKind::Down(_) | MouseEventKind::ScrollDown | MouseEventKind::ScrollUp
+        );
+        if pressed && !self.area.contains(at) {
+            return Ok(());
+        }
         let listed = self.listed.filter(|area| area.contains(at));
 
         match mouse.kind {
@@ -902,6 +1023,7 @@ impl Review {
 
 impl Widget for &mut Review {
     fn render(self, area: Rect, buffer: &mut Buffer) {
+        self.area = area;
         if area.is_empty() {
             self.listed = None;
             if let Some(viewer) = self.active() {

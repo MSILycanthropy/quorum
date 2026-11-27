@@ -9,7 +9,7 @@ rust-version = "1.96"
 license = "MIT OR Apache-2.0"
 
 # Versions every crate that uses them must agree on. Sift and Glean share
-# ratatui's types across the Surface boundary, so it is pinned here once.
+# ratatui's types across the Review boundary, so it is pinned here once.
 [workspace.dependencies]
 clap = { version = "4.6.6", features = ["derive"] }
 insta = "1.48.0"

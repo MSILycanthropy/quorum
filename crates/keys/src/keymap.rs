@@ -40,6 +40,19 @@ impl<C> Binding<C> {
     pub fn shown(&self) -> String {
         self.keys.iter().map(ToString::to_string).collect::<Vec<_>>().join(" ")
     }
+
+    pub fn map<D>(self, wrap: impl FnOnce(C) -> D) -> Binding<D> {
+        Binding {
+            command: wrap(self.command),
+            name: self.name,
+            label: self.label,
+            section: self.section,
+            keys: self.keys,
+            hint: self.hint,
+            pinned: self.pinned,
+            when: self.when,
+        }
+    }
 }
 
 /// Every binding of one screen, with no two in each other's way.
@@ -51,6 +64,32 @@ pub struct Keymap<C> {
 impl<C> Default for Keymap<C> {
     fn default() -> Self {
         Self { bindings: Vec::new() }
+    }
+}
+
+impl<C> Keymap<C> {
+    pub fn map<D>(self, mut wrap: impl FnMut(C) -> D) -> Keymap<D> {
+        Keymap {
+            bindings: self.bindings.into_iter().map(|binding| binding.map(&mut wrap)).collect(),
+        }
+    }
+
+    #[must_use]
+    pub fn arranged(mut self, sections: &[&str]) -> Self {
+        let mut seen: Vec<&'static str> = Vec::new();
+        for binding in &self.bindings {
+            if !seen.contains(&binding.section) {
+                seen.push(binding.section);
+            }
+        }
+        let rank = |section: &str| {
+            sections.iter().position(|listed| *listed == section).unwrap_or_else(|| {
+                sections.len() + seen.iter().position(|first| *first == section).unwrap_or(0)
+            })
+        };
+        self.bindings.sort_by_key(|binding| rank(binding.section));
+
+        self
     }
 }
 
@@ -101,14 +140,6 @@ pub struct Continuation {
     pub label: &'static str,
 }
 
-/// How strictly a binding being added must keep clear of the ones already
-/// there: only of those under the same condition, or of every one.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-enum Clear {
-    SameCondition,
-    Everything,
-}
-
 enum Found<C> {
     Command(C),
     Prefix,
@@ -117,11 +148,11 @@ enum Found<C> {
 
 impl<C: Clone> Keymap<C> {
     pub fn new(bindings: impl IntoIterator<Item = Binding<C>>) -> Result<Self> {
-        Self::default().admit(bindings, Clear::SameCondition)
+        Self::default().admit(bindings)
     }
 
-    pub fn with(self, more: impl IntoIterator<Item = Binding<C>>) -> Result<Self> {
-        self.admit(more, Clear::Everything)
+    pub fn joined(self, other: Self) -> Result<Self> {
+        self.admit(other.bindings)
     }
 
     #[must_use]
@@ -142,7 +173,7 @@ impl<C: Clone> Keymap<C> {
             })
             .collect();
 
-        Self::default().admit(rebound, Clear::SameCondition).map_err(|error| {
+        Self::default().admit(rebound).map_err(|error| {
             let labels = match &error {
                 Error::Shared { first, second, .. } | Error::Prefix { first, second, .. } => {
                     vec![*second, *first]
@@ -208,11 +239,7 @@ impl<C: Clone> Keymap<C> {
         self.bindings.iter().map(|binding| binding.name)
     }
 
-    fn admit(
-        mut self,
-        bindings: impl IntoIterator<Item = Binding<C>>,
-        clear: Clear,
-    ) -> Result<Self> {
+    fn admit(mut self, bindings: impl IntoIterator<Item = Binding<C>>) -> Result<Self> {
         for binding in bindings {
             if self.bindings.iter().any(|bound| bound.name == binding.name) {
                 return Err(Error::Name(binding.name));
@@ -221,10 +248,7 @@ impl<C: Clone> Keymap<C> {
                 for other in &binding.keys[..index] {
                     clash(other, binding.label, sequence, binding.label)?;
                 }
-                let rivals = self
-                    .bindings
-                    .iter()
-                    .filter(|bound| clear == Clear::Everything || bound.when == binding.when);
+                let rivals = self.bindings.iter().filter(|bound| bound.when == binding.when);
                 for bound in rivals {
                     for held in &bound.keys {
                         clash(held, bound.label, sequence, binding.label)?;

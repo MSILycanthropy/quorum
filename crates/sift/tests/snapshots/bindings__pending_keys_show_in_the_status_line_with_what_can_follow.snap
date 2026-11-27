@@ -1,6 +1,0 @@
----
-source: tests/bindings.rs
-expression: "screen(&mut surface, 100, 2)"
----
- CHANGES                           M src/other.rs  +1 −1                                        1/2
- ]                                                   f Next file  u Next unviewed file  c Next hunk

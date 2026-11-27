@@ -3,14 +3,12 @@
 mod annotation;
 mod icon;
 mod review;
-mod surface;
 mod tree;
 mod viewer;
 
 pub use annotation::{Body, Draw, Text};
 pub use icon::Icon;
 pub use review::Review;
-pub use surface::{Opening, Surface};
 pub use tree::{Row, Tree};
 pub use viewer::{Landing, Place, Viewer};
 
@@ -22,8 +20,6 @@ pub enum Error {
     Syntax(#[from] crate::syntax::Error),
     #[error("two annotations share the id {0}")]
     DuplicateAnnotation(String),
-    #[error(transparent)]
-    Binding(#[from] crate::command::Error),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -129,24 +125,43 @@ pub struct Annotation {
     pub collapsed: bool,
 }
 
-/// What the surface asks of the program around it after a key.
+/// What the review needs from the program after a command: text for the
+/// clipboard, a file it has no content for, or word that a file was marked
+/// viewed or not.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
-pub enum Control {
+pub enum Request {
     #[default]
-    Continue,
-    Quit,
-    Reload,
-    Settings,
-    Edit {
-        path: std::path::PathBuf,
-        line: Option<usize>,
-    },
+    Nothing,
     Copy(String),
     Open {
         path: std::path::PathBuf,
         line: Option<usize>,
     },
-    Host(&'static str),
     Viewed(std::path::PathBuf),
     Unviewed(std::path::PathBuf),
 }
+
+/// The file on screen and the lines the cursor or selection covers on its new
+/// side, written `path`, `path:line` or `path:first-last`.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Location {
+    pub path: std::path::PathBuf,
+    pub lines: Option<std::ops::RangeInclusive<usize>>,
+}
+
+impl std::fmt::Display for Location {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "{}", self.path.display())?;
+        match &self.lines {
+            Some(lines) if lines.start() == lines.end() => write!(formatter, ":{}", lines.start()),
+            Some(lines) => write!(formatter, ":{}-{}", lines.start(), lines.end()),
+            None => Ok(()),
+        }
+    }
+}
+
+/// The condition that holds while lines are selected.
+pub const SELECTING: &str = "selecting";
+
+/// The condition that holds while a file outside the review is open.
+pub const PEEKING: &str = "peeking";
