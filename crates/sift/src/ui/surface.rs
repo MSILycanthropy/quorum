@@ -14,6 +14,7 @@ use crate::git::{Content, FileChange};
 use crate::theme::{Theme, Tints};
 use crate::ui::{
     Anchor, Annotation, Control, Help, Icon, Palette, PaletteAction, Presentation, Result, Review,
+    Selection,
 };
 
 /// What the surface is opened with, beyond its changes.
@@ -152,7 +153,7 @@ impl Surface {
             Command::Quit => return Ok(Control::Quit),
             Command::Host(name) => return Ok(Control::Host(name)),
             Command::Back => {
-                if !self.review.close_peek() {
+                if !self.review.clear_selection() && !self.review.close_peek() {
                     return Ok(Control::Quit);
                 }
             }
@@ -172,14 +173,19 @@ impl Surface {
                 if let Some(path) = self.review.path() {
                     return Ok(Control::Edit {
                         path: path.to_path_buf(),
-                        line: self.review.line(),
+                        line: self.review.located().map(|lines| *lines.start()),
                     });
                 }
             }
             Command::CopyLocation => {
                 if let Some(path) = self.review.path() {
-                    let location = match self.review.line() {
-                        Some(line) => format!("{}:{line}", path.display()),
+                    let location = match self.review.located() {
+                        Some(lines) if lines.start() == lines.end() => {
+                            format!("{}:{}", path.display(), lines.start())
+                        }
+                        Some(lines) => {
+                            format!("{}:{}-{}", path.display(), lines.start(), lines.end())
+                        }
                         None => path.display().to_string(),
                     };
                     return Ok(Control::Copy(location));
@@ -202,6 +208,12 @@ impl Surface {
 
     pub fn cursor(&self) -> Option<Anchor> {
         self.review.cursor()
+    }
+
+    /// The selected lines, or the cursor's line on its own when nothing is
+    /// selected.
+    pub fn selection(&self) -> Option<Selection> {
+        self.review.selection()
     }
 
     #[expect(
@@ -286,6 +298,16 @@ impl Surface {
             (_, 0) => {}
             (Some(current), total) => parts.push(format!("hunk {current}/{total}")),
             (None, total) => parts.push(format!("{total} hunks")),
+        }
+        if self.review.selecting()
+            && let Some(selection) = self.review.selection()
+        {
+            let (first, last) = (selection.lines.start(), selection.lines.end());
+            parts.push(if first == last {
+                format!("line {first}")
+            } else {
+                format!("lines {first}–{last}")
+            });
         }
         match self.review.annotated() {
             (_, 0) => {}

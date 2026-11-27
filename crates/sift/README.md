@@ -30,7 +30,8 @@ n / N       next / previous hunk, carrying on into the next file
 /           find a file by name
 :  ctrl-p   run any command by name
 e           open $EDITOR at the cursor's line
-y  Y        copy the file's path, or path:line at the cursor
+V           select lines, from here to wherever the cursor goes
+y  Y        copy the file's path, or path:line (path:10-20 for a selection)
 s           side by side or unified
 w           wrap long lines
 ctrl-b  f   show or hide the file list
@@ -43,6 +44,7 @@ the view together, and `g`/`G` jump to either end. Side by side, `H`/`L` or
 `shift-←`/`shift-→` put the cursor on the old or new side. `h`/`l` and `←`/`→`
 scroll sideways.
 After `e` the diff reloads, so you see your edit straight away.
+Dragging with the mouse selects lines too, and `Esc` lets go of a selection.
 
 ## Settings
 

@@ -1,7 +1,7 @@
 //! One file's diff, and where the reader is looking at it.
 
 use std::collections::HashSet;
-use std::ops::Range;
+use std::ops::{Range, RangeInclusive};
 use std::path::{Path, PathBuf};
 
 use ratatui::buffer::Buffer;
@@ -36,13 +36,14 @@ pub enum Landing {
     Annotation(String),
 }
 
-/// Where the reader was scrolled to and where the cursor was, kept across a
-/// reload of the same file.
+/// Where the reader was scrolled to, where the cursor was, and where a
+/// selection was held from, kept across a reload of the same file.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct Place {
     top: usize,
     left: usize,
     mark: Option<Mark>,
+    held: Option<Mark>,
     chosen: Side,
 }
 
@@ -93,6 +94,8 @@ pub struct Viewer {
     hunks: Vec<usize>,
     cursor: usize,
     mark: Option<Mark>,
+    held: Option<Mark>,
+    pressed: Option<Mark>,
     chosen: Side,
     laid_out: Option<Geometry>,
     landing: Option<Landing>,
@@ -158,6 +161,8 @@ impl Viewer {
             hunks: Vec::new(),
             cursor: 0,
             mark: None,
+            held: None,
+            pressed: None,
             chosen: Side::New,
             laid_out: None,
             landing: None,
@@ -185,13 +190,20 @@ impl Viewer {
     }
 
     pub fn place(&self) -> Place {
-        Place { top: self.top, left: self.left, mark: self.mark.clone(), chosen: self.chosen }
+        Place {
+            top: self.top,
+            left: self.left,
+            mark: self.mark.clone(),
+            held: self.held.clone(),
+            chosen: self.chosen,
+        }
     }
 
     pub fn return_to(&mut self, place: Place) {
         self.top = place.top;
         self.left = place.left;
         self.mark = place.mark;
+        self.held = place.held;
         self.chosen = place.chosen;
         self.cursor = self.resolve();
     }
@@ -255,6 +267,12 @@ impl Viewer {
                     self.follow();
                 }
             }
+            Command::Select => {
+                self.held = match self.held {
+                    Some(_) => None,
+                    None => self.text_mark(self.cursor),
+                };
+            }
             Command::OldSide => self.choose(Side::Old),
             Command::NewSide => self.choose(Side::New),
             Command::ScrollLeft => self.left = self.left.saturating_sub(4),
@@ -317,6 +335,8 @@ impl Viewer {
         if !self.area.contains(Position::new(column, row)) {
             return Ok(());
         }
+        self.held = None;
+        self.pressed = None;
         let index = self.top + usize::from(row - self.area.y);
         let clicked = match self.screen.get(index) {
             None => return Ok(()),
@@ -340,10 +360,123 @@ impl Viewer {
                     self.chosen = side;
                 }
                 self.place_cursor(self.entry_containing(index));
+                self.pressed = self.text_mark(self.cursor);
             }
         }
 
         Ok(())
+    }
+
+    /// Moves the cursor to the row a drag has reached, holding the selection
+    /// from the row the button went down on. Past either edge, it scrolls a
+    /// row instead.
+    pub fn drag_to(&mut self, row: u16) {
+        let Some(pressed) = self.pressed.clone() else {
+            return;
+        };
+        let Some(last) = self.screen.len().checked_sub(1) else {
+            return;
+        };
+        if self.height == 0 {
+            return;
+        }
+        let index = if row < self.area.y {
+            self.top = self.top.saturating_sub(1);
+            self.top
+        } else if row >= self.area.bottom() {
+            self.top = (self.top + 1).min(self.screen.len().saturating_sub(self.height));
+            self.top + self.height - 1
+        } else {
+            self.top + usize::from(row - self.area.y)
+        };
+        let index = self.entry_containing(index.min(last));
+        if self.held.is_none() && index == self.find(&pressed) {
+            return;
+        }
+        self.held.get_or_insert(pressed);
+        self.place_cursor(index);
+    }
+
+    pub fn release(&mut self) {
+        self.pressed = None;
+    }
+
+    /// Grows the selection from the cursor to the row clicked, or starts one
+    /// there, keeping the side it is on.
+    pub fn extend_to(&mut self, column: u16, row: u16) {
+        if !self.area.contains(Position::new(column, row)) {
+            return;
+        }
+        let index = self.top + usize::from(row - self.area.y);
+        if index >= self.screen.len() {
+            return;
+        }
+        if self.held.is_none() {
+            self.held = self.text_mark(self.cursor);
+        }
+        if self.held.is_some() {
+            self.place_cursor(self.entry_containing(index));
+        }
+    }
+
+    pub fn clear_selection(&mut self) -> bool {
+        self.pressed = None;
+        self.held.take().is_some()
+    }
+
+    pub fn selecting(&self) -> bool {
+        self.held.is_some()
+    }
+
+    /// The selected lines of one side, counted from one, or the cursor's line
+    /// on its own when nothing is selected.
+    pub fn selection(&self) -> Option<(Side, RangeInclusive<usize>)> {
+        match self.selected() {
+            Some((side, indices)) => Some((side, self.lines_on(side, indices)?)),
+            None => self.cursor().map(|(side, line)| (side, line..=line)),
+        }
+    }
+
+    /// The newer side's lines the selection covers, counted from one, or the
+    /// newer-side line nearest the cursor.
+    pub fn located(&self) -> Option<RangeInclusive<usize>> {
+        let newer = self.selected().and_then(|(_, indices)| self.lines_on(Side::New, indices));
+
+        newer.or_else(|| self.line().map(|line| line..=line))
+    }
+
+    fn selected(&self) -> Option<(Side, RangeInclusive<usize>)> {
+        let held = self.held.as_ref()?;
+        let from = self.find(held);
+        let indices = if from <= self.cursor {
+            from..=self.end_of(self.cursor)
+        } else {
+            self.cursor..=self.end_of(from)
+        };
+
+        Some((held.side, indices))
+    }
+
+    fn lines_on(
+        &self,
+        side: Side,
+        indices: RangeInclusive<usize>,
+    ) -> Option<RangeInclusive<usize>> {
+        let rows = self.rows();
+        let covered = self.screen.get(indices)?.iter().filter_map(|line| covered(line, rows, side));
+        let (first, end) = covered.fold(None, |spanned, lines| match spanned {
+            None => Some((lines.start, lines.end)),
+            Some((first, end)) => Some((lines.start.min(first), lines.end.max(end))),
+        })?;
+
+        Some(first + 1..=end)
+    }
+
+    fn text_mark(&self, index: usize) -> Option<Mark> {
+        match self.screen.get(index)? {
+            Line::Text(_) => self.mark_at(index),
+            Line::Fold { .. } | Line::Annotation { .. } => None,
+        }
     }
 
     fn open_fold(&mut self, first: usize) -> Result<()> {
@@ -631,6 +764,14 @@ impl Viewer {
         }
         self.chosen = side;
         self.mark = self.mark_at(self.cursor);
+        if let Some(held) = &self.held {
+            let index = self.find(held);
+            if let Some(Line::Text(painted)) = self.screen.get(index)
+                && let Some(line) = cell(&self.rows()[painted.row], side).line
+            {
+                self.held = Some(Mark { side, line, within: None });
+            }
+        }
     }
 
     fn page_down(&mut self, rows: usize) {
@@ -681,9 +822,10 @@ impl Viewer {
     }
 
     fn resolve(&self) -> usize {
-        let Some(mark) = &self.mark else {
-            return 0;
-        };
+        self.mark.as_ref().map_or(0, |mark| self.find(mark))
+    }
+
+    fn find(&self, mark: &Mark) -> usize {
         if let Some(within) = &mark.within
             && let Some(heading) = self.heading_of(&within.id)
         {
@@ -1008,13 +1150,18 @@ impl Widget for &mut Viewer {
         };
         let rows = self.rows();
         let under = self.cursor..=self.end_of(self.cursor);
+        let selected = self.selected();
         let rows_on_screen = self.screen.iter().enumerate().skip(self.top);
         for (y, (index, line)) in (area.y..area.y + area.height).zip(rows_on_screen) {
             let cursor = under.contains(&index);
+            let chosen = selected
+                .as_ref()
+                .filter(|(_, indices)| indices.contains(&index))
+                .map(|(side, _)| *side);
             let painted = match line {
                 Line::Text(painted) => painted,
                 Line::Fold { hidden, .. } => {
-                    screen.fold_row(y, *hidden, cursor);
+                    screen.fold_row(y, *hidden, cursor || chosen.is_some());
                     continue;
                 }
                 Line::Annotation { index, row, .. } => {
@@ -1025,7 +1172,9 @@ impl Widget for &mut Viewer {
                 }
             };
             let row = &rows[painted.row];
-            let side = cursor.then(|| self.side_of(row));
+            let side = chosen
+                .filter(|&side| cell(row, side).line.is_some())
+                .or_else(|| cursor.then(|| self.side_of(row)));
             match (self.plain, self.presentation.mode) {
                 (true, _) => screen.plain_row(y, painted, row, side),
                 (false, Mode::SideBySide) => screen.split_row(y, painted, row, side),

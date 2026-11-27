@@ -113,6 +113,14 @@ pub struct Anchor {
     pub line: usize,
 }
 
+/// Lines of one side of a file, counted from one.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Selection {
+    pub path: std::path::PathBuf,
+    pub side: crate::diff::Side,
+    pub lines: std::ops::RangeInclusive<usize>,
+}
+
 /// A heading and a body the host anchors under one line of the diff. Sift
 /// draws them and never reads meaning into them.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]

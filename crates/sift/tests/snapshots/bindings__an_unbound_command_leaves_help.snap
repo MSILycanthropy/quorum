@@ -1,6 +1,6 @@
 ---
 source: tests/bindings.rs
-expression: "screen(&mut surface, 70, 52)"
+expression: "screen(&mut surface, 70, 53)"
 ---
  M src/other                                                      1/2
 1 one        General
@@ -16,7 +16,8 @@ expression: "screen(&mut surface, 70, 52)"
              /               Find file
              C-b f           Toggle file list
              y               Copy path
-             Y               Copy path:line
+             Y               Copy path:line or lines
+             V               Select lines
              v               Mark viewed, go to next
              u               Next unviewed file
 

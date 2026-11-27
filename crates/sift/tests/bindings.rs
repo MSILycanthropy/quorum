@@ -358,7 +358,7 @@ fn an_unbound_command_leaves_help() {
     let mut surface = without_edit();
     typed(&mut surface, &[press(KeyCode::Char('?'))]);
 
-    insta::assert_snapshot!(screen(&mut surface, 70, 52));
+    insta::assert_snapshot!(screen(&mut surface, 70, 53));
 }
 
 #[test]

@@ -95,7 +95,7 @@ fn question_mark_lists_every_key() {
     let mut surface = surface();
     typed(&mut surface, &[press(KeyCode::Char('?'))]);
 
-    insta::assert_snapshot!(screen(&mut surface, 70, 44));
+    insta::assert_snapshot!(screen(&mut surface, 70, 45));
 }
 
 #[test]

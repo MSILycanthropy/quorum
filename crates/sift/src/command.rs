@@ -18,6 +18,7 @@ pub enum Command {
     Edit,
     CopyPath,
     CopyLocation,
+    Select,
     ToggleViewed,
     NextUnviewed,
     NextHunk,
@@ -214,7 +215,8 @@ impl Default for Catalog {
                 ),
                 bind(C::Edit, "Open in $EDITOR", &[plain('e')], Files, Some("edit")),
                 bind(C::CopyPath, "Copy path", &[plain('y')], Files, None),
-                bind(C::CopyLocation, "Copy path:line", &[plain('Y')], Files, None),
+                bind(C::CopyLocation, "Copy path:line or lines", &[plain('Y')], Files, None),
+                bind(C::Select, "Select lines", &[plain('V')], Files, None),
                 bind(
                     C::ToggleViewed,
                     "Mark viewed, go to next",

@@ -1,6 +1,5 @@
 ---
 source: tests/bindings.rs
-assertion_line: 309
 expression: "screen(&mut surface, 70, 52)"
 ---
  M src/other                                                      1/2
@@ -18,7 +17,8 @@ expression: "screen(&mut surface, 70, 52)"
              C-b f           Toggle file list
              e               Open in $EDITOR
              y               Copy path
-             Y               Copy path:line
+             Y               Copy path:line or lines
+             V               Select lines
              v               Mark viewed, go to next
              u               Next unviewed file
 
@@ -53,5 +53,4 @@ expression: "screen(&mut surface, 70, 52)"
              Pull request
              A               Approve
              M               Merge
-
   main · HE                               any key closes de   ? help

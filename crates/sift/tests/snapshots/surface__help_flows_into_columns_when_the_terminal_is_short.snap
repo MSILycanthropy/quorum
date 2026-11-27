@@ -17,10 +17,10 @@ expression: "screen(&mut surface, 100, 24)"
     C-b f           Toggle file list               G End           Bottom of the file
     e               Open in $EDITOR                H S-←           Cursor to the old side
     y               Copy path                      L S-→           Cursor to the new side
-    Y               Copy path:line                 h ←             Scroll left
-    v               Mark viewed, go to next        l →             Scroll right
-    u               Next unviewed file
-                                                   View
+    Y               Copy path:line or lines        h ←             Scroll left
+    V               Select lines                   l →             Scroll right
+    v               Mark viewed, go to next
+    u               Next unviewed file             View
                                                    s               Split or unified
                                                    w               Wrap long lines
                                                    z               Fold unchanged lines

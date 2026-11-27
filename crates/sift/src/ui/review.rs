@@ -17,7 +17,8 @@ use crate::git::{Content, FileChange, Status};
 use crate::theme::Theme;
 use crate::ui::annotation::has_body;
 use crate::ui::{
-    Anchor, Annotation, Control, Error, Landing, Mode, Presentation, Result, Row, Tree, Viewer,
+    Anchor, Annotation, Control, Error, Landing, Mode, Presentation, Result, Row, Selection, Tree,
+    Viewer,
 };
 use hue::Rgb;
 
@@ -230,14 +231,37 @@ impl Review {
         }
     }
 
-    pub fn cursor(&self) -> Option<Anchor> {
-        let viewer = match &self.peek {
+    fn shown(&self) -> Option<&Viewer> {
+        match &self.peek {
             Some(peek) => peek.viewer.as_ref(),
             None => self.viewer.as_ref(),
-        };
-        let (side, line) = viewer?.cursor()?;
+        }
+    }
+
+    pub fn cursor(&self) -> Option<Anchor> {
+        let (side, line) = self.shown()?.cursor()?;
 
         Some(Anchor { path: self.path()?.to_path_buf(), side, line })
+    }
+
+    /// The selected lines, or the cursor's line on its own when nothing is
+    /// selected.
+    pub fn selection(&self) -> Option<Selection> {
+        let (side, lines) = self.shown()?.selection()?;
+
+        Some(Selection { path: self.path()?.to_path_buf(), side, lines })
+    }
+
+    pub fn selecting(&self) -> bool {
+        self.shown().is_some_and(Viewer::selecting)
+    }
+
+    pub fn located(&self) -> Option<std::ops::RangeInclusive<usize>> {
+        self.shown()?.located()
+    }
+
+    pub fn clear_selection(&mut self) -> bool {
+        self.active().is_some_and(Viewer::clear_selection)
     }
 
     #[expect(
@@ -510,6 +534,23 @@ impl Review {
         let listed = self.listed.filter(|area| area.contains(at));
 
         match mouse.kind {
+            MouseEventKind::Down(MouseButton::Left)
+                if mouse.modifiers.contains(KeyModifiers::SHIFT) =>
+            {
+                if let (None, Some(viewer)) = (listed, self.active()) {
+                    viewer.extend_to(mouse.column, mouse.row);
+                }
+            }
+            MouseEventKind::Drag(MouseButton::Left) => {
+                if let Some(viewer) = self.active() {
+                    viewer.drag_to(mouse.row);
+                }
+            }
+            MouseEventKind::Up(MouseButton::Left) => {
+                if let Some(viewer) = self.active() {
+                    viewer.release();
+                }
+            }
             MouseEventKind::Down(MouseButton::Left) => {
                 if let (None, Some(viewer)) = (listed, self.active()) {
                     viewer.click(mouse.column, mouse.row)?;
