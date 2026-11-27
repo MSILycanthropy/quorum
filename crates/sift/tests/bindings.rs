@@ -6,26 +6,26 @@ use std::path::PathBuf;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use sift::command::{self, Binding, Category, Command, Shortcut};
+use sift::command::{self, Binding, Command};
 use sift::diff::{FileDiff, Side, Source};
 use sift::git::{Content, FileChange, Status};
 use sift::ui::{Anchor, Annotation, Body, Control, Error, Opening, Surface, Text};
 
-const REVIEW: Category = Category::Host("Review");
-const PULL_REQUEST: Category = Category::Host("Pull request");
-
-fn key(character: char) -> Shortcut {
-    Shortcut::new(KeyCode::Char(character), KeyModifiers::NONE)
-}
+const REVIEW: &str = "Review";
+const PULL_REQUEST: &str = "Pull request";
 
 fn host(
     name: &'static str,
     label: &'static str,
     character: char,
-    category: Category,
+    section: &'static str,
     hint: Option<&'static str>,
 ) -> Binding {
-    Binding { command: Command::Host(name), label, shortcuts: vec![key(character)], category, hint }
+    let key = character.to_string();
+    let binding = Binding::new(Command::Host(name), name, label, section, &[key.as_str()])
+        .expect("the key is spelt right");
+
+    Binding { hint, ..binding }
 }
 
 fn glean() -> Vec<Binding> {
@@ -214,11 +214,11 @@ fn a_host_shortcut_bound_by_sift_is_refused() {
 
     assert!(matches!(
         error,
-        command::Error::SharedShortcut {
+        command::Error::Keys(keys::Error::Shared {
             first: "Reload from git",
             second: "Reply to this thread",
             ..
-        }
+        })
     ));
     assert_eq!(error.to_string(), "r is bound to both Reload from git and Reply to this thread");
 }
@@ -232,11 +232,11 @@ fn two_host_bindings_with_one_shortcut_are_refused() {
 
     assert!(matches!(
         error,
-        command::Error::SharedShortcut {
+        command::Error::Keys(keys::Error::Shared {
             first: "Comment on this line",
             second: "Close the pull request",
             ..
-        }
+        })
     ));
 }
 
@@ -247,17 +247,14 @@ fn two_host_bindings_with_one_name_are_refused() {
         host("comment", "Comment on the file", 'C', REVIEW, None),
     ]);
 
-    assert!(matches!(error, command::Error::SharedName("comment")));
+    assert!(matches!(error, command::Error::Keys(keys::Error::Name("comment"))));
 }
 
 #[test]
 fn a_host_binding_that_reuses_a_sift_command_is_refused() {
     let error = refused(vec![Binding {
         command: Command::Reload,
-        label: "Refetch the pull request",
-        shortcuts: vec![key('F')],
-        category: REVIEW,
-        hint: None,
+        ..host("refetch", "Refetch the pull request", 'F', REVIEW, None)
     }]);
 
     assert!(matches!(error, command::Error::NotHost("Refetch the pull request")));
@@ -265,19 +262,9 @@ fn a_host_binding_that_reuses_a_sift_command_is_refused() {
 
 #[test]
 fn a_host_binding_in_one_of_sifts_sections_is_refused() {
-    let error = refused(vec![host("comment", "Comment on this line", 'c', Category::Diff, None)]);
+    let error = refused(vec![host("comment", "Comment on this line", 'c', "Diff", None)]);
 
     assert!(matches!(error, command::Error::NotHost("Comment on this line")));
-}
-
-#[test]
-fn a_character_shortcut_written_with_shift_is_refused() {
-    let error = refused(vec![Binding {
-        shortcuts: vec![Shortcut::new(KeyCode::Char('r'), KeyModifiers::SHIFT)],
-        ..host("reply", "Reply to this thread", 'R', REVIEW, None)
-    }]);
-
-    assert!(matches!(error, command::Error::Unreachable { label: "Reply to this thread", .. }));
 }
 
 #[test]
@@ -389,11 +376,11 @@ fn a_host_key_held_by_a_command_still_bound_is_refused() {
 
     assert!(matches!(
         error,
-        command::Error::SharedShortcut {
+        command::Error::Keys(keys::Error::Shared {
             first: "Open in $EDITOR",
             second: "Open in the browser",
             ..
-        }
+        })
     ));
 }
 

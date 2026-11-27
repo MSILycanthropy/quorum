@@ -53,6 +53,7 @@ serde.workspace = true
 thiserror.workspace = true
 tree-sitter-embedded-template = "0.23"
 config = { path = "../config" }
+keys = { path = "../keys" }
 unicode-ident = "1.0.24"
 unicode-segmentation = "1.13.3"
 unicode-width = "0.2.2"

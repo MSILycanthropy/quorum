@@ -6,7 +6,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::{Clear, Widget};
 use unicode_width::UnicodeWidthStr;
 
-use crate::command::{Binding, Catalog, Category};
+use crate::command::{Binding, Catalog};
 use crate::theme::Tints;
 
 const GAP: usize = 3;
@@ -33,7 +33,7 @@ impl Help {
 
 /// One category and its bindings, as the rows it takes up.
 struct Section<'catalog> {
-    category: Category,
+    title: &'static str,
     bindings: Vec<&'catalog Binding>,
 }
 
@@ -61,26 +61,26 @@ impl Help {
             return;
         }
 
-        let categories = catalog.sections();
-        let sections: Vec<Section> = categories
+        let titles = catalog.sections();
+        let sections: Vec<Section> = titles
             .iter()
-            .map(|&category| Section {
-                category,
+            .map(|&title| Section {
+                title,
                 bindings: catalog
                     .bindings()
                     .iter()
-                    .filter(|binding| binding.category == category)
+                    .filter(|binding| binding.section == title)
                     .collect(),
             })
             .filter(|section| !section.bindings.is_empty())
             .collect();
         let keys_width =
-            catalog.bindings().iter().map(|binding| binding.keys().width()).max().unwrap_or(0);
+            catalog.bindings().iter().map(|binding| binding.shown().width()).max().unwrap_or(0);
         let label_width = catalog
             .bindings()
             .iter()
             .map(|binding| binding.label.width())
-            .chain(categories.iter().map(|category| category.title().width()))
+            .chain(titles.iter().map(|title| title.width()))
             .max()
             .unwrap_or(0);
         let column_width = keys_width + 2 + label_width;
@@ -169,13 +169,13 @@ impl Painter {
             if y >= bottom {
                 return;
             }
-            self.put(buffer, x, y, section.category.title(), self.label_width, heading);
+            self.put(buffer, x, y, section.title, self.label_width, heading);
             y += 1;
             for binding in &section.bindings {
                 if y >= bottom {
                     return;
                 }
-                self.put(buffer, x, y, &binding.keys(), self.keys_width, key);
+                self.put(buffer, x, y, &binding.shown(), self.keys_width, key);
                 self.put(buffer, label_x, y, binding.label, self.label_width, self.base());
                 y += 1;
             }

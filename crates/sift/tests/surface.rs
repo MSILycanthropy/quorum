@@ -4,6 +4,7 @@ use std::collections::HashSet;
 use std::fmt::Write;
 use std::path::PathBuf;
 
+use keys::{Pending, Pressed};
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -65,8 +66,8 @@ fn no_key_is_bound_to_two_commands() {
     let mut seen = HashSet::new();
 
     for binding in Catalog::default().bindings() {
-        for shortcut in &binding.shortcuts {
-            assert!(seen.insert(*shortcut), "{} is bound twice", shortcut.display());
+        for sequence in &binding.keys {
+            assert!(seen.insert(sequence.clone()), "{sequence} is bound twice");
         }
     }
 }
@@ -74,15 +75,15 @@ fn no_key_is_bound_to_two_commands() {
 #[test]
 fn shift_is_folded_into_the_character_it_produces() {
     let catalog = Catalog::default();
+    let pressed = |character| {
+        catalog.press(
+            &mut Pending::default(),
+            KeyEvent::new(KeyCode::Char(character), KeyModifiers::SHIFT),
+        )
+    };
 
-    assert_eq!(
-        catalog.command(KeyEvent::new(KeyCode::Char('?'), KeyModifiers::SHIFT)),
-        Some(Command::Help)
-    );
-    assert_eq!(
-        catalog.command(KeyEvent::new(KeyCode::Char('N'), KeyModifiers::SHIFT)),
-        Some(Command::PreviousHunk)
-    );
+    assert_eq!(pressed('?'), Pressed::Command { command: Command::Help, count: None });
+    assert_eq!(pressed('N'), Pressed::Command { command: Command::PreviousHunk, count: None });
 }
 
 #[test]

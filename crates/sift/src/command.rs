@@ -2,7 +2,8 @@
 
 use std::path::PathBuf;
 
-use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use keys::{Key, Keymap, Pending, Pressed};
+use ratatui::crossterm::event::KeyEvent;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Command {
@@ -46,113 +47,20 @@ pub enum Command {
     Host(&'static str),
 }
 
-/// A key combination. Shift is folded into the character it produces, so `G`
-/// and `?` match however the terminal reports them.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct Shortcut {
-    pub code: KeyCode,
-    pub modifiers: KeyModifiers,
-}
+/// One command, what it is called, and how to reach it.
+pub type Binding = keys::Binding<Command>;
 
-impl Shortcut {
-    pub const fn new(code: KeyCode, modifiers: KeyModifiers) -> Self {
-        Self { code, modifiers }
-    }
+/// The sections Sift's own commands are grouped under, in the order help lays them out.
+pub const SECTIONS: [&str; 5] = ["General", "Files", "Diff", "View", "Annotations"];
 
-    pub fn display(self) -> String {
-        let key = match self.code {
-            KeyCode::Char(' ') => "Space".to_owned(),
-            KeyCode::Char(character) => character.to_string(),
-            KeyCode::Enter => "Enter".to_owned(),
-            KeyCode::Left => "←".to_owned(),
-            KeyCode::Right => "→".to_owned(),
-            KeyCode::Up => "↑".to_owned(),
-            KeyCode::Down => "↓".to_owned(),
-            KeyCode::Home => "Home".to_owned(),
-            KeyCode::End => "End".to_owned(),
-            KeyCode::PageUp => "PgUp".to_owned(),
-            KeyCode::PageDown => "PgDn".to_owned(),
-            KeyCode::Tab => "Tab".to_owned(),
-            KeyCode::BackTab => "S-Tab".to_owned(),
-            KeyCode::Esc => "Esc".to_owned(),
-            code => format!("{code:?}"),
-        };
-
-        if self.modifiers.contains(KeyModifiers::CONTROL) {
-            format!("C-{key}")
-        } else if self.modifiers.contains(KeyModifiers::SHIFT) {
-            format!("S-{key}")
-        } else {
-            key
-        }
-    }
-}
-
-impl From<KeyEvent> for Shortcut {
-    fn from(key: KeyEvent) -> Self {
-        let modifiers = match key.code {
-            KeyCode::Char(_) | KeyCode::BackTab => key.modifiers.difference(KeyModifiers::SHIFT),
-            _ => key.modifiers,
-        };
-
-        Self::new(key.code, modifiers)
-    }
-}
-
-/// The groups the help overlay lays commands out under.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum Category {
-    General,
-    Files,
-    Diff,
-    View,
-    Annotations,
-    Host(&'static str),
-}
-
-impl Category {
-    pub const ALL: [Self; 5] =
-        [Self::General, Self::Files, Self::Diff, Self::View, Self::Annotations];
-
-    pub fn title(self) -> &'static str {
-        match self {
-            Self::General => "General",
-            Self::Files => "Files",
-            Self::Diff => "Diff",
-            Self::View => "View",
-            Self::Annotations => "Annotations",
-            Self::Host(section) => section,
-        }
-    }
-}
-
-/// One command, what it is called, and how to reach it. A binding with a hint
-/// is advertised in the status line.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct Binding {
-    pub command: Command,
-    pub label: &'static str,
-    pub shortcuts: Vec<Shortcut>,
-    pub category: Category,
-    pub hint: Option<&'static str>,
-}
-
-impl Binding {
-    pub fn keys(&self) -> String {
-        self.shortcuts.iter().map(|shortcut| shortcut.display()).collect::<Vec<_>>().join(" ")
-    }
-}
+pub const ANNOTATIONS: &str = "Annotations";
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("{} is bound to both {first} and {second}", .shortcut.display())]
-    SharedShortcut { shortcut: Shortcut, first: &'static str, second: &'static str },
-    #[error("two host bindings share the name {0}")]
-    SharedName(&'static str),
+    #[error(transparent)]
+    Keys(#[from] keys::Error),
     #[error("{0} must be a host command in a host section")]
     NotHost(&'static str),
-    #[error("{} on {label} can never be pressed: write the character Shift produces", .shortcut.display())]
-    Unreachable { shortcut: Shortcut, label: &'static str },
     #[error("{0} is a host command: leave it out of the host bindings instead")]
     NotSift(&'static str),
     #[error("{0} cannot be unbound")]
@@ -164,197 +72,105 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// The single source of truth for what a key does.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Catalog {
-    bindings: Vec<Binding>,
+    keymap: Keymap<Command>,
 }
 
 impl Default for Catalog {
-    #[expect(
-        clippy::too_many_lines,
-        reason = "one list holds every binding, so it reads as the catalog"
-    )]
     fn default() -> Self {
-        use Category::{Annotations, Diff, Files, General, View};
         use Command as C;
 
-        let bind = |command, label, shortcuts: &[Shortcut], category, hint| Binding {
-            command,
-            label,
-            shortcuts: shortcuts.to_vec(),
-            category,
-            hint,
+        let keymap = keys::keymap! {
+            "General" {
+                "help" => C::Help, "Show every key", ["?"], hint: "help";
+                "palette" => C::Palette, "Command palette", [":", "C-p"];
+                "reload" => C::Reload, "Reload from git", ["r"];
+                "quit" => C::Quit, "Quit", ["q", "C-c"], hint: "quit";
+                "back" => C::Back, "Back, or quit", ["Esc"];
+            }
+            "Files" {
+                "next-file" => C::NextFile, "Next file", ["]", "Tab"], hint: "file";
+                "previous-file" => C::PreviousFile, "Previous file", ["[", "S-Tab"];
+                "find-file" => C::FindFile, "Find file", ["/"], hint: "find";
+                "toggle-file-list" => C::ToggleFileList, "Toggle file list", ["C-b", "f"], hint: "files";
+                "edit" => C::Edit, "Open in $EDITOR", ["e"], hint: "edit";
+                "copy-path" => C::CopyPath, "Copy path", ["y"];
+                "copy-location" => C::CopyLocation, "Copy path:line or lines", ["Y"];
+                "select" => C::Select, "Select lines", ["V"];
+                "toggle-viewed" => C::ToggleViewed, "Mark viewed, go to next", ["v"], hint: "viewed";
+                "next-unviewed" => C::NextUnviewed, "Next unviewed file", ["u"];
+            }
+            "Diff" {
+                "next-hunk" => C::NextHunk, "Next hunk", ["n"], hint: "hunk";
+                "previous-hunk" => C::PreviousHunk, "Previous hunk", ["N", "p"];
+                "expand-fold" => C::ExpandFold, "Unfold, or toggle annotation", ["Enter", "o"];
+                "next-line" => C::NextLine, "Down a line", ["j", "↓"];
+                "previous-line" => C::PreviousLine, "Up a line", ["k", "↑"];
+                "half-page-down" => C::HalfPageDown, "Down half a page", ["C-d"];
+                "half-page-up" => C::HalfPageUp, "Up half a page", ["C-u"];
+                "page-down" => C::PageDown, "Down a page", ["PgDn", "C-f", "Space"];
+                "page-up" => C::PageUp, "Up a page", ["PgUp"];
+                "top" => C::Top, "Top of the file", ["g", "Home"];
+                "bottom" => C::Bottom, "Bottom of the file", ["G", "End"];
+                "old-side" => C::OldSide, "Cursor to the old side", ["H", "S-←"];
+                "new-side" => C::NewSide, "Cursor to the new side", ["L", "S-→"];
+                "scroll-left" => C::ScrollLeft, "Scroll left", ["h", "←"];
+                "scroll-right" => C::ScrollRight, "Scroll right", ["l", "→"];
+            }
+            "View" {
+                "toggle-layout" => C::ToggleLayout, "Split or unified", ["s"], hint: "layout";
+                "toggle-wrapping" => C::ToggleWrapping, "Wrap long lines", ["w"];
+                "toggle-folds" => C::ToggleFolds, "Fold unchanged lines", ["z"];
+                "toggle-whitespace" => C::ToggleWhitespace, "Ignore whitespace", ["W"];
+            }
+            "Annotations" {
+                "next-annotation" => C::NextAnnotation, "Next annotation", ["}"];
+                "previous-annotation" => C::PreviousAnnotation, "Previous annotation", ["{"];
+                "toggle-annotations" => C::ToggleAnnotations, "Collapse every annotation", ["Z"];
+            }
         };
 
-        Self {
-            bindings: vec![
-                bind(C::Help, "Show every key", &[plain('?')], General, Some("help")),
-                bind(C::Palette, "Command palette", &[plain(':'), ctrl('p')], General, None),
-                bind(C::Reload, "Reload from git", &[plain('r')], General, None),
-                bind(C::Quit, "Quit", &[plain('q'), ctrl('c')], General, Some("quit")),
-                bind(C::Back, "Back, or quit", &[code(KeyCode::Esc)], General, None),
-                bind(
-                    C::NextFile,
-                    "Next file",
-                    &[plain(']'), code(KeyCode::Tab)],
-                    Files,
-                    Some("file"),
-                ),
-                bind(
-                    C::PreviousFile,
-                    "Previous file",
-                    &[plain('['), code(KeyCode::BackTab)],
-                    Files,
-                    None,
-                ),
-                bind(C::FindFile, "Find file", &[plain('/')], Files, Some("find")),
-                bind(
-                    C::ToggleFileList,
-                    "Toggle file list",
-                    &[ctrl('b'), plain('f')],
-                    Files,
-                    Some("files"),
-                ),
-                bind(C::Edit, "Open in $EDITOR", &[plain('e')], Files, Some("edit")),
-                bind(C::CopyPath, "Copy path", &[plain('y')], Files, None),
-                bind(C::CopyLocation, "Copy path:line or lines", &[plain('Y')], Files, None),
-                bind(C::Select, "Select lines", &[plain('V')], Files, None),
-                bind(
-                    C::ToggleViewed,
-                    "Mark viewed, go to next",
-                    &[plain('v')],
-                    Files,
-                    Some("viewed"),
-                ),
-                bind(C::NextUnviewed, "Next unviewed file", &[plain('u')], Files, None),
-                bind(C::NextHunk, "Next hunk", &[plain('n')], Diff, Some("hunk")),
-                bind(C::PreviousHunk, "Previous hunk", &[plain('N'), plain('p')], Diff, None),
-                bind(
-                    C::ExpandFold,
-                    "Unfold, or toggle annotation",
-                    &[code(KeyCode::Enter), plain('o')],
-                    Diff,
-                    None,
-                ),
-                bind(C::NextLine, "Down a line", &[plain('j'), code(KeyCode::Down)], Diff, None),
-                bind(C::PreviousLine, "Up a line", &[plain('k'), code(KeyCode::Up)], Diff, None),
-                bind(C::HalfPageDown, "Down half a page", &[ctrl('d')], Diff, None),
-                bind(C::HalfPageUp, "Up half a page", &[ctrl('u')], Diff, None),
-                bind(
-                    C::PageDown,
-                    "Down a page",
-                    &[code(KeyCode::PageDown), ctrl('f'), plain(' ')],
-                    Diff,
-                    None,
-                ),
-                bind(C::PageUp, "Up a page", &[code(KeyCode::PageUp)], Diff, None),
-                bind(C::Top, "Top of the file", &[plain('g'), code(KeyCode::Home)], Diff, None),
-                bind(
-                    C::Bottom,
-                    "Bottom of the file",
-                    &[plain('G'), code(KeyCode::End)],
-                    Diff,
-                    None,
-                ),
-                bind(
-                    C::OldSide,
-                    "Cursor to the old side",
-                    &[plain('H'), shift(KeyCode::Left)],
-                    Diff,
-                    None,
-                ),
-                bind(
-                    C::NewSide,
-                    "Cursor to the new side",
-                    &[plain('L'), shift(KeyCode::Right)],
-                    Diff,
-                    None,
-                ),
-                bind(C::ScrollLeft, "Scroll left", &[plain('h'), code(KeyCode::Left)], Diff, None),
-                bind(
-                    C::ScrollRight,
-                    "Scroll right",
-                    &[plain('l'), code(KeyCode::Right)],
-                    Diff,
-                    None,
-                ),
-                bind(C::ToggleLayout, "Split or unified", &[plain('s')], View, Some("layout")),
-                bind(C::ToggleWrapping, "Wrap long lines", &[plain('w')], View, None),
-                bind(C::ToggleFolds, "Fold unchanged lines", &[plain('z')], View, None),
-                bind(C::ToggleWhitespace, "Ignore whitespace", &[plain('W')], View, None),
-                bind(C::NextAnnotation, "Next annotation", &[plain('}')], Annotations, None),
-                bind(
-                    C::PreviousAnnotation,
-                    "Previous annotation",
-                    &[plain('{')],
-                    Annotations,
-                    None,
-                ),
-                bind(
-                    C::ToggleAnnotations,
-                    "Collapse every annotation",
-                    &[plain('Z')],
-                    Annotations,
-                    None,
-                ),
-            ],
-        }
+        Self { keymap: keymap.expect("Sift's own keys are spelt right and do not clash") }
     }
 }
 
 impl Catalog {
     pub fn bindings(&self) -> &[Binding] {
-        &self.bindings
+        self.keymap.bindings()
     }
 
-    pub fn unbind(mut self, commands: &[Command]) -> Result<Self> {
+    pub fn unbind(self, commands: &[Command]) -> Result<Self> {
         for command in commands {
             if let Command::Host(name) = command {
                 return Err(Error::NotSift(name));
             }
-            if let Some(binding) = self.bindings.iter().find(|binding| binding.command == *command)
+            if let Some(binding) =
+                self.bindings().iter().find(|binding| binding.command == *command)
                 && REQUIRED.contains(command)
             {
                 return Err(Error::Required(binding.label));
             }
         }
-        self.bindings.retain(|binding| !commands.contains(&binding.command));
+        let keymap = self.keymap.retain(|binding| !commands.contains(&binding.command));
 
-        Ok(self)
+        Ok(Self { keymap })
     }
 
-    pub fn with(mut self, bindings: Vec<Binding>) -> Result<Self> {
-        for binding in bindings {
-            let (Command::Host(name), Category::Host(_)) = (binding.command, binding.category)
-            else {
+    pub fn with(self, bindings: Vec<Binding>) -> Result<Self> {
+        for binding in &bindings {
+            let host = matches!(binding.command, Command::Host(_));
+            if !host || SECTIONS.contains(&binding.section) {
                 return Err(Error::NotHost(binding.label));
-            };
-            if self.bindings.iter().any(|bound| bound.command == binding.command) {
-                return Err(Error::SharedName(name));
             }
-            for shortcut in &binding.shortcuts {
-                if Shortcut::from(KeyEvent::new(shortcut.code, shortcut.modifiers)) != *shortcut {
-                    return Err(Error::Unreachable { shortcut: *shortcut, label: binding.label });
-                }
-                if let Some(bound) =
-                    self.bindings.iter().find(|bound| bound.shortcuts.contains(shortcut))
-                {
-                    return Err(Error::SharedShortcut {
-                        shortcut: *shortcut,
-                        first: bound.label,
-                        second: binding.label,
-                    });
-                }
-            }
-            self.bindings.push(binding);
         }
 
-        Ok(self)
+        Ok(Self { keymap: self.keymap.with(bindings)? })
     }
 
-    pub fn sections(&self) -> Vec<Category> {
-        let mut sections = Category::ALL.to_vec();
-        for binding in &self.bindings {
-            if !sections.contains(&binding.category) {
-                sections.push(binding.category);
+    pub fn sections(&self) -> Vec<&'static str> {
+        let mut sections = SECTIONS.to_vec();
+        for binding in self.bindings() {
+            if !sections.contains(&binding.section) {
+                sections.push(binding.section);
             }
         }
 
@@ -362,45 +178,37 @@ impl Catalog {
     }
 
     #[must_use]
-    pub fn without(&self, category: Category) -> Self {
-        let bindings =
-            self.bindings.iter().filter(|binding| binding.category != category).cloned().collect();
-
-        Self { bindings }
+    pub fn without(&self, section: &str) -> Self {
+        Self { keymap: self.keymap.clone().retain(|binding| binding.section != section) }
     }
 
-    pub fn command(&self, key: KeyEvent) -> Option<Command> {
-        let pressed = Shortcut::from(key);
-
-        self.bindings
-            .iter()
-            .find(|binding| binding.shortcuts.contains(&pressed))
-            .map(|binding| binding.command)
+    pub fn press(&self, pending: &mut Pending, key: KeyEvent) -> Pressed<Command> {
+        self.keymap.press(pending, Key::from(key), &[])
     }
 
     pub fn hints(&self) -> impl Iterator<Item = (String, &'static str)> + '_ {
         let host =
-            self.bindings.iter().filter(|binding| matches!(binding.command, Command::Host(_)));
-        let sift = HINTED
-            .iter()
-            .filter_map(|command| self.bindings.iter().find(|binding| binding.command == *command));
+            self.bindings().iter().filter(|binding| matches!(binding.command, Command::Host(_)));
+        let sift = HINTED.iter().filter_map(|command| {
+            self.bindings().iter().find(|binding| binding.command == *command)
+        });
 
         host.chain(sift).filter_map(|binding| {
             let hint = binding.hint?;
-            let key = binding.shortcuts.first()?.display();
+            let key = binding.keys.first()?.to_string();
 
             Some((key, hint))
         })
     }
 
     pub fn palette_entries(&self) -> Vec<PaletteEntry> {
-        self.bindings
+        self.bindings()
             .iter()
             .filter(|binding| binding.command != Command::Palette)
             .map(|binding| PaletteEntry {
                 target: PaletteTarget::Command(binding.command),
                 label: binding.label.to_owned(),
-                keys: binding.keys(),
+                keys: binding.shown(),
             })
             .collect()
     }
@@ -419,22 +227,6 @@ const HINTED: [Command; 9] = [
     Command::Help,
     Command::Quit,
 ];
-
-const fn plain(character: char) -> Shortcut {
-    Shortcut::new(KeyCode::Char(character), KeyModifiers::NONE)
-}
-
-const fn code(code: KeyCode) -> Shortcut {
-    Shortcut::new(code, KeyModifiers::NONE)
-}
-
-const fn shift(code: KeyCode) -> Shortcut {
-    Shortcut::new(code, KeyModifiers::SHIFT)
-}
-
-const fn ctrl(character: char) -> Shortcut {
-    Shortcut::new(KeyCode::Char(character), KeyModifiers::CONTROL)
-}
 
 /// What choosing a palette entry does.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]

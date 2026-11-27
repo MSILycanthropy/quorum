@@ -2,6 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
+use keys::{Pending, Pressed};
 use ratatui::buffer::Buffer;
 use ratatui::crossterm::event::{KeyEvent, MouseEvent};
 use ratatui::layout::{Position, Rect};
@@ -9,7 +10,7 @@ use ratatui::style::{Color, Style};
 use ratatui::widgets::Widget;
 use unicode_width::UnicodeWidthStr;
 
-use crate::command::{Binding, Catalog, Category, Command, PaletteEntry, PaletteTarget};
+use crate::command::{ANNOTATIONS, Binding, Catalog, Command, PaletteEntry, PaletteTarget};
 use crate::git::{Content, FileChange};
 use crate::theme::{Theme, Tints};
 use crate::ui::{
@@ -33,6 +34,7 @@ impl Opening {
     pub fn surface(self, changes: Vec<FileChange>) -> Result<Surface> {
         Ok(Surface {
             catalog: Catalog::default().unbind(&self.unbound)?.with(self.bindings)?,
+            pending: Pending::default(),
             review: Review::new(changes, self.presentation, self.theme.clone())?,
             palette: Palette::new(self.theme.tints),
             help: Help::new(self.theme.tints),
@@ -51,6 +53,7 @@ impl Opening {
 pub struct Surface {
     review: Review,
     catalog: Catalog,
+    pending: Pending,
     palette: Palette,
     help: Help,
     branch: Option<String>,
@@ -85,13 +88,14 @@ impl Surface {
             };
         }
 
-        match self.catalog.command(key) {
-            Some(command) => self.run(command),
-            None => Ok(Control::Continue),
+        match self.catalog.press(&mut self.pending, key) {
+            Pressed::Command { command, .. } => self.run(command),
+            Pressed::Pending | Pressed::Nothing => Ok(Control::Continue),
         }
     }
 
     pub fn mouse(&mut self, mouse: MouseEvent) -> Result<()> {
+        self.pending.clear();
         let outside = !self.area.contains(Position::new(mouse.column, mouse.row));
         if outside || self.help.is_open() || self.palette.is_open() {
             return Ok(());
@@ -212,11 +216,7 @@ impl Surface {
     }
 
     fn shown_catalog(&self) -> Catalog {
-        if self.annotating {
-            self.catalog.clone()
-        } else {
-            self.catalog.without(Category::Annotations)
-        }
+        if self.annotating { self.catalog.clone() } else { self.catalog.without(ANNOTATIONS) }
     }
 
     fn status(&self, buffer: &mut Buffer, area: Rect) {

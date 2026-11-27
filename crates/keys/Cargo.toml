@@ -1,0 +1,18 @@
+[package]
+name = "keys"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Key maps: commands, the key sequences that reach them, and what a key press amounts to."
+
+[dependencies]
+ratatui.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+toml.workspace = true
+
+[lints]
+workspace = true
