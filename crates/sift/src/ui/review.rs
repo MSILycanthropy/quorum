@@ -255,6 +255,26 @@ impl Review {
         self.shown()?.located()
     }
 
+    pub fn present(&mut self, presentation: Presentation) -> Result<()> {
+        self.presentation = presentation;
+        self.reopen()
+    }
+
+    pub fn retheme(&mut self, theme: Theme) -> Result<()> {
+        self.theme = theme;
+        self.reopen()
+    }
+
+    fn reopen(&mut self) -> Result<()> {
+        let place = self.viewer.as_ref().map(Viewer::place);
+        self.open()?;
+        if let (Some(place), Some(viewer)) = (place, &mut self.viewer) {
+            viewer.return_to(place);
+        }
+
+        Ok(())
+    }
+
     pub fn release_shifted(&mut self) {
         if let Some(viewer) = self.active() {
             viewer.release_shifted();

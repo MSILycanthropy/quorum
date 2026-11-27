@@ -1,4 +1,7 @@
-//! Settings files: where they live, and reading them into a program's own types.
+//! Settings files: where they live, reading them into a program's own types, and editing them in place.
+
+mod document;
+mod field;
 
 use std::path::{Path, PathBuf};
 
@@ -6,6 +9,9 @@ use etcetera::BaseStrategy;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use toml::{Table, Value};
+
+pub use document::Document;
+pub use field::{Field, fields};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -17,6 +23,12 @@ pub enum Error {
     Layered(#[from] toml::de::Error),
     #[error(transparent)]
     Serialized(#[from] toml::ser::Error),
+    #[error("{path}: {source}")]
+    Edit { path: PathBuf, source: toml_edit::TomlError },
+    #[error("{path}: {source}")]
+    Write { path: PathBuf, source: std::io::Error },
+    #[error("there is no settings directory for {0} on this system")]
+    Nowhere(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -69,6 +81,10 @@ impl Settings {
             Some(Value::Table(table)) => Self { table: table.clone() },
             _ => Self::default(),
         }
+    }
+
+    pub fn table(&self) -> &Table {
+        &self.table
     }
 
     pub fn parse<T: DeserializeOwned>(self) -> Result<T> {

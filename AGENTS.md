@@ -12,6 +12,8 @@ crates they share:
   tool's own types, so Glean's file can hold Sift's settings.
 - `crates/keys` — key maps: commands, the key sequences that reach them, what a
   key press amounts to, and rebinding them from a settings file.
+- `crates/settings` — a settings page any of them can show: every setting and
+  every key, changed in place and handed back for the program to apply.
 
 Sift stays a pure git tool: nothing about GitHub goes into Sift. Glean depends
 on Sift as a library, never the other way round.

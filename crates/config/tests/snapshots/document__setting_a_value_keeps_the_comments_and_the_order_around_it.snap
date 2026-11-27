@@ -1,0 +1,11 @@
+---
+source: tests/document.rs
+expression: document.to_string()
+---
+# my settings
+[diff]
+layout = "unified" # I like one column
+wrap = false
+
+[keys]
+quit = ["q"]

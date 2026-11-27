@@ -1,41 +1,43 @@
 ---
 source: tests/config.rs
-expression: "settings.parse::<Config>().expect(\"every value is known\")"
+expression: "settings.parse::<File>().expect(\"every value is known\")"
 ---
-Config {
-    layout: Some(
-        Unified,
-    ),
-    wrap: Some(
-        true,
-    ),
-    tab_width: Some(
-        8,
-    ),
-    indicators: Some(
-        Signs,
-    ),
-    backgrounds: Some(
-        false,
-    ),
-    line_numbers: Some(
-        false,
-    ),
-    whitespace: Some(
-        Ignore,
-    ),
-    context: Some(
-        5,
-    ),
-    emphasis: Some(
-        Characters,
-    ),
-    theme: Some(
-        TokyoNight,
-    ),
-    syntax_theme: Some(
-        "github_light",
-    ),
+File {
+    diff: Config {
+        layout: Some(
+            Unified,
+        ),
+        wrap: Some(
+            true,
+        ),
+        tab_width: Some(
+            8,
+        ),
+        indicators: Some(
+            Signs,
+        ),
+        backgrounds: Some(
+            false,
+        ),
+        line_numbers: Some(
+            false,
+        ),
+        whitespace: Some(
+            Ignore,
+        ),
+        context: Some(
+            5,
+        ),
+        emphasis: Some(
+            Characters,
+        ),
+        theme: Some(
+            TokyoNight,
+        ),
+        syntax_theme: Some(
+            "github_light",
+        ),
+    },
     keys: Rebindings {
         commands: {
             "copy-path": [],

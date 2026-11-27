@@ -140,6 +140,7 @@ pub enum Control {
     Continue,
     Quit,
     Reload,
+    Settings,
     Edit {
         path: std::path::PathBuf,
         line: Option<usize>,

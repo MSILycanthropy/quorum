@@ -1,0 +1,10 @@
+---
+source: tests/document.rs
+expression: document.to_string()
+---
+# my settings
+[diff]
+wrap = true
+
+[keys]
+quit = ["q"]

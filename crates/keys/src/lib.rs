@@ -3,10 +3,12 @@
 mod key;
 mod keymap;
 mod rebinding;
+mod recording;
 
 pub use key::{Key, Sequence};
 pub use keymap::{Binding, Continuation, Keymap, Pending, Pressed};
 pub use rebinding::Rebindings;
+pub use recording::{Recorded, Recording};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {

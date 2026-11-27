@@ -13,8 +13,11 @@ use std::time::Duration;
 
 use clap::Parser;
 use host::{Event, Session};
-use sift::command::Catalog;
-use sift::config::Config;
+use hue::Palette;
+use keys::{Key, Rebindings};
+use settings::{Change, Page, Values};
+use sift::command::{Catalog, Command};
+use sift::config::{Config, File};
 use sift::diff::{FileDiff, Source};
 use sift::git::{Comparison, Content, FileChange, Repository, Snapshot, Status, looks_generated};
 use sift::syntax::Syntax;
@@ -87,7 +90,7 @@ struct Arguments {
         help = "How often --watch checks git"
     )]
     interval: u64,
-    #[command(flatten, next_help_heading = "Settings, also keys in config.toml")]
+    #[command(flatten, next_help_heading = "Settings, also keys under [diff] in config.toml")]
     config: Config,
 }
 
@@ -114,10 +117,9 @@ impl From<Event> for Message {
 }
 
 fn view(arguments: &Arguments) -> Result<()> {
-    let config = config(arguments)?;
-    let catalog = Catalog::default().rebound(&config.keys)?;
-    config.keys.unknown(catalog.names())?;
-    let syntax = config.syntax_theme.as_deref().map(syntax_theme).transpose()?;
+    let File { diff: config, keys } = config(arguments)?;
+    let catalog = Catalog::default().rebound(&keys)?;
+    keys.unknown(catalog.names())?;
     let subject = Subject::open(arguments)?;
     let slots = match config.theme.unwrap_or_default() {
         Scheme::Terminal => TerminalColors::SLOTS,
@@ -132,10 +134,7 @@ fn view(arguments: &Arguments) -> Result<()> {
     }
     let mut session = Session::open(slots, sender)?;
 
-    let mut theme = Theme::from_palette(session.palette());
-    if let Some(syntax) = syntax {
-        theme.syntax = syntax;
-    }
+    let theme = theme(&config, session.palette())?;
     let opening = Opening {
         presentation: config.presentation(),
         branch: subject.branch()?,
@@ -143,21 +142,33 @@ fn view(arguments: &Arguments) -> Result<()> {
         files: subject.files()?,
         bindings: Vec::new(),
         unbound: Vec::new(),
-        keys: config.keys.clone(),
+        keys,
         theme,
     };
     let mut shown = subject.changes()?;
     let mut surface = opening.surface(shown.clone())?;
 
     session.draw(|frame| frame.render_widget(&mut surface, frame.area()))?;
+    let mut settings: Option<Settings> = None;
 
     while let Ok(message) = messages.recv() {
         match message {
+            Message::Terminal(Event::Key(key)) if settings.is_some() => {
+                if let Some(open) = &mut settings
+                    && let Some(change) = open.page.key(Key::from(key))
+                    && !open.change(change, arguments, &mut surface, session.palette())?
+                {
+                    settings = None;
+                }
+            }
             Message::Terminal(Event::Key(key)) => match surface.key(key)? {
                 Control::Continue
                 | Control::Host(_)
                 | Control::Viewed(_)
                 | Control::Unviewed(_) => {}
+                Control::Settings => {
+                    settings = Some(Settings::open(arguments, &surface, session.palette())?);
+                }
                 Control::Quit => return Ok(()),
                 Control::Reload => {
                     reload(&mut surface, &subject, &mut shown)?;
@@ -181,6 +192,14 @@ fn view(arguments: &Arguments) -> Result<()> {
                     }
                 }
             },
+            Message::Terminal(Event::Mouse(mouse)) if settings.is_some() => {
+                if let Some(open) = &mut settings
+                    && let Some(change) = open.page.mouse(mouse)
+                    && !open.change(change, arguments, &mut surface, session.palette())?
+                {
+                    settings = None;
+                }
+            }
             Message::Terminal(Event::Mouse(mouse)) => surface.mouse(mouse)?,
             Message::Terminal(Event::Resize | Event::Paste(_)) => {}
             Message::Tick => {
@@ -190,15 +209,158 @@ fn view(arguments: &Arguments) -> Result<()> {
                 }
             }
         }
-        session.draw(|frame| frame.render_widget(&mut surface, frame.area()))?;
+        session.draw(|frame| match &mut settings {
+            Some(open) => frame.render_widget(&mut open.page, frame.area()),
+            None => frame.render_widget(&mut surface, frame.area()),
+        })?;
     }
 
     Ok(())
 }
 
-fn config(arguments: &Arguments) -> Result<Config> {
-    let file = config::Settings::of::<Config>("sift")?;
-    let flags = config::Settings::serialized(&arguments.config)?;
+/// The settings page while it is open, and the settings last applied to the
+/// diff under it.
+struct Settings {
+    page: Page<Command>,
+    applied: File,
+}
+
+impl Settings {
+    fn open(arguments: &Arguments, surface: &Surface, palette: &Palette) -> Result<Self> {
+        let applied = config(arguments)?;
+        let tints = theme(&applied.diff, palette).unwrap_or_default().tints;
+        let page = Page::new(
+            vec![sift::config::section()],
+            values(arguments)?,
+            surface.keymap().clone(),
+            applied.keys.clone(),
+            tints.page(),
+        );
+
+        Ok(Self { page, applied })
+    }
+
+    fn change(
+        &mut self,
+        change: Change,
+        arguments: &Arguments,
+        surface: &mut Surface,
+        palette: &Palette,
+    ) -> Result<bool> {
+        match change {
+            Change::Closed => return Ok(false),
+            Change::Setting { path, value } => match written(&path, value.as_ref()) {
+                Ok(()) => self.apply(arguments, surface, palette)?,
+                Err(error) => self.page.notify(error.to_string()),
+            },
+            Change::Keys(keys) => match surface.rebind(&keys) {
+                Ok(()) => {
+                    if let Err(error) = rebound(&self.applied.keys, &keys) {
+                        self.page.notify(error.to_string());
+                    }
+                    self.applied.keys = keys;
+                }
+                Err(error) => self.page.refuse(error.to_string()),
+            },
+        }
+
+        Ok(true)
+    }
+
+    fn apply(
+        &mut self,
+        arguments: &Arguments,
+        surface: &mut Surface,
+        palette: &Palette,
+    ) -> Result<()> {
+        let file = match config(arguments) {
+            Ok(file) => file,
+            Err(error) => {
+                self.page.notify(error.to_string());
+                return Ok(());
+            }
+        };
+        surface.present(file.diff.presentation())?;
+        let looks = |config: &Config| (config.theme, config.syntax_theme.clone());
+        if looks(&file.diff) != looks(&self.applied.diff) {
+            match theme(&file.diff, palette) {
+                Ok(theme) => surface.retheme(theme)?,
+                Err(error) => self.page.notify(error.to_string()),
+            }
+            if file.diff.theme == Some(Scheme::Terminal) && *palette == Palette::default() {
+                self.page.notify("the terminal's colours are read as Sift starts, so they show from the next run");
+            }
+        }
+        self.applied.diff = file.diff;
+        self.page.update(values(arguments)?);
+
+        Ok(())
+    }
+}
+
+fn values(arguments: &Arguments) -> Result<Values> {
+    let file = config::Settings::of::<File>("sift")?;
+    let flags =
+        config::Settings::serialized(&File { diff: arguments.config.clone(), ..File::default() })?;
+    let written = file.table().clone();
+    let flagged = flags.table().clone();
+    let File { diff, .. } = file.over(flags).parse()?;
+    let effective =
+        config::Settings::serialized(&File { diff: diff.resolved(), ..File::default() })?;
+
+    let defaults = config::Settings::serialized(&File {
+        diff: Config::default().resolved(),
+        ..File::default()
+    })?;
+
+    Ok(Values {
+        effective: effective.table().clone(),
+        written,
+        flagged,
+        defaults: defaults.table().clone(),
+    })
+}
+
+fn written(path: &[String], value: Option<&toml::Value>) -> Result<()> {
+    let mut document = config::Document::open("sift")?;
+    let path: Vec<&str> = path.iter().map(String::as_str).collect();
+    match value {
+        Some(value) => document.set(&path, value),
+        None => document.remove(&path),
+    }
+
+    Ok(document.save()?)
+}
+
+fn rebound(before: &Rebindings, after: &Rebindings) -> Result<()> {
+    let mut document = config::Document::open("sift")?;
+    for name in before.commands.keys().filter(|name| !after.commands.contains_key(*name)) {
+        document.remove(&["keys", name]);
+    }
+    for (name, keys) in &after.commands {
+        let keys = keys.iter().map(|sequence| toml::Value::String(sequence.to_string())).collect();
+        document.set(&["keys", name], &toml::Value::Array(keys));
+    }
+
+    Ok(document.save()?)
+}
+
+fn theme(config: &Config, palette: &Palette) -> Result<Theme> {
+    let mut theme = match config.theme.unwrap_or_default() {
+        Scheme::Terminal => Theme::from_palette(palette),
+        Scheme::TokyoNight => Theme::default(),
+    };
+    if let Some(name) = config.syntax_theme.as_deref().filter(|name| !name.is_empty()) {
+        theme.syntax = syntax_theme(name)?;
+    }
+
+    Ok(theme)
+}
+
+fn config(arguments: &Arguments) -> Result<File> {
+    let file = config::Settings::of::<File>("sift")?;
+    let flags =
+        config::Settings::serialized(&File { diff: arguments.config.clone(), ..File::default() })?;
 
     Ok(file.over(flags).parse()?)
 }

@@ -8,6 +8,7 @@ use ratatui::crossterm::event::KeyEvent;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Command {
     Help,
+    Settings,
     Palette,
     FindFile,
     Quit,
@@ -146,6 +147,7 @@ impl Default for Catalog {
             "General" {
                 "help" => C::Help, "Show every key", ["?"], hint: "help";
                 "palette" => C::Palette, "Command palette", [":", "C-t"];
+                "settings" => C::Settings, "Settings and keys", ["C-,"];
                 "reload" => C::Reload, "Reload from git", ["r", "F5"];
                 "quit" => C::Quit, "Quit", ["q", "ZZ", "ZQ", "C-c"], hint: "quit";
                 "back" => C::Back, "Back, or quit", ["Esc"];
@@ -212,6 +214,10 @@ impl Default for Catalog {
 impl Catalog {
     pub fn bindings(&self) -> &[Binding] {
         self.keymap.bindings()
+    }
+
+    pub fn keymap(&self) -> &Keymap<Command> {
+        &self.keymap
     }
 
     pub fn unbind(self, commands: &[Command]) -> Result<Self> {

@@ -1,0 +1,10 @@
+filter = "mine"
+refresh = 60
+
+[diff]
+layout = "unified"
+wrap = true
+
+[keys]
+comment = ["c"]
+next-hunk = ["]c", "F7"]

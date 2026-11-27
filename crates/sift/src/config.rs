@@ -1,4 +1,4 @@
-//! What a person sets for every diff Sift shows, from `config.toml` or a flag of the same name.
+//! What a person sets for every diff Sift shows and every key it answers, from `config.toml` or a flag.
 
 use keys::Rebindings;
 use serde::{Deserialize, Serialize};
@@ -13,7 +13,7 @@ use crate::ui::{Indicators, Mode, Presentation};
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Deserialize, Serialize, clap::Args)]
 #[serde(default, deny_unknown_fields, rename_all = "kebab-case")]
 pub struct Config {
-    #[arg(long, value_enum, help = "Side by side, or one column")]
+    #[arg(long, value_enum, help = "Two panes side by side, or one column")]
     pub layout: Option<Mode>,
     #[arg(
         long,
@@ -21,12 +21,12 @@ pub struct Config {
         require_equals = true,
         default_missing_value = "true",
         value_name = "BOOL",
-        help = "Wrap long lines, or --wrap=false to cut them off at the edge"
+        help = "Wrap long lines instead of cutting them off at the edge"
     )]
     pub wrap: Option<bool>,
-    #[arg(long, value_name = "COLUMNS", help = "Columns a tab expands to")]
+    #[arg(long, value_name = "COLUMNS", help = "How many columns a tab takes up")]
     pub tab_width: Option<usize>,
-    #[arg(long, value_enum, help = "What marks a changed line beside its number")]
+    #[arg(long, value_enum, help = "What marks a changed line next to its number")]
     pub indicators: Option<Indicators>,
     #[arg(
         long,
@@ -34,7 +34,7 @@ pub struct Config {
         require_equals = true,
         default_missing_value = "true",
         value_name = "BOOL",
-        help = "Tint changed lines, or --backgrounds=false to leave them on the plain background"
+        help = "Tint the whole of a changed line, not only the words that changed"
     )]
     pub backgrounds: Option<bool>,
     #[arg(
@@ -43,37 +43,63 @@ pub struct Config {
         require_equals = true,
         default_missing_value = "true",
         value_name = "BOOL",
-        help = "Number each line, or --line-numbers=false to give the columns to the code"
+        help = "Show line numbers"
     )]
     pub line_numbers: Option<bool>,
-    #[arg(
-        long,
-        value_enum,
-        help = "Whether lines that differ only in whitespace count as changed"
-    )]
+    #[arg(long, value_enum, help = "Whether a change in whitespace alone counts as a change")]
     pub whitespace: Option<Whitespace>,
     #[arg(
         long,
         value_name = "LINES",
-        help = "Unchanged lines kept around a change before the rest fold"
+        help = "How many unchanged lines stay around a change before the rest fold away"
     )]
     pub context: Option<usize>,
-    #[arg(long, value_enum, help = "What within a changed line is picked out from the rest of it")]
+    #[arg(long, value_enum, help = "What stands out within a changed line")]
     pub emphasis: Option<Emphasis>,
-    #[arg(long, value_enum, help = "Where the background and diff colours come from")]
+    #[arg(long, value_enum, help = "Your terminal's own colours, or a theme built into Sift")]
     pub theme: Option<Scheme>,
     #[arg(
         long,
         value_name = "NAME|FILE",
-        help = "A Helix theme for the code: a name from ~/.config/helix/themes or bundled, or a file"
+        help = "A Helix theme for the code: one in ~/.config/helix/themes, one built in, or a file"
     )]
     pub syntax_theme: Option<String>,
-    #[arg(skip)]
+}
+
+/// Sift's `config.toml`: its settings under `[diff]`, as Glean's file holds
+/// them too, and its keys under `[keys]`.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields, rename_all = "kebab-case")]
+pub struct File {
+    pub diff: Config,
     #[serde(skip_serializing_if = "Rebindings::is_empty")]
     pub keys: Rebindings,
 }
 
+pub fn section() -> settings::Section {
+    settings::Section { title: "Diff", path: vec!["diff"], fields: ::config::fields::<Config>() }
+}
+
 impl Config {
+    #[must_use]
+    pub fn resolved(&self) -> Self {
+        let presentation = self.presentation();
+
+        Self {
+            layout: Some(presentation.mode),
+            wrap: Some(presentation.wrap),
+            tab_width: Some(presentation.tab_width),
+            indicators: Some(presentation.indicators),
+            backgrounds: Some(presentation.backgrounds),
+            line_numbers: Some(presentation.line_numbers),
+            whitespace: Some(presentation.whitespace),
+            context: Some(presentation.context),
+            emphasis: Some(presentation.emphasis),
+            theme: Some(self.theme.unwrap_or_default()),
+            syntax_theme: Some(self.syntax_theme.clone().unwrap_or_default()),
+        }
+    }
+
     pub fn presentation(&self) -> Presentation {
         let default = Presentation::default();
 

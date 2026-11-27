@@ -1,0 +1,10 @@
+---
+source: tests/document.rs
+expression: document.to_string()
+---
+[diff]
+context = 5
+
+[keys]
+next-hunk = ["]c", "F7"]
+# nothing yet

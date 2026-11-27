@@ -1,0 +1,28 @@
+---
+source: tests/config.rs
+expression: screen
+---
+  Settings   Keys
+ ────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Glean ──────────────────────────────────────────────────────────────────────────────────────────────────────
+   filter         ‹ open ›
+   refresh        60
+
+ Diff ───────────────────────────────────────────────────────────────────────────────────────────────────────
+   layout         side-by-side
+   wrap           ○ off
+   tab-width      4
+   indicators     none
+   backgrounds    ● on
+   line-numbers   ● on
+   whitespace     compare
+   context        3
+   emphasis       words
+   theme          terminal
+   syntax-theme   default
+
+
+
+ ────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Which pull requests to list
+ Enter change   h l step   Backspace default   Tab keys   q close

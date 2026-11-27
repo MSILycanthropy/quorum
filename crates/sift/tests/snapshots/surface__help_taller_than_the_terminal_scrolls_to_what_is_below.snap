@@ -4,13 +4,13 @@ expression: "screen(&mut surface, 100, 24)"
 ---
  CHANGES                           M src/other.rs  +1 −1                                        1/2
 
-  y C-c C-S-c     Copy the selected lines          zz              Cursor line to the middle
-  yp              Copy path                        zt              Cursor line to the top
-  yl Y            Copy path:line or lines          zb              Cursor line to the bottom
-  x               Mark viewed, go to next          H S-←           Cursor to the old side
-  ]u              Next unviewed file               L S-→           Cursor to the new side
-  [u              Previous unviewed file           h ←             Scroll left
-                                                   l →             Scroll right
+  yy C-S-c        Copy the line                    zz              Cursor line to the middle
+  y C-c C-S-c     Copy the selected lines          zt              Cursor line to the top
+  yp              Copy path                        zb              Cursor line to the bottom
+  yl Y            Copy path:line or lines          H S-←           Cursor to the old side
+  x               Mark viewed, go to next          L S-→           Cursor to the new side
+  ]u              Next unviewed file               h ←             Scroll left
+  [u              Previous unviewed file           l →             Scroll right
                                                    V v             Select lines
                                                    S-↓             Select down a line
                                                    S-↑             Select up a line

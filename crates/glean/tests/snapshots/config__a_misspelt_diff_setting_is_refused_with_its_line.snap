@@ -1,0 +1,9 @@
+---
+source: tests/config.rs
+expression: "error.to_string().replace(env!(\"CARGO_MANIFEST_DIR\"), \"[crate]\")"
+---
+[crate]/tests/fixtures/misspelt-diff.toml: TOML parse error at line 4, column 1
+  |
+4 | lyout = "unified"
+  | ^^^^^
+unknown field `lyout`, expected one of `layout`, `wrap`, `tab-width`, `indicators`, `backgrounds`, `line-numbers`, `whitespace`, `context`, `emphasis`, `theme`, `syntax-theme`

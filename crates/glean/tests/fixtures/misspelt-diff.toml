@@ -1,0 +1,4 @@
+filter = "mine"
+
+[diff]
+lyout = "unified"

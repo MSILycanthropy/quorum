@@ -8,14 +8,18 @@ description = "A terminal client for GitHub pull requests, built on sift."
 
 [dependencies]
 clap.workspace = true
+config = { path = "../config" }
+keys = { path = "../keys" }
 serde.workspace = true
 serde_json = "1.0.154"
+settings = { path = "../settings" }
 sift = { path = "../sift" }
 thiserror.workspace = true
 ureq = { version = "3.5.2", features = ["json"] }
 
 [dev-dependencies]
 insta.workspace = true
+ratatui.workspace = true
 
 [lints]
 workspace = true

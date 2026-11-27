@@ -1,41 +1,43 @@
 ---
 source: tests/config.rs
-expression: "file.over(flags).parse::<Config>().expect(\"both are configs\")"
+expression: "file.over(flags).parse::<File>().expect(\"both are configs\")"
 ---
-Config {
-    layout: Some(
-        SideBySide,
-    ),
-    wrap: Some(
-        false,
-    ),
-    tab_width: Some(
-        8,
-    ),
-    indicators: Some(
-        Signs,
-    ),
-    backgrounds: Some(
-        false,
-    ),
-    line_numbers: Some(
-        false,
-    ),
-    whitespace: Some(
-        Ignore,
-    ),
-    context: Some(
-        5,
-    ),
-    emphasis: Some(
-        Characters,
-    ),
-    theme: Some(
-        TokyoNight,
-    ),
-    syntax_theme: Some(
-        "github_light",
-    ),
+File {
+    diff: Config {
+        layout: Some(
+            SideBySide,
+        ),
+        wrap: Some(
+            false,
+        ),
+        tab_width: Some(
+            8,
+        ),
+        indicators: Some(
+            Signs,
+        ),
+        backgrounds: Some(
+            false,
+        ),
+        line_numbers: Some(
+            false,
+        ),
+        whitespace: Some(
+            Ignore,
+        ),
+        context: Some(
+            5,
+        ),
+        emphasis: Some(
+            Characters,
+        ),
+        theme: Some(
+            TokyoNight,
+        ),
+        syntax_theme: Some(
+            "github_light",
+        ),
+    },
     keys: Rebindings {
         commands: {
             "copy-path": [],

@@ -57,10 +57,13 @@ After `e` the diff reloads, so you see your edit straight away.
 ## Settings
 
 Sift reads its settings from `~/.config/sift/config.toml`, or from
-`$XDG_CONFIG_HOME/sift` if that's set. It's the same path on macOS. Every key is
-optional, so the file only needs the ones you change:
+`$XDG_CONFIG_HOME/sift` if that's set. It's the same path on macOS. Settings go
+under `[diff]`, the same table Glean reads them from, so a `[diff]` block copies
+between the two files as it is. Every key is optional, so the file only needs
+the ones you change:
 
 ```toml
+[diff]
 layout = "unified"         # or "side-by-side"
 wrap = true
 tab-width = 2
@@ -78,6 +81,11 @@ Every key is also a flag with the same name, and a flag wins over the file for
 that run. So `sift --layout side-by-side` undoes `layout = "unified"`, and
 `--wrap=false` undoes `wrap = true`. A key Sift doesn't know is an error, with
 the line it's on.
+
+`:settings` (or `C-,`, where the terminal sends it) opens a page with every
+setting and every key. A change there is written to `config.toml` straight away,
+keeping your comments, and the diff takes it at once. A setting a flag set for
+this run is marked, since the flag still wins over the file.
 
 A `[keys]` table gives a command new keys in place of the ones it came with:
 

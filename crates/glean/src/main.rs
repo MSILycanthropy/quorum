@@ -2,9 +2,10 @@
 
 use std::process::ExitCode;
 
-use clap::{Parser, ValueEnum};
+use clap::Parser;
+use glean::config::Config;
 use glean::github::Client;
-use glean::model::{Filter, PullRequest, Repository, State};
+use glean::model::{PullRequest, Repository, State};
 
 #[derive(Debug, thiserror::Error)]
 enum Error {
@@ -12,6 +13,8 @@ enum Error {
     Model(#[from] glean::model::Error),
     #[error(transparent)]
     GitHub(#[from] glean::github::Error),
+    #[error(transparent)]
+    Config(#[from] config::Error),
     #[error(transparent)]
     Io(#[from] std::io::Error),
 }
@@ -26,30 +29,10 @@ struct Arguments {
         help = "The repository to list, instead of the one the current directory's remotes name"
     )]
     repository: Option<Repository>,
-    #[arg(long, value_enum, default_value_t, help = "Which pull requests to list")]
-    filter: Listing,
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, ValueEnum)]
-enum Listing {
-    #[default]
-    Open,
-    Mine,
-    ReviewRequested,
-    Drafts,
-    Closed,
-}
-
-impl From<Listing> for Filter {
-    fn from(listing: Listing) -> Self {
-        match listing {
-            Listing::Open => Self::Open,
-            Listing::Mine => Self::Mine,
-            Listing::ReviewRequested => Self::ReviewRequested,
-            Listing::Drafts => Self::Drafts,
-            Listing::Closed => Self::Closed,
-        }
-    }
+    #[command(flatten, next_help_heading = "Settings, also keys in config.toml")]
+    config: Config,
+    #[command(flatten, next_help_heading = "Diff settings, also keys under [diff] in config.toml")]
+    diff: sift::config::Config,
 }
 
 fn main() -> ExitCode {
@@ -63,13 +46,15 @@ fn main() -> ExitCode {
 }
 
 fn list(arguments: Arguments) -> Result<()> {
+    let config = config(&arguments)?;
     let repository = match arguments.repository {
         Some(repository) => repository,
         None => Repository::of(&std::env::current_dir()?)?,
     };
     let client = Client::signed_in()?;
-    let mut listed =
-        client.pull_requests(&repository, arguments.filter.into(), None)?.pull_requests;
+    let mut listed = client
+        .pull_requests(&repository, config.filter.unwrap_or_default().into(), None)?
+        .pull_requests;
     let ids: Vec<String> = listed.iter().map(|pull_request| pull_request.id.clone()).collect();
     for answer in client.standings(&ids) {
         for (id, standing) in answer? {
@@ -89,6 +74,16 @@ fn list(arguments: Arguments) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn config(arguments: &Arguments) -> Result<Config> {
+    let file = config::Settings::of::<Config>("glean")?;
+    let flags = config::Settings::serialized(&Config {
+        diff: arguments.diff.clone(),
+        ..arguments.config.clone()
+    })?;
+
+    Ok(file.over(flags).parse()?)
 }
 
 fn row(pull_request: &PullRequest) -> String {

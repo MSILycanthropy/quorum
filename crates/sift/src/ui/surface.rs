@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-use keys::{Pending, Pressed, Rebindings};
+use keys::{Keymap, Pending, Pressed, Rebindings};
 use ratatui::buffer::Buffer;
 use ratatui::crossterm::event::{KeyEvent, MouseEvent};
 use ratatui::layout::{Position, Rect};
@@ -35,11 +35,11 @@ pub struct Opening {
 
 impl Opening {
     pub fn surface(self, changes: Vec<FileChange>) -> Result<Surface> {
+        let base = Catalog::default().unbind(&self.unbound)?.with(self.bindings)?;
+
         Ok(Surface {
-            catalog: Catalog::default()
-                .unbind(&self.unbound)?
-                .with(self.bindings)?
-                .rebound(&self.keys)?,
+            catalog: base.clone().rebound(&self.keys)?,
+            base,
             pending: Pending::default(),
             review: Review::new(changes, self.presentation, self.theme.clone())?,
             palette: Palette::new(self.theme.tints),
@@ -59,6 +59,7 @@ impl Opening {
 pub struct Surface {
     review: Review,
     catalog: Catalog,
+    base: Catalog,
     pending: Pending,
     palette: Palette,
     help: Help,
@@ -204,6 +205,7 @@ impl Surface {
                 self.palette.open("file", files.collect());
             }
             Command::Reload => return Ok(Control::Reload),
+            Command::Settings => return Ok(Control::Settings),
             Command::ToggleViewed => return self.review.toggle_viewed(),
             Command::Edit => {
                 if let Some(path) = self.review.path() {
@@ -240,6 +242,28 @@ impl Surface {
 
     pub fn paths(&self) -> Vec<PathBuf> {
         self.review.paths()
+    }
+
+    pub fn keymap(&self) -> &Keymap<Command> {
+        self.base.keymap()
+    }
+
+    pub fn rebind(&mut self, keys: &Rebindings) -> Result<()> {
+        self.catalog = self.base.clone().rebound(keys)?;
+        self.pending.clear();
+
+        Ok(())
+    }
+
+    pub fn present(&mut self, presentation: Presentation) -> Result<()> {
+        self.review.present(presentation)
+    }
+
+    pub fn retheme(&mut self, theme: Theme) -> Result<()> {
+        self.tints = theme.tints;
+        self.palette = Palette::new(theme.tints);
+        self.help = Help::new(theme.tints);
+        self.review.retheme(theme)
     }
 
     pub fn names(&self) -> Vec<&'static str> {

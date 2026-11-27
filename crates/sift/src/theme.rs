@@ -1,6 +1,7 @@
 //! The colours Sift draws with: tints for rows and chrome, and a syntax theme for code.
 
 use hue::{Ansi, Palette, Rgb, Slot};
+use ratatui::style::{Color, Modifier, Style};
 
 use crate::syntax::Syntax;
 
@@ -60,6 +61,19 @@ pub struct Tints {
 }
 
 impl Tints {
+    pub fn page(&self) -> settings::Styles {
+        let base = Style::new().bg(Color::from(self.background)).fg(Color::from(self.foreground));
+
+        settings::Styles {
+            base,
+            muted: base.fg(Color::from(self.muted)),
+            key: base.fg(Color::from(self.attention)),
+            heading: base.fg(Color::from(self.muted)).add_modifier(Modifier::BOLD),
+            selected: base.bg(Color::from(self.under_cursor(self.background))),
+            warning: base.fg(Color::from(self.removed_text)),
+        }
+    }
+
     pub const fn under_cursor(&self, tint: Rgb) -> Rgb {
         tint.blend(self.cursor, CURSOR_MIX)
     }
