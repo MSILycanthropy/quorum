@@ -71,6 +71,17 @@ impl Tints {
         }
     }
 
+    pub fn picker(&self) -> picker::Styles {
+        let base = Style::new().bg(Color::from(self.filler)).fg(Color::from(self.foreground));
+
+        picker::Styles {
+            base,
+            muted: base.fg(Color::from(self.muted)),
+            key: base.fg(Color::from(self.attention)),
+            selected: base.bg(Color::from(self.gutter)),
+        }
+    }
+
     pub fn page(&self) -> settings::Styles {
         let base = Style::new().bg(Color::from(self.background)).fg(Color::from(self.foreground));
 

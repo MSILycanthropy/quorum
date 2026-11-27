@@ -14,6 +14,8 @@ crates they share:
   key press amounts to, and rebinding them from a settings file.
 - `crates/hints` — the footer along the bottom of a screen: status on the left,
   key hints on the right, read from a key map or given by hand.
+- `crates/picker` — a box to type in over a list to pick from, for commands,
+  files, or anything else a program can name.
 - `crates/settings` — a settings page any of them can show: every setting and
   every key, changed in place and handed back for the program to apply.
 

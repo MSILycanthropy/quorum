@@ -2,7 +2,6 @@
 
 mod annotation;
 mod icon;
-mod palette;
 mod review;
 mod surface;
 mod tree;
@@ -10,7 +9,6 @@ mod viewer;
 
 pub use annotation::{Body, Draw, Text};
 pub use icon::Icon;
-pub use palette::{Palette, PaletteAction};
 pub use review::Review;
 pub use surface::{Opening, Surface};
 pub use tree::{Row, Tree};

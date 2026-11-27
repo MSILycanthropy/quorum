@@ -3,20 +3,18 @@
 use std::path::{Path, PathBuf};
 
 use hints::{Footer, Hint};
-use keys::{Keymap, Pending, Pressed, Rebindings};
+use keys::{Key, Keymap, Pending, Pressed, Rebindings};
+use picker::{Outcome, Picker};
 use ratatui::buffer::Buffer;
 use ratatui::crossterm::event::{KeyEvent, MouseEvent};
 use ratatui::layout::{Position, Rect};
 use ratatui::text::Line;
 use ratatui::widgets::Widget;
 
-use crate::command::{ANNOTATIONS, Binding, Catalog, Command, PaletteEntry, PaletteTarget};
+use crate::command::{ANNOTATIONS, Binding, Catalog, Command, PaletteTarget, ex, file, located};
 use crate::git::{Content, FileChange};
 use crate::theme::{Theme, Tints};
-use crate::ui::{
-    Anchor, Annotation, Control, Icon, Palette, PaletteAction, Presentation, Result, Review,
-    Selection,
-};
+use crate::ui::{Anchor, Annotation, Control, Icon, Presentation, Result, Review, Selection};
 
 const MOST_REPEATS: usize = 10_000;
 
@@ -42,7 +40,7 @@ impl Opening {
             base,
             pending: Pending::default(),
             review: Review::new(changes, self.presentation, self.theme.clone())?,
-            palette: Palette::new(self.theme.tints),
+            palette: Picker::new(self.theme.tints.picker()),
             branch: self.branch,
             comparing: self.comparing,
             files: self.files,
@@ -60,7 +58,7 @@ pub struct Surface {
     catalog: Catalog,
     base: Catalog,
     pending: Pending,
-    palette: Palette,
+    palette: Picker<PaletteTarget>,
     branch: Option<String>,
     comparing: String,
     files: Vec<PathBuf>,
@@ -75,21 +73,28 @@ impl Surface {
         self.notice = None;
 
         if self.palette.is_open() {
-            return match self.palette.key(key) {
-                PaletteAction::Execute(PaletteTarget::Command(command)) => self.run(command),
-                PaletteAction::Execute(PaletteTarget::Line(line)) => {
+            return match self.palette.key(Key::from(key)) {
+                Outcome::Typed => {
+                    self.suggest();
+                    Ok(Control::Continue)
+                }
+                Outcome::Chosen { target: PaletteTarget::Command(command), .. } => {
+                    self.run(command)
+                }
+                Outcome::Chosen { target: PaletteTarget::Line(line), .. } => {
                     self.review.release_shifted();
                     self.review.go_to_line(line)?;
                     Ok(Control::Continue)
                 }
-                PaletteAction::Execute(PaletteTarget::File { path, line }) => {
+                Outcome::Chosen { target: PaletteTarget::File(path), query } => {
+                    let line = located(&query).1;
                     if !self.review.is_changed(&path) {
                         return Ok(Control::Open { path, line });
                     }
                     self.review.select_path(&path, line)?;
                     Ok(Control::Continue)
                 }
-                PaletteAction::Close | PaletteAction::None => Ok(Control::Continue),
+                Outcome::Closed | Outcome::Nothing => Ok(Control::Continue),
             };
         }
 
@@ -98,6 +103,17 @@ impl Surface {
             Pressed::Command { command, count } => self.counted(command, count),
             Pressed::Pending | Pressed::Nothing => Ok(Control::Continue),
         }
+    }
+
+    fn suggest(&mut self) {
+        let query = self.palette.query().to_owned();
+        let commands = self
+            .palette
+            .entries()
+            .iter()
+            .any(|entry| matches!(entry.target, PaletteTarget::Command(_)));
+        self.palette.search(located(&query).0);
+        self.palette.lead(ex(&query).filter(|_| commands).into_iter().collect());
     }
 
     fn counted(&mut self, command: Command, count: Option<usize>) -> Result<Control> {
@@ -185,7 +201,7 @@ impl Surface {
             Command::FindFile => {
                 let changed = self.review.paths();
                 let unchanged = self.files.iter().filter(|path| !changed.contains(path)).cloned();
-                let files = changed.iter().cloned().chain(unchanged).map(PaletteEntry::file);
+                let files = changed.iter().cloned().chain(unchanged).map(file);
                 self.palette.open("file", files.collect());
             }
             Command::Reload => return Ok(Control::Reload),
@@ -245,7 +261,7 @@ impl Surface {
 
     pub fn retheme(&mut self, theme: Theme) -> Result<()> {
         self.tints = theme.tints;
-        self.palette = Palette::new(theme.tints);
+        self.palette = Picker::new(theme.tints.picker());
         self.review.retheme(theme)
     }
 
@@ -293,7 +309,9 @@ impl Surface {
             Some(notice) => Line::styled(notice.clone(), styles.key),
             None => Line::raw(self.summary()),
         };
-        let hints = if following.is_empty() {
+        let hints = if self.palette.is_open() {
+            self.palette.hints()
+        } else if following.is_empty() {
             catalog.hints(holding)
         } else {
             following.into_iter().map(Hint::from).collect()

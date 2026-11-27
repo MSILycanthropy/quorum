@@ -1,0 +1,9 @@
+---
+source: tests/picker.rs
+expression: "screen(&picker, 50, 9)"
+---
+
+
+   play › e
+   Blue in Green                    Miles Davis
+   Freddie Freeloader               Miles Davis

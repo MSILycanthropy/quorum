@@ -9,4 +9,4 @@ expression: "screen(&mut surface, 100, 8)"
                                  │
                                  │
                                  │
-  main · HEAD → worktree · 2 files · 1 hunks · side by side   c comment  R reply  C-, keys  q quit
+  main · HEAD → worktree · 2 files · 1 hunks · side by side                Enter choose  Esc close

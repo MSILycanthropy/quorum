@@ -49,6 +49,7 @@ inkjet = { version = "0.11.1", default-features = false, features = [
     "language-yaml",
     "language-zig",
 ] }
+picker = { path = "../picker" }
 ratatui.workspace = true
 serde.workspace = true
 thiserror.workspace = true

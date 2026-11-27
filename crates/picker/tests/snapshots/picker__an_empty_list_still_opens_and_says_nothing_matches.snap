@@ -1,0 +1,8 @@
+---
+source: tests/picker.rs
+expression: "screen(&picker, 40, 8)"
+---
+
+
+   play ›
+   no matches

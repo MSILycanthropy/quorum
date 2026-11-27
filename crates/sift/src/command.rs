@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use hints::Hint;
 use keys::{Key, Keymap, Pending, Pressed, Rebindings, keymap};
+use picker::Entry;
 use ratatui::crossterm::event::KeyEvent;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -302,12 +303,9 @@ impl Catalog {
     pub fn palette_entries(&self) -> Vec<PaletteEntry> {
         self.bindings()
             .iter()
-            .filter(|binding| binding.command != Command::Palette && binding.when.is_none())
-            .map(|binding| PaletteEntry {
-                target: PaletteTarget::Command(binding.command),
-                label: binding.label.to_owned(),
-                keys: binding.shown(),
-            })
+            .filter(|binding| binding.command != Command::Palette)
+            .filter_map(|binding| Entry::of(binding, &[]))
+            .map(|entry| entry.map(PaletteTarget::Command))
             .collect()
     }
 }
@@ -331,23 +329,16 @@ const HINTED: [&str; 9] = [
 pub enum PaletteTarget {
     Command(Command),
     Line(usize),
-    File { path: PathBuf, line: Option<usize> },
+    File(PathBuf),
 }
 
 /// A palette row: what it does, what it says, and the keys that do it directly.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct PaletteEntry {
-    pub target: PaletteTarget,
-    pub label: String,
-    pub keys: String,
-}
+pub type PaletteEntry = Entry<PaletteTarget>;
 
-impl PaletteEntry {
-    pub fn file(path: PathBuf) -> Self {
-        let label = path.display().to_string();
+pub fn file(path: PathBuf) -> PaletteEntry {
+    let label = path.display().to_string();
 
-        Self { target: PaletteTarget::File { path, line: None }, label, keys: String::new() }
-    }
+    Entry::new(PaletteTarget::File(path), label)
 }
 
 const QUITTING: [&str; 6] = ["q!", "qa", "qa!", "wq", "wqa", "x"];
@@ -357,19 +348,10 @@ pub fn ex(query: &str) -> Option<PaletteEntry> {
     if let Ok(line) = query.parse::<usize>()
         && line > 0
     {
-        let label = format!("Go to line {line}");
-        return Some(PaletteEntry {
-            target: PaletteTarget::Line(line),
-            label,
-            keys: String::new(),
-        });
+        return Some(Entry::new(PaletteTarget::Line(line), format!("Go to line {line}")));
     }
 
-    QUITTING.contains(&query).then(|| PaletteEntry {
-        target: PaletteTarget::Command(Command::Quit),
-        label: "Quit".to_owned(),
-        keys: String::new(),
-    })
+    QUITTING.contains(&query).then(|| Entry::new(PaletteTarget::Command(Command::Quit), "Quit"))
 }
 
 pub fn located(query: &str) -> (&str, Option<usize>) {
@@ -387,60 +369,4 @@ pub fn located(query: &str) -> (&str, Option<usize>) {
     }
 
     (rest, Some(last))
-}
-
-/// A deterministic, case-insensitive ranker for palette entries.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
-pub struct PaletteModel;
-
-impl PaletteModel {
-    pub fn rank<'entry>(
-        &self,
-        query: &str,
-        entries: &'entry [PaletteEntry],
-    ) -> Vec<&'entry PaletteEntry> {
-        let query = lower(located(query).0);
-        if query.is_empty() {
-            return entries.iter().collect();
-        }
-
-        let mut ranked = entries
-            .iter()
-            .enumerate()
-            .filter_map(|(order, entry)| {
-                let score = score(&query, &lower(&entry.label))?;
-                Some((score, order, entry))
-            })
-            .collect::<Vec<_>>();
-        ranked.sort_by_key(|(score, order, _)| (*score, *order));
-        ranked.into_iter().map(|(_, _, entry)| entry).collect()
-    }
-}
-
-fn lower(text: &str) -> Vec<char> {
-    text.chars().flat_map(char::to_lowercase).collect()
-}
-
-fn score(query: &[char], label: &[char]) -> Option<u8> {
-    if query == label {
-        return Some(0);
-    }
-    if label.starts_with(query) {
-        return Some(1);
-    }
-    let name = label.rsplit(|character| *character == '/').next().unwrap_or(label);
-    if name.starts_with(query) {
-        return Some(1);
-    }
-    if label.windows(query.len()).any(|window| window == query) {
-        return Some(2);
-    }
-
-    let mut label = label.iter();
-    for character in query {
-        if !label.any(|candidate| candidate == character) {
-            return None;
-        }
-    }
-    Some(3)
 }
