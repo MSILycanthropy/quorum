@@ -1,5 +1,6 @@
 //! How the page is drawn: its tabs, its rows, and the help and keys along the bottom.
 
+use hints::{Footer, hints};
 use keys::Sequence;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
@@ -63,7 +64,7 @@ impl<C: Clone> Widget for &mut Page<C> {
         let bottom = area.bottom() - 1;
         rule(buffer, left, bottom - 2, width, ink(self.styles.muted));
         put(buffer, left, bottom - 1, width, &self.description());
-        put(buffer, left, bottom, width, &self.hints());
+        self.footer().render(Rect::new(area.x, bottom, area.width, 1), buffer);
     }
 }
 
@@ -225,46 +226,42 @@ impl<C: Clone> Page<C> {
         }
     }
 
-    fn hints(&self) -> Vec<(String, Style)> {
-        let hints: &[(&str, &str)] = match (&self.editing, self.tab) {
-            (Some(Editing::Text(_)), _) => {
-                &[("", "type the value"), ("Enter", "keep it"), ("Esc", "leave it")]
-            }
-            (Some(Editing::Keys { .. }), _) => &[
-                ("", "press the keys"),
-                ("Enter", "done"),
-                ("Backspace", "undo"),
-                ("Esc", "give up"),
+    fn footer(&self) -> Footer {
+        let hints = match (&self.editing, self.tab) {
+            (Some(Editing::Text(_)), _) => hints![
+                "type the value",
+                "Enter" => "keep it",
+                "Esc" => "leave it" pinned,
             ],
-            (None, Tab::Settings) => &[
-                ("Enter", "change"),
-                ("h l", "step"),
-                ("Backspace", "default"),
-                ("Tab", "keys"),
-                ("q", "close"),
+            (Some(Editing::Keys { .. }), _) => hints![
+                "press the keys",
+                "Enter" => "done",
+                "Backspace" => "undo",
+                "Esc" => "give up" pinned,
             ],
-            (None, Tab::Keys) => &[
-                ("Enter", "new keys"),
-                ("a", "add keys"),
-                ("d", "no keys"),
-                ("Backspace", "default"),
-                ("Tab", "settings"),
-                ("q", "close"),
+            (None, Tab::Settings) => hints![
+                "Enter" => "change",
+                "h l" => "step",
+                "Backspace" => "default",
+                "Tab" => "keys",
+                "q" => "close" pinned,
+            ],
+            (None, Tab::Keys) => hints![
+                "Enter" => "new keys",
+                "a" => "add keys",
+                "d" => "no keys",
+                "Backspace" => "default",
+                "Tab" => "settings",
+                "q" => "close" pinned,
             ],
         };
-        let mut pieces = Vec::new();
-        for (index, (keys, words)) in hints.iter().enumerate() {
-            if index > 0 {
-                pieces.push(("   ".to_owned(), ink(self.styles.muted)));
-            }
-            if !keys.is_empty() {
-                pieces.push(((*keys).to_owned(), ink(self.styles.key)));
-                pieces.push((" ".to_owned(), ink(self.styles.muted)));
-            }
-            pieces.push(((*words).to_owned(), ink(self.styles.muted)));
-        }
+        let styles = hints::Styles {
+            base: self.styles.base,
+            muted: self.styles.muted,
+            key: self.styles.key,
+        };
 
-        pieces
+        Footer { hints, styles, ..Footer::default() }
     }
 }
 

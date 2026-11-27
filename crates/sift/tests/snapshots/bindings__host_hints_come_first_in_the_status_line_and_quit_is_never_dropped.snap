@@ -3,6 +3,6 @@ source: tests/bindings.rs
 expression: "format!(\"{}{}\", screen(&mut surface, 200, 2), screen(&mut surface, 80, 2))"
 ---
  CHANGES                           M src/other.rs  +1 −1                                                                                                                                            1/2
-  main · HEAD → worktree · 2 files · side by side                                           c comment  R reply  M merge  n hunk  Tab file  x viewed  f files  / find  e edit  s layout  ? help  q quit
+  main · HEAD → worktree · 2 files · side by side                                         c comment  R reply  M merge  n hunk  Tab file  x viewed  f files  / find  e edit  s layout  C-, keys  q quit
  CHANGES                           M src/other.rs  +1 −1                    1/2
-  main · HEAD → worktree · 2 files · side by side   c comment  R reply  ? help
+  main · HEAD → worktree · 2 files · side by side  c comment  C-, keys  q quit

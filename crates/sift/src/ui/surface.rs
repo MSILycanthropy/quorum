@@ -1,20 +1,20 @@
-//! The whole screen: the review, the status line beneath it, and the overlays above it.
+//! The whole screen: the review, the status line beneath it, and the palette above it.
 
 use std::path::{Path, PathBuf};
 
+use hints::{Footer, Hint};
 use keys::{Keymap, Pending, Pressed, Rebindings};
 use ratatui::buffer::Buffer;
 use ratatui::crossterm::event::{KeyEvent, MouseEvent};
 use ratatui::layout::{Position, Rect};
-use ratatui::style::{Color, Style};
+use ratatui::text::Line;
 use ratatui::widgets::Widget;
-use unicode_width::UnicodeWidthStr;
 
 use crate::command::{ANNOTATIONS, Binding, Catalog, Command, PaletteEntry, PaletteTarget};
 use crate::git::{Content, FileChange};
 use crate::theme::{Theme, Tints};
 use crate::ui::{
-    Anchor, Annotation, Control, Help, Icon, Palette, PaletteAction, Presentation, Result, Review,
+    Anchor, Annotation, Control, Icon, Palette, PaletteAction, Presentation, Result, Review,
     Selection,
 };
 
@@ -43,7 +43,6 @@ impl Opening {
             pending: Pending::default(),
             review: Review::new(changes, self.presentation, self.theme.clone())?,
             palette: Palette::new(self.theme.tints),
-            help: Help::new(self.theme.tints),
             branch: self.branch,
             comparing: self.comparing,
             files: self.files,
@@ -62,7 +61,6 @@ pub struct Surface {
     base: Catalog,
     pending: Pending,
     palette: Palette,
-    help: Help,
     branch: Option<String>,
     comparing: String,
     files: Vec<PathBuf>,
@@ -75,19 +73,6 @@ pub struct Surface {
 impl Surface {
     pub fn key(&mut self, key: KeyEvent) -> Result<Control> {
         self.notice = None;
-
-        if self.help.is_open() {
-            let holding = self.holding();
-            match self.catalog.press(&mut self.pending, key, holding) {
-                Pressed::Pending => {}
-                Pressed::Command { command, count } if self.help.scroll(command, count) => {}
-                Pressed::Command { .. } | Pressed::Nothing => {
-                    self.pending.clear();
-                    self.help.close();
-                }
-            }
-            return Ok(Control::Continue);
-        }
 
         if self.palette.is_open() {
             return match self.palette.key(key) {
@@ -143,7 +128,7 @@ impl Surface {
     pub fn mouse(&mut self, mouse: MouseEvent) -> Result<()> {
         self.pending.clear();
         let outside = !self.area.contains(Position::new(mouse.column, mouse.row));
-        if outside || self.help.is_open() || self.palette.is_open() {
+        if outside || self.palette.is_open() {
             return Ok(());
         }
 
@@ -186,7 +171,6 @@ impl Surface {
                     return Ok(Control::Quit);
                 }
             }
-            Command::Help => self.help.toggle(),
             Command::Palette => {
                 self.palette.open("command", self.shown_catalog().palette_entries());
             }
@@ -262,7 +246,6 @@ impl Surface {
     pub fn retheme(&mut self, theme: Theme) -> Result<()> {
         self.tints = theme.tints;
         self.palette = Palette::new(theme.tints);
-        self.help = Help::new(theme.tints);
         self.review.retheme(theme)
     }
 
@@ -301,45 +284,22 @@ impl Surface {
         if self.annotating { self.catalog.clone() } else { self.catalog.without(ANNOTATIONS) }
     }
 
-    fn status(&self, buffer: &mut Buffer, area: Rect) {
-        let base = Style::new().bg(Color::from(self.tints.filler));
-        let muted = base.fg(Color::from(self.tints.muted));
-        let key = base.fg(Color::from(self.tints.attention));
-        buffer.set_style(area, base);
-
-        let (left, left_style) = match &self.notice {
-            _ if !self.pending.is_empty() => (self.pending.to_string(), key),
-            Some(notice) => (notice.clone(), key),
-            None => (self.summary(), muted),
+    pub fn footer(&self) -> Footer {
+        let holding = self.holding();
+        let catalog = self.shown_catalog();
+        let following = catalog.keymap().continuations(&self.pending, holding);
+        let styles = self.tints.footer();
+        let status = match &self.notice {
+            Some(notice) => Line::styled(notice.clone(), styles.key),
+            None => Line::raw(self.summary()),
+        };
+        let hints = if following.is_empty() {
+            catalog.hints(holding)
+        } else {
+            following.into_iter().map(Hint::from).collect()
         };
 
-        let room = usize::from(area.width);
-        let following = self.catalog.continuations(&self.pending, self.holding());
-        let mut hints: Vec<(String, &str)> =
-            if following.is_empty() { self.catalog.hints().collect() } else { following };
-        while hints.len() > 1 && left.width() + hinted(&hints) + 4 > room {
-            let Some(dropped) = hints.iter().rposition(|(_, hint)| *hint != "help") else {
-                break;
-            };
-            hints.remove(dropped);
-        }
-        let hints_width = hinted(&hints);
-        if hints_width + 4 > room {
-            buffer.set_stringn(area.x + 1, area.y, &left, room.saturating_sub(2), left_style);
-            return;
-        }
-
-        let left_room = room - hints_width - 4;
-        buffer.set_stringn(area.x + 1, area.y, &left, left_room, left_style);
-
-        let mut x = area.x + area.width - 1 - u16::try_from(hints_width).unwrap_or(0);
-        for (index, (keys, hint)) in hints.into_iter().enumerate() {
-            if index > 0 {
-                x += 2;
-            }
-            (x, _) = buffer.set_stringn(x, area.y, &keys, usize::from(area.width), key);
-            (x, _) = buffer.set_stringn(x, area.y, format!(" {hint}"), usize::MAX, muted);
-        }
+        Footer { status, pending: self.pending.to_string(), hints, styles }
     }
 
     fn summary(&self) -> String {
@@ -386,16 +346,7 @@ impl Widget for &mut Surface {
         let above = Rect::new(area.x, area.y, area.width, area.height - 1);
 
         self.review.render(above, buffer);
-        self.status(buffer, status);
-        self.help.draw(area, buffer, &self.shown_catalog());
+        self.footer().render(status, buffer);
         self.palette.render(area, buffer);
     }
-}
-
-fn hinted(hints: &[(String, &str)]) -> usize {
-    hints
-        .iter()
-        .map(|(keys, hint)| keys.width() + hint.width() + 3)
-        .sum::<usize>()
-        .saturating_sub(2)
 }

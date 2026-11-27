@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 use std::fmt::Write;
 
-use keys::{Key, Keymap, Rebindings, Sequence};
+use keys::{Key, Keymap, Rebindings, Sequence, keymap};
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
@@ -50,7 +50,7 @@ enum Command {
 }
 
 fn keymap() -> Keymap<Command> {
-    keys::keymap! {
+    keymap! {
         "General" {
             "quit" => Command::Quit, "Quit", ["q"];
         }

@@ -2,12 +2,12 @@
 
 use std::path::PathBuf;
 
-use keys::{Key, Keymap, Pending, Pressed, Rebindings};
+use hints::Hint;
+use keys::{Key, Keymap, Pending, Pressed, Rebindings, keymap};
 use ratatui::crossterm::event::KeyEvent;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Command {
-    Help,
     Settings,
     Palette,
     FindFile,
@@ -114,7 +114,7 @@ impl Command {
 /// One command, what it is called, and how to reach it.
 pub type Binding = keys::Binding<Command>;
 
-/// The sections Sift's own commands are grouped under, in the order help lays them out.
+/// The sections Sift's own commands are grouped under, in the order they are listed.
 pub const SECTIONS: [&str; 5] = ["General", "Files", "Diff", "View", "Annotations"];
 
 pub const ANNOTATIONS: &str = "Annotations";
@@ -143,13 +143,12 @@ impl Default for Catalog {
     fn default() -> Self {
         use Command as C;
 
-        let keymap = keys::keymap! {
+        let keymap = keymap! {
             "General" {
-                "help" => C::Help, "Show every key", ["?"], hint: "help";
                 "palette" => C::Palette, "Command palette", [":", "C-t"];
-                "settings" => C::Settings, "Settings and keys", ["C-,"];
+                "settings" => C::Settings, "Settings and keys", ["C-,"], hint: "keys", pinned: true;
                 "reload" => C::Reload, "Reload from git", ["r", "F5"];
-                "quit" => C::Quit, "Quit", ["q", "ZZ", "ZQ", "C-c"], hint: "quit";
+                "quit" => C::Quit, "Quit", ["q", "ZZ", "ZQ", "C-c"], hint: "quit", pinned: true;
                 "back" => C::Back, "Back, or quit", ["Esc"];
             }
             "Files" {
@@ -290,31 +289,14 @@ impl Catalog {
         self.keymap.press(pending, Key::from(key), holding)
     }
 
-    pub fn continuations(
-        &self,
-        pending: &Pending,
-        holding: &[&str],
-    ) -> Vec<(String, &'static str)> {
-        self.keymap
-            .continuations(pending, holding)
-            .into_iter()
-            .map(|continuation| (continuation.keys.to_string(), continuation.label))
-            .collect()
-    }
-
-    pub fn hints(&self) -> impl Iterator<Item = (String, &'static str)> + '_ {
+    pub fn hints(&self, holding: &[&str]) -> Vec<Hint> {
         let host =
             self.bindings().iter().filter(|binding| matches!(binding.command, Command::Host(_)));
-        let sift = HINTED.iter().filter_map(|command| {
-            self.bindings().iter().find(|binding| binding.command == *command)
-        });
+        let sift = HINTED
+            .iter()
+            .filter_map(|name| self.bindings().iter().find(|binding| binding.name == *name));
 
-        host.chain(sift).filter_map(|binding| {
-            let hint = binding.hint?;
-            let key = binding.keys.first()?.to_string();
-
-            Some((key, hint))
-        })
+        host.chain(sift).filter_map(|binding| Hint::of(binding, holding)).collect()
     }
 
     pub fn palette_entries(&self) -> Vec<PaletteEntry> {
@@ -330,18 +312,18 @@ impl Catalog {
     }
 }
 
-const REQUIRED: [Command; 2] = [Command::Quit, Command::Help];
+const REQUIRED: [Command; 1] = [Command::Quit];
 
-const HINTED: [Command; 9] = [
-    Command::NextHunk,
-    Command::NextFile,
-    Command::ToggleViewed,
-    Command::ToggleFileList,
-    Command::FindFile,
-    Command::Edit,
-    Command::ToggleLayout,
-    Command::Help,
-    Command::Quit,
+const HINTED: [&str; 9] = [
+    "next-hunk",
+    "next-file",
+    "toggle-viewed",
+    "toggle-file-list",
+    "find-file",
+    "edit",
+    "toggle-layout",
+    "settings",
+    "quit",
 ];
 
 /// What choosing a palette entry does.

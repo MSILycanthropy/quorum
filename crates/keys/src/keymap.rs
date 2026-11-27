@@ -7,9 +7,10 @@ use ratatui::crossterm::event::KeyCode;
 use crate::key::shown;
 use crate::{Error, Key, Rebindings, Result, Sequence};
 
-/// One command: its name in the settings file, what help calls it, and the
+/// One command: its name in the settings file, what it is called, and the
 /// keys that reach it. With a condition, it counts only while the program says
-/// that condition holds, and then wins over the bindings without one.
+/// that condition holds, and then wins over the bindings without one. A hint is
+/// what a footer calls it, and a pinned hint is the last to leave a narrow one.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Binding<C> {
     pub command: C,
@@ -18,6 +19,7 @@ pub struct Binding<C> {
     pub section: &'static str,
     pub keys: Vec<Sequence>,
     pub hint: Option<&'static str>,
+    pub pinned: bool,
     pub when: Option<&'static str>,
 }
 
@@ -32,7 +34,7 @@ impl<C> Binding<C> {
         let keys = Sequence::all(keys)
             .map_err(|source| Error::Binding { name, source: Box::new(source) })?;
 
-        Ok(Self { command, name, label, section, keys, hint: None, when: None })
+        Ok(Self { command, name, label, section, keys, hint: None, pinned: false, when: None })
     }
 
     pub fn shown(&self) -> String {

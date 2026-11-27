@@ -8,6 +8,7 @@ description = "A settings page: every setting a program has and every key it ans
 
 [dependencies]
 config = { path = "../config" }
+hints = { path = "../hints" }
 keys = { path = "../keys" }
 ratatui.workspace = true
 toml.workspace = true

@@ -7,4 +7,4 @@ expression: "screen(&mut surface, 100, 6)"
     other.rs              +1 −1 │2                               │2
     total.rs                   ✓│
                                  │
-  main · HEAD → worktree · 2 files · 1 viewed · hunk 1/1 · side by side   n hunk  Tab file  ? help
+  main · HEAD → worktree · 2 files · 1 viewed · hunk 1/1 · side by side   n hunk  C-, keys  q quit

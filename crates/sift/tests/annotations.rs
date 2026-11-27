@@ -1029,17 +1029,17 @@ fn the_status_line_counts_the_annotations_in_the_file_on_screen() {
 }
 
 #[test]
-fn help_lists_the_annotation_keys_only_once_the_surface_is_annotated() {
-    let help = KeyEvent::new(KeyCode::Char('?'), KeyModifiers::NONE);
+fn the_palette_lists_the_annotation_commands_only_once_the_surface_is_annotated() {
     let mut bare = surface(changes());
-    bare.key(help).expect("the fixtures highlight");
     let mut annotated = surface(changes());
     annotated.annotate(Vec::new()).expect("the fixtures highlight");
-    annotated.key(help).expect("the fixtures highlight");
+    for surface in [&mut bare, &mut annotated] {
+        for character in ":annotation".chars() {
+            let key = KeyEvent::new(KeyCode::Char(character), KeyModifiers::NONE);
+            surface.key(key).expect("the fixtures highlight");
+        }
+    }
 
-    insta::assert_snapshot!(format!(
-        "{}\n{}",
-        words(&mut bare, 160, 30),
-        words(&mut annotated, 160, 30)
-    ));
+    assert!(!words(&mut bare, 160, 30).contains("Next annotation"));
+    assert!(words(&mut annotated, 160, 30).contains("Next annotation"));
 }

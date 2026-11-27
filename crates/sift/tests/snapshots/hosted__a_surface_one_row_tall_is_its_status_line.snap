@@ -2,4 +2,4 @@
 source: tests/hosted.rs
 expression: line.trim_end()
 ---
-  main · HEAD → worktree · 2 files · side by side      n hunk  Tab file  x viewed  f files  ? help
+  main · HEAD → worktree · 2 files · side by side     n hunk  Tab file  x viewed  C-, keys  q quit

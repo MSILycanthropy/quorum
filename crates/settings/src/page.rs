@@ -2,7 +2,7 @@
 
 mod draw;
 
-use keys::{Key, Keymap, Pending, Pressed, Rebindings, Recorded, Recording, Sequence};
+use keys::{Key, Keymap, Pending, Pressed, Rebindings, Recorded, Recording, Sequence, keymap};
 use ratatui::crossterm::event::{KeyCode, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::layout::{Position, Rect};
 
@@ -404,7 +404,7 @@ impl<C: Clone> Page<C> {
 }
 
 fn controls() -> Keymap<Action> {
-    keys::keymap! {
+    keymap! {
         "Page" {
             "down" => Action::Down, "Down", ["j", "↓"];
             "up" => Action::Up, "Up", ["k", "↑"];

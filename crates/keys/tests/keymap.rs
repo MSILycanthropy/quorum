@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use keys::{Binding, Error, Key, Keymap, Pending, Pressed, Rebindings, Sequence};
+use keys::{Binding, Error, Key, Keymap, Pending, Pressed, Rebindings, Sequence, keymap};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 enum Command {
@@ -18,7 +18,7 @@ enum Command {
 }
 
 fn keymap() -> Keymap<Command> {
-    keys::keymap! {
+    keymap! {
         "General" {
             "quit" => Command::Quit, "Quit", ["q", "ctrl-c"], hint: "quit";
             "reload" => Command::Reload, "Reload", ["r"];
@@ -268,7 +268,7 @@ fn the_macro_fills_in_the_section_hint_and_condition() {
 
 #[test]
 fn a_misspelt_key_in_the_macro_names_its_binding() {
-    let error = keys::keymap! {
+    let error = keymap! {
         "General" {
             "help" => Command::Quit, "Show every key", ["ctrl-Hlep"];
         }

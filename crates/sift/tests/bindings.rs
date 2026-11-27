@@ -179,17 +179,6 @@ fn a_host_key_does_nothing_while_the_palette_is_open() {
 }
 
 #[test]
-fn a_host_key_does_nothing_while_help_is_open() {
-    let mut surface = surface();
-    let before = screen(&mut surface, 100, 6);
-
-    let controls = typed(&mut surface, &[press(KeyCode::Char('?')), press(KeyCode::Char('c'))]);
-
-    assert_eq!(controls, vec![Control::Continue, Control::Continue]);
-    assert_eq!(screen(&mut surface, 100, 6), before);
-}
-
-#[test]
 fn choosing_a_host_command_in_the_palette_returns_its_name() {
     let mut surface = surface();
     typed(&mut surface, &[press(KeyCode::Char(':'))]);
@@ -334,15 +323,7 @@ fn a_host_key_on_a_line_lets_the_host_read_its_anchor() {
 }
 
 #[test]
-fn help_lists_host_sections_after_sifts_own() {
-    let mut surface = surface();
-    typed(&mut surface, &[press(KeyCode::Char('?'))]);
-
-    insta::assert_snapshot!(screen(&mut surface, 100, 52));
-}
-
-#[test]
-fn host_hints_come_first_in_the_status_line_and_help_is_never_dropped() {
+fn host_hints_come_first_in_the_status_line_and_quit_is_never_dropped() {
     let mut surface = surface();
 
     insta::assert_snapshot!(format!(
@@ -366,14 +347,6 @@ fn an_unbound_command_leaves_the_status_line() {
     let mut surface = without_edit();
 
     insta::assert_snapshot!(screen(&mut surface, 200, 2));
-}
-
-#[test]
-fn an_unbound_command_leaves_help() {
-    let mut surface = without_edit();
-    typed(&mut surface, &[press(KeyCode::Char('?'))]);
-
-    insta::assert_snapshot!(screen(&mut surface, 100, 52));
 }
 
 #[test]
@@ -421,13 +394,6 @@ fn unbinding_quit_is_refused() {
 }
 
 #[test]
-fn unbinding_help_is_refused() {
-    let error = refused_unbinding(vec![Command::Edit, Command::Help]);
-
-    assert!(matches!(error, command::Error::Required("Show every key")));
-}
-
-#[test]
 fn unbinding_a_host_command_is_refused() {
     let error = refused_unbinding(vec![Command::Host("comment")]);
 
@@ -444,17 +410,16 @@ fn a_rebound_command_answers_its_new_key_and_not_its_old_one() {
 }
 
 #[test]
-fn a_command_rebound_to_no_keys_leaves_help_but_stays_in_the_palette() {
+fn a_command_rebound_to_no_keys_leaves_the_status_line_but_stays_in_the_palette() {
     let mut surface = rebound(rebinding(&[("edit", &[])])).expect("edit can lose its keys");
-    typed(&mut surface, &[press(KeyCode::Char('?'))]);
-    let help = screen(&mut surface, 100, 52);
-    typed(&mut surface, &[press(KeyCode::Esc), press(KeyCode::Char(':'))]);
+    let status = screen(&mut surface, 200, 2);
+    typed(&mut surface, &[press(KeyCode::Char(':'))]);
     for character in "editor".chars() {
         typed(&mut surface, &[press(KeyCode::Char(character))]);
     }
     let palette = screen(&mut surface, 100, 8);
 
-    assert!(!help.contains("Open in $EDITOR"), "{help}");
+    assert!(!status.contains(" edit "), "{status}");
     assert!(palette.contains("Open in $EDITOR"), "{palette}");
 }
 

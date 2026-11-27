@@ -83,32 +83,12 @@ fn shift_is_folded_into_the_character_it_produces() {
         )
     };
 
-    assert_eq!(pressed('?'), Pressed::Command { command: Command::Help, count: None });
     assert_eq!(pressed('N'), Pressed::Command { command: Command::PreviousHunk, count: None });
 }
 
 #[test]
-fn the_status_line_names_what_is_compared_and_advertises_help() {
+fn the_status_line_names_what_is_compared_and_the_keys_to_know() {
     insta::assert_snapshot!(screen(&mut surface(), 140, 5));
-}
-
-#[test]
-fn question_mark_lists_every_key() {
-    let mut surface = surface();
-    typed(&mut surface, &[press(KeyCode::Char('?'))]);
-
-    insta::assert_snapshot!(screen(&mut surface, 100, 45));
-}
-
-#[test]
-fn any_key_closes_help_without_doing_anything_else() {
-    let mut surface = surface();
-    let before = screen(&mut surface, 100, 6);
-
-    let controls = typed(&mut surface, &[press(KeyCode::Char('?')), press(KeyCode::Char('q'))]);
-
-    assert_eq!(controls, vec![Control::Continue, Control::Continue]);
-    assert_eq!(screen(&mut surface, 100, 6), before);
 }
 
 #[test]
@@ -156,49 +136,6 @@ fn editing_asks_for_the_file_on_screen_at_the_cursors_line() {
             Control::Edit { path: PathBuf::from("src/other.rs"), line: Some(2) }
         ]
     );
-}
-
-#[test]
-fn help_flows_into_columns_when_the_terminal_is_short() {
-    let mut surface = surface();
-    typed(&mut surface, &[press(KeyCode::Char('?'))]);
-
-    insta::assert_snapshot!(screen(&mut surface, 100, 24));
-}
-
-#[test]
-fn help_taller_than_the_terminal_scrolls_to_what_is_below() {
-    let mut surface = surface();
-    typed(&mut surface, &[press(KeyCode::Char('?'))]);
-    screen(&mut surface, 100, 24);
-    typed(&mut surface, &[press(KeyCode::Char('G'))]);
-
-    insta::assert_snapshot!(screen(&mut surface, 100, 24));
-}
-
-#[test]
-fn a_key_that_does_not_scroll_closes_help_that_does() {
-    let mut surface = surface();
-    let before = screen(&mut surface, 100, 24);
-    typed(&mut surface, &[press(KeyCode::Char('?'))]);
-    screen(&mut surface, 100, 24);
-
-    let controls = typed(&mut surface, &[press(KeyCode::Char('j')), press(KeyCode::Char('q'))]);
-
-    assert_eq!(controls, vec![Control::Continue, Control::Continue]);
-    assert_eq!(screen(&mut surface, 100, 24), before);
-}
-
-#[test]
-fn help_that_fits_closes_on_any_key_and_does_nothing_else() {
-    let mut surface = surface();
-    let before = screen(&mut surface, 100, 45);
-    typed(&mut surface, &[press(KeyCode::Char('?'))]);
-    screen(&mut surface, 100, 45);
-
-    typed(&mut surface, &[press(KeyCode::Char('j'))]);
-
-    assert_eq!(screen(&mut surface, 100, 45), before);
 }
 
 #[test]

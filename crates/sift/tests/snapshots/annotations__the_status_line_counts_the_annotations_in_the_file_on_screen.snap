@@ -13,7 +13,7 @@ expression: "format!(\"{before}\\n{after}\")"
                                  │
                                  │
                                  │
-  main · main → feature · 5 files · 1 hunks · 1 annotation · side by side  n hunk  Tab file  x viewed  f files  ? help
+  main · main → feature · 5 files · 1 hunks · 1 annotation · side by side           n hunk  Tab file  C-, keys  q quit
 
  CHANGES                           M src/a.rs  +1 −1                                                                1/5
   src                           │1 one                                     │1 one
@@ -26,4 +26,4 @@ expression: "format!(\"{before}\\n{after}\")"
                                  │
                                  │
                                  │
-  main · main → feature · 5 files · hunk 1/1 · annotation 1/1 · side by side        n hunk  Tab file  x viewed  ? help
+  main · main → feature · 5 files · hunk 1/1 · annotation 1/1 · side by side        n hunk  Tab file  C-, keys  q quit

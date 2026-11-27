@@ -1,0 +1,12 @@
+---
+source: tests/footer.rs
+expression: "[60, 44, 32, 24, 20, 8, 6,\n2].map(|width| format!(\"{width:>2}|{}|\", row(&footer, width))).join(\"\\n\")"
+---
+60| main · 2 files                   q quit  n hunk  c comment|
+44| main · 2 files   q quit  n hunk  c comment|
+32| main · 2 files  q quit  n hunk|
+24| main · 2 files  q quit|
+20| main · 2 f  q quit|
+ 8| q quit|
+ 6| main|
+ 2||

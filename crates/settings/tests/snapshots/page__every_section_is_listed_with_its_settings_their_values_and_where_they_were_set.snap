@@ -15,4 +15,4 @@ expression: screen(&mut page())
    syntax-theme   default
  ──────────────────────────────────────────────────────────────────────────────────────────────
  Which pull requests to list first   default open
- Enter change   h l step   Backspace default   Tab keys   q close
+ Enter change  h l step  Backspace default  Tab keys  q close

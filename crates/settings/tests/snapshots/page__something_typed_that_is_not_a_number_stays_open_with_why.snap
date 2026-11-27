@@ -15,4 +15,4 @@ expression: screen(&mut page)
    syntax-theme   default
  ──────────────────────────────────────────────────────────────────────────────────────────────
  4x is not a number of zero or more
- type the value   Enter keep it   Esc leave it
+ type the value  Enter keep it  Esc leave it

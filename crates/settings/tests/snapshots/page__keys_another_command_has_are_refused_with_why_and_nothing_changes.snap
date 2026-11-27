@@ -15,4 +15,4 @@ expression: screen(&mut page)
 
  ──────────────────────────────────────────────────────────────────────────────────────────────
  keys.comment: q is bound to both Quit and Comment on this line
- Enter new keys   a add keys   d no keys   Backspace default   Tab settings   q close
+ Enter new keys  a add keys  d no keys  Backspace default  Tab settings  q close

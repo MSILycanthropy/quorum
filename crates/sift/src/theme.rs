@@ -61,6 +61,16 @@ pub struct Tints {
 }
 
 impl Tints {
+    pub fn footer(&self) -> hints::Styles {
+        let base = Style::new().bg(Color::from(self.filler));
+
+        hints::Styles {
+            base,
+            muted: base.fg(Color::from(self.muted)),
+            key: base.fg(Color::from(self.attention)),
+        }
+    }
+
     pub fn page(&self) -> settings::Styles {
         let base = Style::new().bg(Color::from(self.background)).fg(Color::from(self.foreground));
 

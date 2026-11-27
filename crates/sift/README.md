@@ -21,8 +21,9 @@ sift -- src/          # only paths under src/
 
 ## Keys
 
-Press `?` for every key. If that list is taller than your terminal, the keys
-that move the cursor scroll it, and any other key closes it.
+The status line along the bottom shows the keys you'll want most. Every key is
+on the Keys tab of the settings page (`C-,` or `:settings`), where you can
+change them too.
 
 Sift takes vim's keys and the ones you'd reach for with arrows and Ctrl, so
 most commands have both: `j` and `↓`, `gg` and `Home`, `]c` and `F7`. These
@@ -96,12 +97,12 @@ next-hunk = ["]c", "F7"]
 copy-path = []            # no key, but it's still in the palette
 ```
 
-Keys are written the way help shows them. `C-d` and `ctrl-d` are the same,
+Keys are written the way the settings page shows them. `C-d` and `ctrl-d` are the same,
 and so are `S-Tab` and `shift-Tab`. `]c` is `]` then `c`, and `"C-x C-s"` is
 two keys in a row. These are the names:
 
 ```
-help  palette  reload  quit  back
+palette  settings  reload  quit  back
 next-file  previous-file  find-file  toggle-file-list  edit  copy
 copy-selection  copy-path  copy-location  toggle-viewed  next-unviewed
 previous-unviewed
@@ -119,13 +120,13 @@ next-annotation  previous-annotation
     src/command.rs   every command and the keys bound to it
     src/diff         diff model, side-by-side alignment, wrapping
     src/git.rs       what changed between a revision and the worktree, index or another revision
-    src/ui           the file list, the diff, and the help and palette overlays
+    src/ui           the file list, the diff, the palette over them, and the status line
 
 The key catalog in `command.rs` is the one place a key gets its meaning. The
-help overlay, the palette and the status line hints are all drawn from it, so
-they can't drift apart. A program that embeds sift adds its own keys to the
-same catalog through `Opening::bindings`, so they show up in all three, and a
-key that one of sift's commands already uses is refused.
+palette, the status line hints and the settings page's Keys tab are all drawn
+from it, so they can't drift apart. A program that embeds sift adds its own keys
+to the same catalog through `Opening::bindings`, so they show up in all three,
+and a key that one of sift's commands already uses is refused.
 
 ## Requires
 

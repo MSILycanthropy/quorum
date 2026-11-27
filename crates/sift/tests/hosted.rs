@@ -128,14 +128,6 @@ fn the_palette_opens_over_the_surface_not_the_whole_screen() {
 }
 
 #[test]
-fn help_opens_over_the_surface_not_the_whole_screen() {
-    let mut surface = surface();
-    surface.key(press(KeyCode::Char('?'))).expect("the fixtures highlight");
-
-    insta::assert_snapshot!(hosted(&mut surface));
-}
-
-#[test]
 fn a_surface_one_row_tall_is_its_status_line() {
     let mut buffer = Buffer::empty(Rect::new(0, 0, 100, 3));
     surface().render(Rect::new(0, 1, 100, 1), &mut buffer);
@@ -147,7 +139,7 @@ fn a_surface_one_row_tall_is_its_status_line() {
 #[test]
 fn nothing_is_drawn_outside_the_area_however_small_it_is() {
     let screen = Rect::new(0, 0, 54, 9);
-    for opener in [None, Some('?'), Some(':'), Some('/')] {
+    for opener in [None, Some(':'), Some('/')] {
         for width in 0..=48 {
             for height in 0..=6 {
                 let mut surface = surface();

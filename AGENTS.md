@@ -12,6 +12,8 @@ crates they share:
   tool's own types, so Glean's file can hold Sift's settings.
 - `crates/keys` — key maps: commands, the key sequences that reach them, what a
   key press amounts to, and rebinding them from a settings file.
+- `crates/hints` — the footer along the bottom of a screen: status on the left,
+  key hints on the right, read from a key map or given by hand.
 - `crates/settings` — a settings page any of them can show: every setting and
   every key, changed in place and handed back for the program to apply.
 

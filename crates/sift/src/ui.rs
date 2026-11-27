@@ -1,7 +1,6 @@
 //! The terminal surfaces: the file list, the diff, and the overlays over them.
 
 mod annotation;
-mod help;
 mod icon;
 mod palette;
 mod review;
@@ -10,7 +9,6 @@ mod tree;
 mod viewer;
 
 pub use annotation::{Body, Draw, Text};
-pub use help::Help;
 pub use icon::Icon;
 pub use palette::{Palette, PaletteAction};
 pub use review::Review;

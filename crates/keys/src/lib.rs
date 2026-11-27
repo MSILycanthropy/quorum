@@ -50,7 +50,7 @@ macro_rules! keymap {
     )*) => {
         [$($(
             $crate::Binding::new($command, $name, $label, $section, &[$($key),*])
-                .map(|binding| $crate::Binding { $($field: Some($value),)* ..binding }),
+                .map(|binding| $crate::Binding { $($field: $value.into(),)* ..binding }),
         )*)*]
         .into_iter()
         .collect::<$crate::Result<Vec<_>>>()
