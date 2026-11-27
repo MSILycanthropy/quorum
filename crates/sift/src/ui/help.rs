@@ -6,16 +6,20 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::{Clear, Widget};
 use unicode_width::UnicodeWidthStr;
 
-use crate::command::{Binding, Catalog};
+use crate::command::{Binding, Catalog, Command};
 use crate::theme::Tints;
 
 const GAP: usize = 3;
 const CLOSING: &str = "any key closes";
 
-/// The overlay listing every binding, open or not.
+/// The overlay listing every binding, open or not, and how far it is
+/// scrolled when it is taller than the terminal.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Help {
     open: bool,
+    scrolled: usize,
+    overflow: usize,
+    page: usize,
     tints: Tints,
 }
 
@@ -27,7 +31,7 @@ impl Default for Help {
 
 impl Help {
     pub const fn new(tints: Tints) -> Self {
-        Self { open: false, tints }
+        Self { open: false, scrolled: 0, overflow: 0, page: 0, tints }
     }
 }
 
@@ -58,13 +62,36 @@ impl Help {
 
     pub fn toggle(&mut self) {
         self.open = !self.open;
+        self.scrolled = 0;
+    }
+
+    pub fn scroll(&mut self, command: Command, count: Option<usize>) -> bool {
+        if self.overflow == 0 {
+            return false;
+        }
+        let times = count.unwrap_or(1);
+        let page = self.page.max(2);
+        let target = match command {
+            Command::NextLine | Command::ScrollLineDown => self.scrolled.saturating_add(times),
+            Command::PreviousLine | Command::ScrollLineUp => self.scrolled.saturating_sub(times),
+            Command::HalfPageDown => self.scrolled.saturating_add(page / 2 * times),
+            Command::HalfPageUp => self.scrolled.saturating_sub(page / 2 * times),
+            Command::PageDown => self.scrolled.saturating_add((page - 1) * times),
+            Command::PageUp => self.scrolled.saturating_sub((page - 1) * times),
+            Command::Top => 0,
+            Command::Bottom => self.overflow,
+            _ => return false,
+        };
+        self.scrolled = target.min(self.overflow);
+
+        true
     }
 
     pub fn close(&mut self) {
         self.open = false;
     }
 
-    pub fn draw(&self, area: Rect, buffer: &mut Buffer, catalog: &Catalog) {
+    pub fn draw(&mut self, area: Rect, buffer: &mut Buffer, catalog: &Catalog) {
         if !self.open {
             return;
         }
@@ -99,16 +126,19 @@ impl Help {
         let whole = (1..=most_columns)
             .map(|count| flow(&sections, count))
             .find(|columns| tallest(columns) <= room_tall);
-        let columns = if let Some(columns) = whole {
-            columns.into_iter().map(|column| entries(&column)).collect()
-        } else {
-            let mut columns = spilled(&sections, room_tall);
-            columns.truncate(most_columns);
-            columns
+        let spilling = spilled(&sections, room_tall);
+        let columns: Vec<Vec<Entry>> = match whole {
+            Some(columns) => columns.into_iter().map(|column| entries(&column)).collect(),
+            None if spilling.len() <= most_columns => spilling,
+            None => flow(&sections, most_columns).iter().map(|column| entries(column)).collect(),
         };
+        let tallest = columns.iter().map(Vec::len).max().unwrap_or(0);
+        self.overflow = tallest.saturating_sub(room_tall);
+        self.page = room_tall;
+        self.scrolled = self.scrolled.min(self.overflow);
 
         let width = columns.len() * column_width + (columns.len() - 1) * GAP + 2;
-        let height = columns.iter().map(Vec::len).max().unwrap_or(0) + 2;
+        let height = tallest.min(room_tall.max(1)) + 2;
         let width = u16::try_from(width).unwrap_or(u16::MAX).min(area.width);
         let height = u16::try_from(height).unwrap_or(u16::MAX).min(area.height);
         let popup = Rect::new(
@@ -124,9 +154,24 @@ impl Help {
 
         for (index, column) in columns.iter().enumerate() {
             let x = popup.x + 1 + u16::try_from(index * (column_width + GAP)).unwrap_or(u16::MAX);
-            painter.column(buffer, x, column);
+            painter.column(buffer, x, column.get(self.scrolled..).unwrap_or_default());
         }
-        painter.closing(buffer);
+        let closing = if self.overflow == 0 {
+            CLOSING.to_owned()
+        } else {
+            let first = |command| {
+                catalog
+                    .bindings()
+                    .iter()
+                    .find(|binding| binding.command == command)
+                    .and_then(|binding| binding.keys.first())
+                    .map(ToString::to_string)
+            };
+            let down = first(Command::NextLine).unwrap_or_else(|| "↓".to_owned());
+            let up = first(Command::PreviousLine).unwrap_or_else(|| "↑".to_owned());
+            format!("{down} {up} scroll · any other key closes")
+        };
+        painter.closing(buffer, &closing);
     }
 }
 
@@ -239,13 +284,13 @@ impl Painter {
         buffer.set_stringn(x, y, text, width.min(room), style);
     }
 
-    fn closing(&self, buffer: &mut Buffer) {
-        let width = u16::try_from(CLOSING.width() + 1).unwrap_or(u16::MAX);
+    fn closing(&self, buffer: &mut Buffer, closing: &str) {
+        let width = u16::try_from(closing.width() + 1).unwrap_or(u16::MAX);
         if width > self.popup.width {
             return;
         }
         let x = (self.popup.x + self.popup.width).saturating_sub(width);
         let y = self.popup.y + self.popup.height.saturating_sub(1);
-        buffer.set_string(x, y, CLOSING, self.base().fg(Color::from(self.tints.muted)));
+        buffer.set_string(x, y, closing, self.base().fg(Color::from(self.tints.muted)));
     }
 }

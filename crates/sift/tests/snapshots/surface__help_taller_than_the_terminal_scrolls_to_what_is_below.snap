@@ -1,0 +1,28 @@
+---
+source: tests/surface.rs
+expression: "screen(&mut surface, 100, 24)"
+---
+ CHANGES                           M src/other.rs  +1 −1                                        1/2
+
+  y C-c C-S-c     Copy the selected lines          zz              Cursor line to the middle
+  yp              Copy path                        zt              Cursor line to the top
+  yl Y            Copy path:line or lines          zb              Cursor line to the bottom
+  x               Mark viewed, go to next          H S-←           Cursor to the old side
+  ]u              Next unviewed file               L S-→           Cursor to the new side
+  [u              Previous unviewed file           h ←             Scroll left
+                                                   l →             Scroll right
+                                                   V v             Select lines
+                                                   S-↓             Select down a line
+                                                   S-↑             Select up a line
+                                                   Enter o zo      Unfold, or toggle annotation
+                                                   zc              Fold back up
+                                                   za              Unfold or fold back up
+                                                   zR              Open every fold and annotation
+                                                   zM              Fold everything up again
+
+                                                   View
+                                                   s               Split or unified
+                                                   w A-z           Wrap long lines
+                                                   W               Ignore whitespace
+                                                                j k scroll · any other key closes
+  main · HEAD → worktree · 2 files · 1 hunks · side by side     n hunk  Tab file  x viewed  ? help

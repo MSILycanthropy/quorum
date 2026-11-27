@@ -21,9 +21,12 @@ sift -- src/          # only paths under src/
 
 ## Keys
 
-Press `?` for every key. Sift takes vim's keys and the ones you'd reach for
-with arrows and Ctrl, so most commands have both: `j` and `↓`, `gg` and
-`Home`, `]c` and `F7`. These are the main ones:
+Press `?` for every key. If that list is taller than your terminal, the keys
+that move the cursor scroll it, and any other key closes it.
+
+Sift takes vim's keys and the ones you'd reach for with arrows and Ctrl, so
+most commands have both: `j` and `↓`, `gg` and `Home`, `]c` and `F7`. These
+are the main ones:
 
 ```
 n  ]c  F7       next hunk, carrying on into the next file (N  [c  S-F7 back)

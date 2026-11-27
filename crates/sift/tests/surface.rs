@@ -167,6 +167,41 @@ fn help_flows_into_columns_when_the_terminal_is_short() {
 }
 
 #[test]
+fn help_taller_than_the_terminal_scrolls_to_what_is_below() {
+    let mut surface = surface();
+    typed(&mut surface, &[press(KeyCode::Char('?'))]);
+    screen(&mut surface, 100, 24);
+    typed(&mut surface, &[press(KeyCode::Char('G'))]);
+
+    insta::assert_snapshot!(screen(&mut surface, 100, 24));
+}
+
+#[test]
+fn a_key_that_does_not_scroll_closes_help_that_does() {
+    let mut surface = surface();
+    let before = screen(&mut surface, 100, 24);
+    typed(&mut surface, &[press(KeyCode::Char('?'))]);
+    screen(&mut surface, 100, 24);
+
+    let controls = typed(&mut surface, &[press(KeyCode::Char('j')), press(KeyCode::Char('q'))]);
+
+    assert_eq!(controls, vec![Control::Continue, Control::Continue]);
+    assert_eq!(screen(&mut surface, 100, 24), before);
+}
+
+#[test]
+fn help_that_fits_closes_on_any_key_and_does_nothing_else() {
+    let mut surface = surface();
+    let before = screen(&mut surface, 100, 45);
+    typed(&mut surface, &[press(KeyCode::Char('?'))]);
+    screen(&mut surface, 100, 45);
+
+    typed(&mut surface, &[press(KeyCode::Char('j'))]);
+
+    assert_eq!(screen(&mut surface, 100, 45), before);
+}
+
+#[test]
 fn a_file_whose_name_starts_with_the_query_outranks_one_that_merely_contains_it() {
     let opening = Opening::default();
     let mut surface = opening

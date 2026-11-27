@@ -9,5 +9,5 @@ HOST BAR · pull request #42
 │ host │    total.rs          ?               Show every key
 │ host │                       : C-t           Command palette
 │ host │                       r F5            Reload from git
-│ host │                                                       any key closes
+│ host │                                    j k scroll · any other key closes
 │ host │  main · HEAD → worktree · 2 files · 1 hunks · side by side       n hunk  Tab file  ? help

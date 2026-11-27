@@ -24,5 +24,5 @@ expression: "screen(&mut surface, 100, 24)"
   x               Mark viewed, go to next          H S-←           Cursor to the old side
   ]u              Next unviewed file               L S-→           Cursor to the new side
   [u              Previous unviewed file           h ←             Scroll left
-                                                                                   any key closes
+                                                                j k scroll · any other key closes
   main · HEAD → worktree · 2 files · 1 hunks · side by side     n hunk  Tab file  x viewed  ? help

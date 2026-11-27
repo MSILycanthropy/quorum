@@ -76,7 +76,15 @@ impl Surface {
         self.notice = None;
 
         if self.help.is_open() {
-            self.help.close();
+            let holding = self.holding();
+            match self.catalog.press(&mut self.pending, key, holding) {
+                Pressed::Pending => {}
+                Pressed::Command { command, count } if self.help.scroll(command, count) => {}
+                Pressed::Command { .. } | Pressed::Nothing => {
+                    self.pending.clear();
+                    self.help.close();
+                }
+            }
             return Ok(Control::Continue);
         }
 
